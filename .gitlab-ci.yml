@@ -2,6 +2,11 @@
 #   - build
 #   - deployment
 
+valid_dummy_job:
+  stage: .pre
+  script:
+    - echo "Silencing pipeline in other branches"
+
 # variables:
 #   GIT_DEPTH: 1
 #   PROJECT_MAJOR_VERSION: 1
@@ -101,15 +106,13 @@
 #     UPDATED_IMAGE_TAG: $PROJECT_MAJOR_VERSION.$CI_PIPELINE_IID
 #   <<: *plotly_rules
 
-{ % if cookiecutter.use_fastapi == 'yes' % }
-  # deploy_webapi:
-  #   stage: deployment
-  #   extends: .ltp_deployment_service_deploy_app
-  #   needs:
-  #     - build_webapi_image
-  #   variables:
-  #     LTP_APP_INDEX: 1
-  #     UPDATED_IMAGE_TAG: $PROJECT_MAJOR_VERSION.$CI_PIPELINE_IID
-  #   <<: *fastapi_rules
-{ % endif % }
+# deploy_webapi:
+#   stage: deployment
+#   extends: .ltp_deployment_service_deploy_app
+#   needs:
+#     - build_webapi_image
+#   variables:
+#     LTP_APP_INDEX: 1
+#     UPDATED_IMAGE_TAG: $PROJECT_MAJOR_VERSION.$CI_PIPELINE_IID
+#   <<: *fastapi_rules
 
