@@ -1,0 +1,34 @@
+{
+    "project": {
+        "name": "escala",
+        "tag": "GSO039",
+        "client": "grupo-sousa",
+        "folderPath": "escala"
+    },
+    "apps": [
+        
+        {
+            "name": "escala-plotly-webapp",
+            "kind": "deployment",
+            "specificationPath": "ops/values/plotly-webapp.yaml",
+            "namespace": "escala",
+            "cluster": "ams-production-cluster",
+            "folder": "escala-plotly-webapp"
+        }
+        ,
+        
+        
+        {
+            "name": "escala-fastapi-webapi",
+            "kind": "deployment",
+            "specificationPath": "ops/values/fastapi-webapi.yaml",
+            "namespace": "escala",
+            "cluster": "ams-production-cluster",
+            "folder": "escala-fastapi-webapi"
+        }
+        
+        
+        
+    ],
+    "contacts": null
+}

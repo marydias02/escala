@@ -1,0 +1,51 @@
+[project]
+name = "api"
+version = "1.0.0"
+description = "Rest Api"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    # Base dependencies
+    "python-dotenv>=1.2.1",
+    "loguru>=0.7.3",
+    "fastapi>=0.115.0",
+    "uvicorn>=0.38.0",
+    "httpx>=0.28.1",
+    # Dataframes and Data Processing
+    "polars>=1.35.1",
+    # Database dependencies
+    "asyncpg>=0.31.0",
+    # Security dependencies
+    "argon2-cffi>=25.1.0",
+    "python-jose>=3.5.0",
+    # LTP Labs dependencies
+    "airpy>=3",
+    # Uncategorized dependencies
+]
+
+[dependency-groups]
+dev = ["ruff>=0.14.3"]
+
+[tool.uv.sources]
+airpy = { index = "ltpypi" }
+
+[[tool.uv.index]]
+name = "ltpypi"
+url = "https://git.ltplabs.net/api/v4/projects/344/packages/pypi/simple"
+explicit = true
+
+[project.scripts]
+generate_api_key = "api.development:generate_api_key"
+
+[build-system]
+requires = ["uv_build>=0.9.6,<0.10.0"]
+build-backend = "uv_build"
+[tool.ruff]
+line-length = 120
+
+[tool.ruff.format]
+docstring-code-format = true
+docstring-code-line-length = 100
+
+[tool.ruff.lint]
+extend-select = ["I"]

@@ -1,0 +1,52 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.db
+*.sqlite3
+
+# Ignore all virtual environment directories and their contents
+**/env/
+**/venv/
+**/.venv/
+**/.env
+*.env
+
+# Cache
+**/cache/
+
+# Poetry
+__pypackages__/ # Local packages directory created by Poetry
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# Plotly
+
+# IDE and Editor files
+*.swp
+*.swo
+.idea/
+.vscode/
+*.iml
+
+# OS generated files
+.DS_Store
+Thumbs.db
+*.bak
+*.tmp
+
+# Local configuration files
+*.local
+
+# Ignore any log files
+*.log
+
+# Ignore any other files that should not be versioned
+*.egg-info
+*.egg-info/
+*.xlsx
+*.lp
+*.ilp
+*.mps

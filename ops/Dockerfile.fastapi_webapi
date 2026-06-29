@@ -1,0 +1,25 @@
+FROM git.ltplabs.net:5050/libs/custom-docker-images/py-3.11-slim-uv
+
+ARG UV_INDEX_LTPYPI_USERNAME="gitlab-ci-token"
+ARG UV_INDEX_LTPYPI_PASSWORD
+
+# Set environment variables
+ENV PYTHONDONTWRITEBYTECODE=1
+ENV PYTHONUNBUFFERED=1
+
+ENV PATH="/root/.local/bin:$PATH"
+
+RUN apt-get update && apt-get install --no-install-recommends -y curl build-essential
+
+WORKDIR /app
+
+# Copy dependency files only (better layer caching)
+COPY fastapi_webapi/pyproject.toml fastapi_webapi/uv.lock fastapi_webapi/.python-version ./
+
+RUN uv sync --frozen
+
+# Copy application code
+COPY ./fastapi_webapi/ .
+
+# Run command
+CMD ["uv", "run", "uvicorn", "--host", "0.0.0.0", "--port", "8000", "--workers", "2", "api.main:app"]

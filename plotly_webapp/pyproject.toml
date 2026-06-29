@@ -1,0 +1,14 @@
+[project]
+name = "plotly-webapp"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "gunicorn>=23.0.0",
+    "loguru>=0.7.3",
+    "dash>=3.1.1",
+    "dash-ag-grid>=32.3.0",
+    "dash-iconify>=0.1.2",
+    "dash-mantine-components>=2.1.0",
+]

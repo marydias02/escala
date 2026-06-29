@@ -1,0 +1,45 @@
+commonLabels:
+  project.ltplabs/project-name: escala
+  project.ltplabs/project-key: GSO039
+  project.ltplabs/client: grupo-sousa
+  project.ltplabs/component: escala-plotly-webapp
+  project.ltplabs/project-manager: andre.morim.at.ltplabs.com
+
+deployment: 
+  image:
+    registry: git.ltplabs.net:5050
+    repository: external/grupo-sousa/escala/escala/plotly_webapp
+    tag: latest
+    pullPolicy: IfNotPresent
+  containerPorts:
+    - name: http
+      port: 8050
+  extraEnvVarsSecret: escala-plotly-webapp-secret
+  resources:
+    requests:
+      memory: 2Gi
+      cpu: 500m
+    limits:
+      memory: 8Gi
+      cpu: 2
+
+ingress:
+  annotations:
+    traefik.ingress.kubernetes.io/router.entrypoints: websecure
+    traefik.ingress.kubernetes.io/router.tls: "true"
+    traefik.ingress.kubernetes.io/router.tls.domains.0.main: escala.ltplabs.com
+  enabled: true
+  hostname: escala.ltplabs.com
+  ingressClassName: traefik
+  pathType: Prefix
+
+service:
+  create: true
+  ports:
+  - name: http
+    nodePort: ''
+    port: 8000
+    targetPort: http
+
+vpa:
+  create: true
