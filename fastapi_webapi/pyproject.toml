@@ -21,6 +21,8 @@ dependencies = [
     # LTP Labs dependencies
     "airpy>=3",
     # Uncategorized dependencies
+    "langchain>=1.3.12",
+    "langchain-openai>=1.3.4",
 ]
 
 [dependency-groups]
