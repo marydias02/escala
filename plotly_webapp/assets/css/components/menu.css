@@ -1,0 +1,142 @@
+/* ---------------- INDEX ----------------------------
+1. MENU PAGE
+2. MENU SUBPAGE
+3. MENU PAGE/SUBPAGE INTERACTIONS
+4. MENU DROPDOWN
+----------------------------------------------------- */
+
+.menu {
+  color: var(--white);
+  font-size: var(--font-size-sm);
+  line-height: var(--line-height-md);
+  letter-spacing: var(--letter-spacing-sm);
+  cursor: pointer;
+}
+
+.menu,
+.menu a {
+  text-decoration: none;
+  color: var(--white);
+}
+
+/* 1. MENU PAGE */
+.menu__header {
+  display: flex;
+  align-items: center;
+  border-radius: var(--border-radius-sm);
+  padding-inline: var(--spacing-6);
+  gap: var(--spacing-4);
+  min-height: 32px;
+  height: auto;
+}
+
+.menu .menu__header .menu__link {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  height: 100%;
+  gap: var(--spacing-4);
+  white-space: normal;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+/* 2. MENU SUBPAGE */
+.menu__item {
+  border-radius: var(--border-radius-sm);
+  min-height: 25px;
+  height: auto;
+  display: flex;
+  align-items: center;
+}
+
+.menu__item a {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  height: 100%;
+  padding-inline: var(--spacing-6);
+  white-space: normal;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+/* 3. MENU PAGE/SUBPAGE INTERACTIONS */
+
+.menu__header,
+.menu__item,
+.menu__header a,
+.menu__item a {
+  transition:
+    background-color 0.3s ease,
+    color 0.3s ease;
+}
+
+.menu__header:hover,
+.menu__item:hover {
+  background-color: var(--surface-heavy);
+  transition: ease-out 0.3s;
+}
+
+.menu__header:active,
+.menu__item:active {
+  background-color: var(--surface-heavy);
+  color: var(--white-60);
+}
+
+.menu__header:active a,
+.menu__item:active a {
+  color: var(--white-60);
+}
+
+.menu__header:focus,
+.menu__item:focus {
+  outline: none;
+  box-shadow: none;
+}
+
+.menu__header:disabled,
+.menu__header:disabled a,
+.menu__item:disabled,
+.menu__item:disabled a {
+  color: var(--text-icon-disabled);
+}
+
+/* 4. MENU DROPDOWN */
+.menu__header .menu__arrow {
+  transition: transform 0.4s ease-out;
+  padding-inline: 0;
+  min-width: auto;
+}
+
+.menu[open] .menu__header .menu__arrow {
+  transform: rotate(180deg);
+}
+
+.menu > .menu__dropdown {
+  display: block;
+  opacity: 0;
+  overflow: hidden;
+  max-height: 0;
+  transition:
+    max-height 0.9s ease,
+    opacity 0.9s ease,
+    padding-left 0.9s ease;
+}
+
+.menu[open] .menu__dropdown {
+  padding-left: var(--spacing-12);
+  max-height: 100vh;
+  opacity: 1;
+}
+
+.menu__dropdown .menu__dropdown-list {
+  border-left: var(--border-normal) solid transparent;
+  padding-left: var(--spacing-6);
+  gap: var(--spacing-2);
+  transition: border-color 0.9s ease;
+}
+
+.menu[open] .menu__dropdown .menu__dropdown-list {
+  border-color: var(--white-8);
+}

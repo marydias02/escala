@@ -1,0 +1,8 @@
+/* ---------------- INDEX ----------------------------
+1. SELECT DOCUMENTATION PAGE
+----------------------------------------------------- */
+
+.select_color_mode_wrapper {
+  padding: 15px 60px 120px 60px;
+  background-color: var(--accent-sidebar);
+}

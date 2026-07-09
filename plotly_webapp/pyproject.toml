@@ -1,14 +1,25 @@
 [project]
-name = "plotly-webapp"
+name = "dash-template"
 version = "0.1.0"
 description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
-    "gunicorn>=23.0.0",
-    "loguru>=0.7.3",
+    "plotly",
     "dash>=3.1.1",
-    "dash-ag-grid>=32.3.0",
     "dash-iconify>=0.1.2",
-    "dash-mantine-components>=2.1.0",
+    "ruff>=0.12.1",
+    "dash-ag-grid>=31.3.1",
+    "pandas>=2.2.3",
+    "gunicorn>=23.0.0",
 ]
+
+[tool.ruff]
+line-length = 120
+
+[tool.ruff.lint]
+extend-select = ["I"]
+
+[tool.ruff.format]
+docstring-code-format = true
+docstring-code-line-length = 100

@@ -1,0 +1,14 @@
+/* ---------------- INDEX ----------------------------
+1. SECTION DOCUMENTATION PAGE
+----------------------------------------------------- */
+
+.component-wrapper .section {
+  width: 70%;
+}
+
+.example-section-content-wrapper {
+  display: flex;
+  flex-direction: column;
+  padding: var(--spacing-8);
+  gap: var(--spacing-8);
+}

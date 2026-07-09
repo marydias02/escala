@@ -1,0 +1,90 @@
+/* ---------------- INDEX ----------------------------
+1. BASE STYLES
+2. TOP 
+3. BOTTOM
+----------------------------------------------------- */
+
+/* 1. BASE STYLES */
+.tutorial-card {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  height: fit-content;
+  background-color: var(--surface-high-contrast);
+  border-radius: var(--border-radius-lg);
+  padding: var(--spacing-4) var(--spacing-6) var(--spacing-6) var(--spacing-6);
+}
+
+.tutorial-card--dismissed {
+  display: none;
+}
+
+.tutorial-card__surface {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-8);
+}
+
+/* 2. TOP - Title + Description + Close button */
+.tutorial-card__body {
+  display: flex;
+  flex-direction: row;
+  align-items: flex-start;
+  justify-content: space-between;
+  width: 100%;
+  gap: var(--spacing-4);
+}
+
+.tutorial-card__body-content {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--spacing-2);
+}
+
+.tutorial-card__title {
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-base);
+  line-height: var(--line-height-md);
+  letter-spacing: var(--letter-spacing-sm);
+  color: var(--white);
+}
+
+.tutorial-card__description {
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-base);
+  line-height: var(--line-height-md);
+  letter-spacing: var(--letter-spacing-sm);
+  color: var(--white);
+  opacity: 0.6;
+}
+
+.tutorial-card__close {
+  color: var(--white);
+}
+
+/* 3. BOTTOM - "Next" button + pages steps */
+.tutorial-card__footer {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: flex-end;
+  width: 100%;
+  gap: var(--spacing-8);
+}
+
+/* 4. PAGE LAYOUT */
+.tutorial-card-page__content-wrapper {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-40);
+}
+
+.tutorial-card-page__card-container {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-16);
+  padding-bottom: var(--spacing-20);
+  border-bottom: var(--border-normal) solid var(--border-light);
+}

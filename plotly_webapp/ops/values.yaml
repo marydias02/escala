@@ -1,0 +1,45 @@
+# commonLabels:
+#   project.ltplabs/project-name: ltplabs-dash-design-system
+#   project.ltplabs/project-key: LTP011
+#   project.ltplabs/client: LTP
+#   project.ltplabs/component: dash-design-system-webapp
+#   project.ltplabs/project-manager: joao.alves.at.ltplabs.com
+
+# deployment: 
+#   image:
+#     registry: git.ltplabs.net:5050
+#     repository: internal/tech-delivery/dash-template/dash-design-system-webapp
+#     tag: latest
+#     pullPolicy: IfNotPresent
+#   containerPorts:
+#     - name: http
+#       port: 8050
+#   resources:
+#     requests:
+#       memory: 1Gi
+#       cpu: 0.5
+#     limits:
+#       memory: 2Gi
+#       cpu: 1
+
+# ingress:
+#   annotations:
+#     traefik.ingress.kubernetes.io/router.entrypoints: websecure
+#     traefik.ingress.kubernetes.io/router.tls: "true"
+#     traefik.ingress.kubernetes.io/router.middlewares: it-design-system-ip-allowlist@kubernetescrd
+#     traefik.ingress.kubernetes.io/router.tls.domains.0.main: dash-design-system.ltplabs.com
+#   enabled: true
+#   hostname: dash-design-system.ltplabs.com
+#   ingressClassName: traefik
+#   pathType: Prefix
+
+# service:
+#   create: true
+#   ports:
+#   - name: http
+#     nodePort: ''
+#     port: 8000
+#     targetPort: http
+
+# vpa:
+#   create: true

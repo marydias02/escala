@@ -1,0 +1,25 @@
+/* ---------------- INDEX ----------------------------
+1. BASE STYLE
+----------------------------------------------------- */
+
+/* 1. BASE STYLE */
+.label {
+  display: inline-flex;
+  flex-direction: row;
+  align-items: center;
+  height: fit-content;
+  gap: var(--spacing-4);
+  padding: var(--spacing-none) var(--spacing-2) var(--spacing-8)
+    var(--spacing-2);
+}
+
+.label__text {
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-heavy);
+  line-height: none;
+  letter-spacing: var(--letter-spacing-sm);
+}
+
+.label--default {
+  color: var(--text-icon-secondary);
+}

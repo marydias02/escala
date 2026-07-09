@@ -1,0 +1,35 @@
+/* --------------------------------------------- */
+/* INDICATOR CARDS */
+/* --------------------------------------------- */
+
+/* 3. TITLE */
+.indicator-card__title {
+  color: var(--accent-primary);
+  display: flex;
+  gap: var(--spacing-4);
+  align-items: center;
+}
+
+.indicator-card__title .iconify {
+  padding: var(--spacing-8);
+  border-radius: var(--border-radius-lg);
+  background-color: var(--primary-color-5);
+}
+
+/* --------------------------------------------- */
+/* INDICATOR CARDS PAGE */
+/* --------------------------------------------- */
+
+.indicator-card-page__content-wrapper {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-40);
+}
+
+.indicator-card-page__card-container {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-16);
+  padding-bottom: var(--spacing-20);
+  border-bottom: var(--border-normal) solid var(--border-light);
+}

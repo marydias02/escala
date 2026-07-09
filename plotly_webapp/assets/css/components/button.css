@@ -1,0 +1,212 @@
+/* ---------------- INDEX ----------------------------
+1. BASE STYLES
+2. SIZE
+3. VARIANTS
+4. LOADING
+5. DESTRUCTIVE
+----------------------------------------------------- */
+
+/* 1. BASE STYLES */
+
+a {
+    text-decoration: none;
+    color: inherit;
+}
+
+.button {
+    padding: 0;
+    border: none;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition-duration: 150ms;
+    transition-timing-function: ease-out;
+    position: relative;
+    overflow: hidden;
+    outline: var(--border-focus) solid transparent;
+}
+
+.button:disabled {
+    pointer-events: none;
+}
+
+.button:focus {
+    outline: var(--border-focus) solid var(--border-lightest);
+}
+
+/* 2. SIZE */
+
+.button--m {
+    border-radius: var(--border-radius-md);
+    gap: var(--spacing-4);
+    height: 32px;
+    min-width: 32px;
+    padding-inline: var(--spacing-8);
+    line-height: var(--line-height-none);
+}
+
+.button--s {
+    border-radius: var(--border-radius-sm);
+    gap: var(--spacing-4);
+    height: 28px;
+    min-width: 28px;
+    padding-inline: var(--spacing-6);
+    line-height: var(--line-height-none);
+}
+
+.button--xs {
+    border-radius: var(--border-radius-sm);
+    gap: var(--spacing-4);
+    height: 24px;
+    min-width: 24px;
+    padding-inline: var(--spacing-4);
+    line-height: var(--line-height-none);
+}
+
+.button--2xs {
+    border-radius: var(--border-radius-xs);
+    gap: var(--spacing-4);
+    height: 15px;
+    min-width: 15px;
+    padding-block: var(--spacing-2);
+    line-height: var(--line-height-none);
+}
+
+.button--m > svg.iconify--lucide > path,
+.button--s > svg.iconify--lucide > path {
+    max-width: 14px;
+    max-height: 14px;
+}
+
+.button--xs > svg.iconify--lucide > path,
+.button--2xs > svg.iconify--lucide > path {
+    max-width: 12px;
+    max-height: 12px;
+}
+
+/* 3. VARIANTS */
+
+/* PRIMARY */
+
+.button--primary {
+    background-color: var(--accent-primary);
+    color: var(--white);
+}
+
+.button--primary:hover:not(:disabled) {
+    opacity: 0.9;
+}
+
+.button--primary:active:not(:disabled) {
+    opacity: 0.8;
+}
+
+.button--primary:disabled {
+    opacity: 0.4;
+}
+
+/* OUTLINE */
+
+.button--outline {
+    border: var(--border-normal) solid;
+    border-color: var(--border-light);
+    background: transparent;
+    color: var(--text-icon-primary);
+}
+
+.button--outline:hover:not(:disabled),
+.button--outline:active:not(:disabled) {
+    background: var(--surface-lightest);
+}
+
+.button--outline:active {
+    color: var(--text-icon-secondary);
+}
+
+.button--outline:disabled {
+    color: var(--text-icon-disabled);
+}
+
+/* GHOST */
+
+.button--ghost {
+    color: var(--text-icon-primary);
+}
+
+.button--ghost.secondary {
+    color: var(--text-icon-secondary);
+}
+
+.button--ghost:disabled {
+    color: var(--text-icon-disabled);
+}
+
+.button--ghost:hover:not(:disabled),
+.button--ghost:active:not(:disabled) {
+    background: var(--surface-light);
+}
+
+.button--ghost:active:not(:disabled) {
+    color: var(--text-icon-secondary);
+}
+
+/* 1. LOADING */
+
+.button--loading {
+    pointer-events: none;
+}
+
+.button--loading .visually-hidden {
+    opacity: 0;
+    visibility: hidden;
+}
+
+.button--ghost.button--loading {
+    background-color: var(--surface-light);
+}
+
+.button--loading .loading {
+    opacity: 1;
+    visibility: visible;
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    transform: translate(-50%, -50%);
+    z-index: 1;
+    margin: 0;
+    animation: button-spin 0.8s linear infinite;
+}
+
+@keyframes button-spin {
+    0% {
+        transform: translate(-50%, -50%) rotate(0deg);
+    }
+    100% {
+        transform: translate(-50%, -50%) rotate(360deg);
+    }
+}
+
+/* 5. DESTRUCTIVE */
+
+.button--outline.button--destructive,
+.button--ghost.button--destructive {
+    color: var(--negative-highlight);
+}
+
+.button--ghost.button--destructive:active:not(:disabled) {
+    color: var(--negative-highlight);
+}
+
+.button--outline.button--destructive:active:not(:disabled) {
+    opacity: 0.7;
+}
+
+.button--outline.button--destructive:disabled,
+.button--ghost.button--destructive:disabled {
+    opacity: 0.4;
+}
+
+.button--primary.button--destructive {
+    background-color: var(--negative-highlight);
+}

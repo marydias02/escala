@@ -1,0 +1,61 @@
+dummy:
+  script:
+    - echo "disable"
+  rules:
+    - when: never
+
+# stages:
+#   - build
+#   - deployment
+
+# variables:
+#   GIT_DEPTH: 1
+#   PROJECT_MAJOR_VERSION: 1
+
+# include:
+#   project: libs/gitlab-jobs
+#   ref: main
+#   file:
+#     - Gitlab/Build-and-push-multiple-tag.gitlab-ci.yml
+#     - General/LTP-deployment-service-deploy-app.yaml
+
+# .default_rules: &default_rules
+#   rules:
+#     - if: $CI_COMMIT_TAG
+#       when: never
+#     - if: $CI_COMMIT_BRANCH == 'main'
+#       when: on_success
+
+# build_webapp_image:
+#   extends: .build_and_push_multiple_tag
+#   stage: build
+#   variables:
+#     BUILD_ARGS: UV_INDEX_LTPYPI_PASSWORD=$CI_JOB_TOKEN
+#     TAGS: latest $PROJECT_MAJOR_VERSION.$CI_PIPELINE_IID
+#   parallel:
+#     matrix:
+#       - DOCKERFILE_PATH: $CI_PROJECT_DIR/ops/Dockerfile
+#         IMAGE_NAME: $CI_REGISTRY_IMAGE/dash-design-system-webapp
+#   <<: *default_rules
+
+# release_job:
+#   stage: deployment
+#   image: registry.gitlab.com/gitlab-org/release-cli:latest
+#   script:
+#     - echo "Releasing $CI_COMMIT_REF_NAME to $CI_DEFAULT_BRANCH"
+#   release:
+#     tag_name: "v$PROJECT_MAJOR_VERSION.$CI_PIPELINE_IID"
+#     description: "Published image: $CI_REGISTRY_IMAGE:$PROJECT_MAJOR_VERSION.$CI_PIPELINE_IID"
+#     ref: $CI_COMMIT_SHA
+#   <<: *default_rules
+
+# deploy_webapp:
+#   stage: deployment
+#   extends: .ltp_deployment_service_deploy_app
+#   variables:
+#     LTP_APP_INDEX: 0
+#     UPDATED_IMAGE_TAG: $PROJECT_MAJOR_VERSION.$CI_PIPELINE_IID
+#   <<: *default_rules
+
+
+

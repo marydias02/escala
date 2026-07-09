@@ -1,0 +1,36 @@
+:root {
+  /* BORDER RADIUS */
+  --border-radius-round: 100%;
+  --border-radius-xl: 16px;
+  --border-radius-lg: 10px;
+  --border-radius-md: 8px;
+  --border-radius-sm: 6px;
+  --border-radius-xs: 4px;
+  --border-radius-none: 0px;
+
+  /* BORDER */
+  --border-focus: 4px;
+  --border-normal: 1px;
+
+  /* SPACING */
+  --spacing-none: 0px;
+  --spacing-1: 1px;
+  --spacing-2: 2px;
+  --spacing-4: 4px;
+  --spacing-6: 6px;
+  --spacing-8: 8px;
+  --spacing-10: 10px;
+  --spacing-12: 12px;
+  --spacing-14: 14px;
+  --spacing-16: 16px;
+  --spacing-20: 20px;
+  --spacing-24: 24px;
+  --spacing-32: 32px;
+  --spacing-40: 40px;
+  --spacing-60: 60px;
+  --spacing-80: 80px;
+
+  /* SHADOW */
+  --shadow-md: 0px 2px 12px 0px rgba(var(--black-values), 0.06);
+  --shadow-sm: 0px 0px 8px 0px rgba(var(--black-values), 0.04);
+}

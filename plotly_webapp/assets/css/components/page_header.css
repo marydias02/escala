@@ -1,0 +1,72 @@
+/* --------------------------------------------- */
+/* PAGE HEADER */
+/* --------------------------------------------- */
+
+/* ---------------- INDEX ----------------------------
+1. BASE STYLES
+2. ICON
+3. TEXT
+4. PROGRESS
+5. MEDIA QUERIES
+----------------------------------------------------- */
+
+/* 1. BASE STYLES */
+
+.page__header {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-10);
+  padding-bottom: var(--spacing-16);
+  align-items: flex-start;
+}
+
+.page__header--compact {
+  gap: var(--spacing-none);
+  padding-bottom: var(--spacing-16);
+}
+
+/* 2. ICON */
+.page__header-icon-wrapper {
+  padding: var(--spacing-8);
+  border-radius: var(--border-radius-lg);
+  border: var(--border-normal) solid var(--border-light);
+}
+
+.page__header-icon-wrapper--solo {
+  display: inline-block;
+  margin-bottom: var(--spacing-10);
+
+  padding: var(--spacing-8);
+  border-radius: var(--border-radius-lg);
+  border: var(--border-normal) solid var(--border-light);
+}
+
+.page__header-icon {
+  font-size: var(--font-size-lg);
+}
+
+/* 3. TEXT */
+.page__header-text-wrapper {
+  max-width: 60%;
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-6);
+}
+
+.page__header-text-wrapper P {
+  color: var(--text-icon-secondary);
+}
+
+/* 4. PROGRESS */
+.page__header-progress-wrapper {
+  display: flex;
+  padding-top: var(--spacing-2);
+  gap: var(--spacing-12);
+}
+
+/* 5. MEDIA QUERIES */
+@media (max-width: 1024px) {
+  .page__header-text-wrapper {
+    max-width: 100%;
+  }
+}

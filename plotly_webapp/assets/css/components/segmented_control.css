@@ -1,0 +1,89 @@
+/* ---------------- INDEX ----------------------------
+1. RESET
+2. MODIFIERS
+3. STATES
+4. ICON PSEUDO-ELEMENT
+----------------------------------------------------- */
+
+/* 1. RESET */
+.tab-container.segmented-control {
+    background: var(--surface-light);
+    border-radius: var(--border-radius-md);
+    padding: var(--spacing-1);
+    display: flex;
+    flex-direction: row !important;
+    gap: var(--spacing-2);
+    white-space: nowrap;
+    width: fit-content;
+}
+
+.tab-container.segmented-control .tab {
+    all: unset;
+    display: flex !important;
+    align-items: center;
+    justify-content: center;
+    background: transparent !important;
+    border: none !important;
+    border-radius: 0;
+    padding-block: 0 !important;
+    font-size: var(--font-size-sm) !important;
+    font-weight: var(--font-weight-base) !important;
+    line-height: var(--line-height-none);
+    letter-spacing: var(--letter-spacing-sm);
+    color: var(--text-icon-secondary);
+    cursor: pointer !important;
+    min-height: auto !important;
+    gap: var(--spacing-4);
+}
+
+/* 2. MODIFIERS (Size variants) */
+.segmented-control--small .tab {
+    height: 24px !important;
+    padding-inline: var(--spacing-8) !important;
+    border-radius: var(--border-radius-sm) !important;
+}
+
+.segmented-control--medium .tab {
+    height: 30px !important;
+    padding-inline: var(--spacing-8) !important;
+    border-radius: var(--border-radius-md) !important;
+}
+
+/* 3. STATES */
+.tab-container.segmented-control .tab:hover:not(.tab--disabled) {
+    color: var(--black);
+}
+
+.tab-container.segmented-control .tab--disabled {
+    color: var(--text-icon-disabled);
+    pointer-events: none;
+}
+
+.tab-container.segmented-control .tab--selected {
+    background: var(--white) !important;
+    color: var(--black);
+    box-shadow: var(--shadow-sm);
+}
+
+/* 4. ICON PSEUDO-ELEMENT */
+.tab-container.segmented-control .tab::before {
+    content: var(--svg);
+    display: inline-block;
+    width: var(--font-size-sm);
+    height: var(--font-size-sm);
+    color: var(--black);
+    opacity: 0.5;
+    flex-shrink: 0;
+}
+
+.tab-container.segmented-control .tab--selected::before {
+    opacity: 1;
+}
+
+.tab-container.segmented-control .tab--disabled::before {
+    opacity: 0.16;
+}
+
+.tab-container.segmented-control .tab:hover::before {
+    opacity: 1;
+}

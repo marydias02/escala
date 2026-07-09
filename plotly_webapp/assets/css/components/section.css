@@ -1,0 +1,77 @@
+/* ---------------- INDEX ----------------------------
+1. SECTION CONTAINER
+2. SECTION HEADER
+3. SECTION CONTENT
+4. SECTION MARKER
+----------------------------------------------------- */
+
+/* 1. SECTION CONTAINER */
+.section {
+  border: var(--border-normal) solid var(--border-light);
+  border-radius: var(--border-radius-xl);
+  background: var(--surface-modal);
+  overflow: hidden;
+  padding-block: var(--spacing-10);
+  padding-inline: var(--spacing-8);
+}
+
+/* 2. SECTION HEADER */
+.section__header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--spacing-4);
+  cursor: pointer;
+  flex-wrap: wrap;
+}
+
+.section__header > .section__title {
+  flex-grow: 1;
+  color: var(--text-icon-primary);
+}
+
+.section__description,
+.section__arrow {
+  color: var(--text-icon-secondary);
+  pointer-events: none;
+}
+
+.section__extra-elements {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--spacing-6);
+}
+
+/* 3. SECTION CONTENT */
+.section__content {
+  margin-top: var(--spacing-10);
+  max-height: 0;
+  overflow: hidden;
+  transition: max-height 0.35s ease, padding 0.35s ease;
+}
+
+details[open] .section__content {
+  max-height: 100vh;
+}
+
+details[open].section {
+  box-shadow: var(--shadow-md);
+}
+
+/* 4. SECTION MARKER */
+
+.section summary::-webkit-details-marker {
+  display: none;
+}
+.section summary::marker {
+  content: none;
+}
+
+.section__header .section__arrow {
+  transition: transform 0.4s ease-out;
+}
+
+details[open] .section__header .section__arrow {
+  transform: rotate(180deg);
+}

@@ -1,0 +1,41 @@
+/* --------------------------------------------- */
+/* FOOTER */
+/* --------------------------------------------- */
+.app__footer {
+  display: flex;
+  padding: var(--spacing-16) var(--spacing-60);
+  flex-shrink: 0;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.app__footer-text {
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-heavy);
+  line-height: var(--line-height-none);
+  letter-spacing: var(--letter-spacing-sm);
+  color: var(--text-icon-tertiary);
+}
+
+.app__footer-logo-wrapper {
+  display: flex;
+  gap: var(--spacing-4);
+  align-items: center;
+}
+
+.app__footer-logo {
+  display: flex;
+  width: var(--spacing-32);
+  height: var(--spacing-12);
+  mask-image: url("/assets/images/ltp-footer-logo.svg");
+  mask-repeat: no-repeat;
+  mask-size: contain;
+  mask-position: center;
+  background-color: var(--text-icon-tertiary);
+}
+
+.app__footer-link {
+  display: flex;
+  text-decoration: none;
+  color: inherit;
+}

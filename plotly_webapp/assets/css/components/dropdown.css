@@ -1,0 +1,14 @@
+/* #dropdown .Select-control {
+  background-color: transparent !important;
+  box-shadow: none;
+  outline: none;
+  border: var(--border-normal) solid rgba(var(--white-values), 0.4) !important;
+  border-radius: var(--border-radius-md);
+}
+
+.Select-control span {
+  color: var(--white) !important;
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-base);
+  line-height: var(--line-height-none);
+} */

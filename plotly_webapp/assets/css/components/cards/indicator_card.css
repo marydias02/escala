@@ -1,0 +1,46 @@
+/* --------------------------------------------- */
+/* INDICATOR CARDS */
+/* --------------------------------------------- */
+
+/* ---------------- INDEX ----------------------------
+1. BASE STYLES
+2. LABEL
+3. TITLE
+4. CONTENT
+----------------------------------------------------- */
+
+/* 1. BASE STYLES */
+
+.indicator-card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-12);
+}
+
+/* 2. LABEL */
+.indicator-card__label {
+  min-height: var(--spacing-16);
+  display: flex;
+  gap: var(--spacing-4);
+  color: var(--text-icon-secondary);
+}
+
+/* 3. CONTENT */
+
+.indicator-card__content-wrapper {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-12);
+}
+
+.indicator-card__content {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-4);
+}
+
+.indicator-card__value {
+  display: flex;
+  gap: var(--spacing-2);
+  align-items: flex-end;
+}

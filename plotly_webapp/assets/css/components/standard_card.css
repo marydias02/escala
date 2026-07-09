@@ -1,0 +1,45 @@
+/* ---------------- INDEX ----------------------------
+1. BASE STYLE
+2. VARIANTS
+----------------------------------------------------- */
+
+/* 1. BASE STYLE */
+
+.standard_card {
+    padding: var(--spacing-12);
+    box-shadow: var(--shadow-md);
+    color: var(--text-icon-primary);
+    background-color: var(--surface-modal) !important;
+    font-family: var(--font-family);
+    font-size: var(--font-size-sm);
+    font-weight: var(--font-weight-base);
+    line-height: var(--line-height-md);
+    letter-spacing: var(--letter-spacing-sm);
+    border-radius: var(--border-radius-lg);
+}
+
+.standard_card__header {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-4);
+    margin-bottom: var(--spacing-4);
+    color: var(--text-icon-primary);
+}
+
+.standard_card__description {
+    margin-bottom: var(--spacing-8);
+    color: var(--text-icon-secondary);
+    display: block;
+    font-size: var(--font-size-xs);
+}
+
+/* 2. VARIANTS */
+
+.standard_card--not-clickable {
+    cursor: default;
+    background-color: var(--surface-lightest) !important;
+}
+
+.standard_card--not-clickable .button {
+     pointer-events: none;
+}

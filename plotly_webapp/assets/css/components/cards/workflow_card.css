@@ -1,0 +1,150 @@
+/* ---------------- INDEX ----------------------------
+1. BASE STYLES
+2. TOP LAYOUT 
+3. CONTENT
+4. BODY
+----------------------------------------------------- */
+
+/* 1. BASE STYLES */
+
+.workflow-card {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  box-shadow: var(--shadow-md);
+  background-color: var(--surface-modal);
+  border-radius: var(--border-radius-lg);
+  padding: var(--spacing-12);
+  gap: var(--spacing-12);
+}
+
+/* 2. TOP Layout - tag + overall progress */
+
+.workflow-card__header {
+  display: flex;
+  flex-direction: row;
+  align-self: stretch;
+}
+
+.workflow-card__header-group {
+  display: flex;
+  flex-direction: row;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--spacing-10);
+  width: 100%;
+}
+
+.workflow-card__header-group--between {
+  justify-content: space-between;
+}
+
+.workflow-card__header-group--end {
+  justify-content: flex-end;
+}
+
+/* 3. Content - title + description */
+
+.workflow-card__content {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--spacing-4);
+}
+
+/* title */
+.workflow-card__title {
+  font-size: var(--font-size-md);
+  font-weight: var(--font-weight-base);
+  line-height: var(--line-height-md);
+  letter-spacing: var(--letter-spacing-sm);
+}
+
+/* description */
+.workflow-card__description {
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-base);
+  line-height: var(--line-height-md);
+  letter-spacing: var(--letter-spacing-sm);
+  color: var(--text-icon-secondary);
+}
+
+/* 4. Body - Members' progress tracking table */
+
+.workflow-card__team {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-4);
+  align-self: stretch;
+}
+
+/* title of the table */
+.workflow-card__section-title {
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-heavy);
+  line-height: var(--line-height-md);
+  letter-spacing: var(--letter-spacing-sm);
+  color: var(--text-icon-secondary);
+}
+
+/* overall rows of the table */
+.workflow-card__users {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+}
+
+.workflow-card__user {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--spacing-8) var(--spacing-none);
+  border-bottom: var(--spacing-1) solid var(--surface-light);
+}
+
+.workflow-card__user:last-child {
+  border-bottom: none;
+  padding-bottom: 0;
+}
+
+.workflow-card__user-id {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: var(--spacing-4);
+}
+
+.workflow-card__user-name,
+.workflow-card__member-name {
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-base);
+  line-height: var(--line-height-md);
+  letter-spacing: var(--letter-spacing-sm);
+}
+
+.workflow-card__user-name--you {
+  color: var(--text-icon-secondary);
+}
+
+.workflow-card__user-progress {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: var(--spacing-1);
+  justify-content: flex-end;
+}
+
+/* 5. PAGE LAYOUT */
+.workflow-card-page__content-wrapper {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-40);
+}
+
+.workflow-card-page__card-container {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-16);
+  padding-bottom: var(--spacing-20);
+  border-bottom: var(--border-normal) solid var(--border-light);
+}

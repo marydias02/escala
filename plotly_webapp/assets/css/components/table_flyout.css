@@ -1,0 +1,285 @@
+/* ---------------- INDEX ----------------------------
+1. BASE STYLES
+2. FILTER CHIPS
+3. FILTER FLYOUTS
+4. FILTER INPUTS
+5. BUTTONS
+6. BACKDROP
+7. OVERRIDES
+8. RESPONSIVE
+----------------------------------------------------- */
+
+/* 1. BASE STYLES */
+.filter-flyout__anchor {
+  position: relative;
+  display: inline-block;
+}
+
+.filter-flyout__options {
+  display: flex;
+  flex-direction: column;
+  max-height: 25vh;
+  overflow-y: auto;
+  margin-top: var(--spacing-10);
+}
+
+/* 2. FILTER CHIPS */
+.filters__filter-chip {
+  color: var(--text-icon-secondary);
+  display: flex;
+  align-items: center;
+  height: 24px;
+  background-color: transparent;
+  padding-inline: var(--spacing-4);
+  margin: var(--spacing-none) var(--spacing-4);
+  border-radius: var(--border-radius-sm);
+  border: var(--border-normal) solid;
+  border-color: var(--border-light);
+  gap: var(--spacing-4);
+  position: relative;
+  line-height: var(--line-height-none);
+}
+
+.filters__filter-chip:has(.filters__filter-chip__remove) {
+  padding-right: 0;
+}
+
+.filters__filter-chip__value {
+  color: var(--text-icon-primary);
+}
+
+.filters__filter-chip--remove {
+  background: none;
+  border: none;
+  color: var(--text-icon-primary);
+  cursor: pointer;
+  font-size: var(--body-sm);
+  padding: 0;
+}
+
+.filters__filter-chip--remove:hover {
+  opacity: 50%;
+}
+
+/* 3. FILTER FLYOUTS */
+.filter-flyout {
+  position: absolute;
+  z-index: 1000;
+  background: var(--surface-modal);
+  border: var(--border-normal) solid var(--border-modal);
+  border-radius: var(--border-radius-lg);
+  box-shadow: var(--shadow-md);
+  padding: var(--spacing-4);
+  top: calc(100% + 5px);
+  left: 50%;
+  transform: translateX(-50%);
+  right: auto;
+  width: 184px;
+}
+
+/* Center to the right if only child */
+.table-header__actions__icons > *:only-child .filter-flyout {
+  transform: none;
+  right: 0;
+  left: auto;
+}
+
+.filter-flyout.hidden {
+  display: none;
+}
+
+.filter-flyout.visible {
+  display: block;
+}
+
+[id*="-filter-value-flyout"].filter-flyout {
+  padding: 0;
+}
+
+.filter-flyout__header {
+  display: flex;
+  align-items: center;
+  padding-inline: var(--spacing-8);
+  padding-block: var(--spacing-6);
+}
+
+.filter-flyout__footer {
+  margin-top: var(--spacing-8);
+  border-top: var(--border-normal) solid var(--border-light);
+  padding-inline: var(--spacing-8);
+  padding-block: var(--spacing-6);
+  display: grid;
+}
+
+[id*="-filter-value-flyout"] {
+  left: 0 !important;
+  right: auto;
+  transform: none;
+}
+
+/* 4. FILTER INPUTS */
+.filter-flyout__input {
+  font-size: var(--font-size-sm);
+  padding: var(--spacing-8);
+  border-radius: var(--border-radius-sm);
+  border: var(--border-normal) solid var(--border-medium);
+}
+
+[id*="-filter-value-flyout"] .filter-flyout__input {
+  margin-top: -2px;
+  margin-inline: auto;
+}
+
+.filter-flyout__option {
+  justify-content: start;
+  flex-shrink: 0;
+}
+
+.filter-flyout__option > span {
+  display: flex;
+  gap: var(--spacing-6);
+  align-items: center;
+}
+
+[id*="-filter-value-flyout"] .filter-flyout__label {
+  color: var(--text-icon-secondary);
+  margin-block: 0 0.3rem;
+}
+
+.filter-flyout__checklist {
+  padding: var(--spacing-2);
+}
+
+.filter-flyout__checklist input[type="checkbox"] {
+  accent-color: var(--accent-primary);
+}
+
+.filter-flyout__checklist-label {
+  padding: var(--spacing-6);
+  display: flex !important;
+  align-items: center;
+  gap: var(--spacing-4);
+  line-height: var(--line-height-none);
+  cursor: pointer;
+  color: var(--text-icon-primary);
+}
+
+/* 6. BACKDROP */
+.filter-backdrop {
+  position: fixed;
+  top: 0;
+  right: 0;
+  width: 100vw;
+  height: 100vh;
+  z-index: 999;
+}
+
+.filter-backdrop.hidden {
+  display: none;
+}
+
+.filter-backdrop.visible {
+  display: block;
+}
+
+/* 5. BUTTONS */
+[id*="-filter-value-flyout"] .filter-flyout__cancel-button {
+  padding-inline: 0;
+  padding-bottom: var(--spacing-6);
+}
+
+.filters__filter-chip__remove {
+  padding: 0;
+}
+
+.filter-flyout__apply-button {
+  margin-left: auto;
+}
+
+/* 7. OVERRIDES */
+.filter-flyout__label ~ .dash-dropdown {
+  display: inline-block;
+  flex: 1;
+  max-width: 100%;
+  color: var(--text-icon-primary);
+}
+
+.filter-flyout .Select-control {
+  font-size: var(--font-size-xs);
+  border-radius: var(--border-radius-sm);
+  border: var(--border-normal) solid;
+  border-color: var(--border-light);
+}
+
+.filter-flyout__operator-dropdown .Select-control {
+  border: none;
+  background: transparent;
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-heavy);
+  cursor: pointer;
+}
+
+.filter-flyout .Select-value .Select-value-label {
+  font-size: var(--font-size-xs);
+  color: var(--text-icon-primary) !important;
+}
+
+.filter-flyout .Select-menu-outer {
+  border-radius: var(--border-radius-md);
+  background: var(--surface-modal);
+  border: var(--border-normal) solid var(--border-light);
+  box-shadow: var(--shadow-md);
+  font-weight: var(--font-weight-base);
+  font-size: var(--font-size-sm);
+  line-height: var(--line-height-none);
+}
+
+.filter-flyout .Select-arrow-zone > .Select-arrow {
+  border: none;
+  width: 1em;
+  height: 1em;
+  background: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="1.5em" height="1.5em" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="m6 9l6 6l6-6"/></svg>')
+    center/contain no-repeat;
+}
+
+.filter-flyout .is-open > .Select-control .Select-arrow {
+  top: auto;
+}
+
+.filter-flyout__operator-dropdown.Select {
+  min-width: 50px;
+  font-weight: var(--font-weight-heavy);
+}
+
+.filter-flyout__operator-dropdown {
+  flex-grow: 1;
+}
+
+.filter-flyout__operator-dropdown > .Select-control .Select-value {
+  line-height: 21px;
+}
+
+.filter-flyout__operator-dropdown
+  > .Select-control
+  .Select-multi-value-wrapper {
+  flex-grow: 2;
+  max-height: 25px;
+}
+
+.filter-flyout input.dash-input {
+  width: 100%;
+  margin: auto;
+  box-sizing: border-box;
+}
+
+[id*="-filter-value-flyout"].filter-flyout input.dash-input {
+  width: 96%;
+  margin-inline: var(--spacing-4);
+}
+
+@container (max-width: 500px) {
+  .filter-flyout {
+    left: 0;
+    transform: none;
+  }
+}

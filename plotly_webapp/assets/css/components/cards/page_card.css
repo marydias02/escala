@@ -1,0 +1,84 @@
+/* ---------------- INDEX ----------------------------
+1. BASE STYLE
+2. VARIANTS
+----------------------------------------------------- */
+
+/* 1. BASE STYLES */
+
+.page-card {
+  padding: var(--spacing-12);
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-8);
+  box-shadow: var(--shadow-md);
+  line-height: var(--line-height-md);
+  letter-spacing: var(--letter-spacing-sm);
+  border: var(--border-normal) solid var(--border-light);
+  border-radius: var(--border-radius-lg);
+}
+
+.page-card__icon-wrap {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--surface-modal);
+  border: var(--border-normal) solid var(--border-light);
+  border-radius: var(--border-radius-xs);
+  align-self: flex-start;
+  box-sizing: border-box;
+  padding: var(--spacing-4);
+}
+
+/* 2. VARIANTS */
+
+/* PRIMARY */
+
+.page-card__title {
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-heavy);
+  line-height: var(--line-height-md);
+  letter-spacing: var(--letter-spacing-sm);
+}
+
+.page-card__description {
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-heavy);
+  line-height: var(--line-height-md);
+  letter-spacing: var(--letter-spacing-sm);
+  color: var(--text-icon-secondary);
+}
+
+.page-card__body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-2);
+}
+
+/* COMPACT */
+
+.page-card--compact {
+  display: flex;
+  flex-direction: row;
+  padding: var(--spacing-6);
+}
+
+.page-card--compact .page-card__header {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-6);
+  padding: var(--spacing-6);
+}
+
+.page-card-page__content-wrapper {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-40);
+}
+
+.page-card-page__card-container {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-16);
+  padding-bottom: var(--spacing-20);
+  border-bottom: var(--border-normal) solid var(--border-light);
+}

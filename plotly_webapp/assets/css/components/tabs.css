@@ -1,0 +1,85 @@
+/* ---------------- INDEX ----------------------------
+1. RESET
+2. MODIFIERS
+3. STATES
+4. ICON PSEUDO-ELEMENT
+----------------------------------------------------- */
+
+/* 1. RESET */
+.tab-container.tabs .tab {
+    all: unset;
+    box-sizing: border-box;
+    display: flex !important;
+    align-items: center;
+    justify-content: center;
+    border: var(--border-normal) solid transparent !important;
+    background: transparent !important;
+    font-size: var(--font-size-sm) !important;
+    font-weight: var(--font-weight-base) !important;
+    min-height: auto !important;
+    cursor: pointer !important;
+    padding: 0; /* overridden by modifiers */
+    color: var(--text-icon-secondary);
+    letter-spacing: var(--letter-spacing-sm);
+    line-height: var(--line-height-none);
+}
+
+.tab-container.tabs {
+    display: flex;
+    flex-direction: row !important;
+    gap: var(--spacing-8);
+    width: fit-content;
+    white-space: nowrap;
+}
+
+/* 2. MODIFIERS (Size variants) */
+.tabs--small .tab {
+    height: 36px !important;
+    padding-block: var(--spacing-10) !important;
+    padding-inline: var(--spacing-4) !important;
+}
+
+.tabs--medium .tab {
+    height: 40px !important;
+    padding-block: var(--spacing-12) !important;
+    padding-inline: var(--spacing-4) !important;
+}
+
+/* 3. STATES */
+.tab-container.tabs .tab--selected {
+    color: var(--black) !important;
+    border-bottom: var(--border-normal) solid var(--border-heaviest) !important;
+}
+
+.tab-container.tabs .tab--disabled {
+    color: var(--text-icon-disabled) !important;
+    pointer-events: none;
+}
+
+.tab-container.tabs .tab:hover:not(.tab--disabled) {
+    color: var(--black);
+}
+
+/* 4. ICON PSEUDO-ELEMENT */
+.tab-container.tabs .tab::before {
+    content: var(--svg);
+    display: inline-block;
+    width: var(--font-size-sm);
+    height: var(--font-size-sm);
+    margin-right: var(--spacing-4);
+    color: var(--black);
+    opacity: 0.5;
+    flex-shrink: 0;
+}
+
+.tab-container.tabs .tab--selected::before {
+    opacity: 1;
+}
+
+.tab-container.tabs .tab--disabled::before {
+    opacity: 0.16;
+}
+
+.tab-container.tabs .tab:hover::before {
+    opacity: 1;
+}

@@ -1,0 +1,201 @@
+/* ---------------- INDEX ---------------------------- */
+/* 1. SIDEBAR */
+/* 2. MAIN CONTENT */
+
+body {
+  background-color: var(--surface-page-background);
+  height: 100vh;
+  overflow: hidden;
+}
+
+.app {
+  display: flex;
+  height: 100vh;
+  transition: all 0.3s;
+}
+
+/* --------------------------------------------- */
+/* SIDEBAR */
+/* --------------------------------------------- */
+.app__sidebar {
+  background: var(--accent-sidebar);
+  width: 250px;
+  color: var(--white);
+  flex-shrink: 0;
+  transition:
+    transform 0.3s ease,
+    opacity 0.2s,
+    padding 0.3s;
+  overflow-y: auto;
+  overflow-x: hidden;
+  transform: translateX(0);
+  position: relative;
+  z-index: 10;
+  padding: var(--spacing-16);
+}
+
+.app__sidebar.sidebar--collapsed {
+  transform: translateX(-100%);
+  pointer-events: none;
+}
+
+.sidebar__header {
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+}
+
+.app__sidebar.sidebar--collapsed + .app__main-content {
+  margin-left: -270px;
+}
+
+.sidebar__dropdown {
+  padding: var(--spacing-24) 0;
+}
+
+.sidebar__menu {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-2);
+}
+
+.sidebar__footer-wrapper {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+}
+
+/* --------------------------------------------- */
+/* MAIN CONTENT */
+/* --------------------------------------------- */
+.app__main-content {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+  flex: 1 1 0%;
+  transition: margin-left 0.3s;
+  margin-left: 0px;
+}
+
+/* --------------------------------------------- */
+/* ^HEADER */
+/* --------------------------------------------- */
+.app__header {
+  display: flex;
+  padding-block: var(--spacing-10);
+  padding-inline: var(--spacing-12);
+  flex-shrink: 0;
+  background-color: var(--surface-page-background);
+  gap: var(--spacing-8);
+  flex-wrap: wrap;
+}
+
+.app__header-actions {
+  display: flex;
+  align-items: start;
+}
+
+.app__header-menuIcon {
+  display: flex;
+  position: relative;
+  margin-top: var(--spacing-8);
+  width: var(--font-size-md);
+  height: var(--font-size-md);
+}
+
+.app__header-menuIcon::before,
+.app__header-menuIcon::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  left: 0.5px;
+  top: 0;
+  display: inline-block;
+  width: var(--font-size-md);
+  height: var(--font-size-md);
+  opacity: 0;
+  transition: opacity 0.2s ease-in-out;
+}
+
+@media (max-width: 400px) {
+  .app__header-menuIcon {
+    margin-top: var(--spacing-2);
+    width: var(--font-size-lg);
+    height: var(--font-size-lg);
+  }
+
+  .app__header-menuIcon::before,
+  .app__header-menuIcon::after {
+    width: var(--font-size-lg);
+    height: var(--font-size-lg);
+  }
+}
+
+.app__header-menuIcon::before {
+  content: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath fill='none' stroke='%23000' stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M3 12h18M3 18h18M3 6h18'/%3E%3C/svg%3E");
+  opacity: 1;
+}
+
+.app__header-menuIcon::after {
+  content: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath fill='none' stroke='%23000' stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='m6 17l5-5l-5-5m7 10l5-5l-5-5'/%3E%3C/svg%3E");
+}
+
+.app__header-menuIcon:hover::before {
+  opacity: 0;
+}
+.app__header-menuIcon:hover::after {
+  opacity: 1;
+}
+
+/* --------------------------------------------- */
+/* MAIN */
+/* --------------------------------------------- */
+.app__main {
+  flex: 1;
+  padding: var(--spacing-40) var(--spacing-60) var(--spacing-none)
+    var(--spacing-60);
+  overflow-y: auto;
+}
+
+.btn {
+  background-color: var(--primary-color-500);
+}
+
+.hide {
+  display: none;
+}
+
+img {
+  max-width: 100px;
+  height: auto;
+  vertical-align: middle;
+}
+
+.sidebar__header-menu-btn {
+  background: transparent;
+  border: none;
+  color: var(--white);
+  cursor: pointer;
+  padding: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: opacity 0.2s;
+}
+
+.sidebar__header-menu-btn:hover {
+  opacity: 0.8;
+}
+
+.sidebar__header-menu-icon {
+  font-size: 1.5rem;
+  color: var(--white);
+}
+
+i {
+  font-size: 1.5rem;
+  height: 1.5rem;
+  width: 1.5rem;
+  color: var(--primary-color-600);
+}

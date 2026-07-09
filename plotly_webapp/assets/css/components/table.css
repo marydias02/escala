@@ -1,0 +1,192 @@
+/* ---------------- INDEX ----------------------------
+1. THEME VARIABLES
+2. BASE STYLES
+3. TABLE HEADER
+4. RESPONSIVE
+5.OVERRIDES AG GRID
+----------------------------------------------------- */
+
+/* 1. THEME VARIABLES */
+.ag-theme-quartz {
+  --ag-foreground-color: var(--text-icon-secondary) !important;
+  --ag-menu-background-color: var(--surface-modal) !important;
+  --ag-background-color: var(--white) !important;
+  --ag-secondary-foreground-color: var(--text-icon-secondary) !important;
+  --ag-active-color: var(--accent-primary) !important;
+  --ag-data-color: var(--text-icon-primary) !important;
+  --ag-selected-row-background-color: var(--surface-light) !important;
+  --ag-row-hover-color: var(--surface-lightest) !important;
+  --ag-font-size: var(--font-size-sm) !important;
+  --ag-row-border-color: var(--border-light) !important;
+  --ag-font-family: var(--font-family) !important;
+
+  --ag-input-border-color: var(--border-light) !important;
+  --ag-border-color: var(--border-light) !important;
+  --ag-border-radius: var(--border-radius-sm) !important;
+  --ag-cell-horizontal-border: none !important;
+  --ag-borders-input: var(--border-normal) solid !important;
+
+  /* AG GRID FILTER FLYOUT */
+  --ag-widget-container-vertical-padding: var(--spacing-6) !important;
+  --ag-widget-container-horizontal-padding: var(--spacing-8) !important;
+  --ag-card-radius: var(--border-radius-lg) !important;
+  --ag-popup-shadow: var(--shadow-md) !important;
+}
+
+/* 2. BASE STYLES */
+.table-container .ag-root-wrapper {
+  border: none;
+  border-top: var(--border-normal) solid var(--border-light);
+  border-radius: 0;
+}
+
+.table-container {
+  border-radius: var(--border-radius-md);
+  overflow: hidden;
+  border: var(--border-normal) solid var(--border-light);
+  margin-block-start: var(--spacing-10);
+  container-type: inline-size;
+}
+
+/* 3. TABLE HEADER */
+.table-header {
+  background-color: var(--surface-lightest);
+  display: flex;
+  flex-direction: column;
+  flex-wrap: wrap;
+  max-width: 100%;
+  padding: var(--spacing-8);
+  container-type: inline-size;
+}
+
+.table-header--empty {
+  display: none;
+}
+
+.table-header--filters-only {
+  background-color: transparent;
+  padding: var(--spacing-none);
+}
+
+.table-header--filters-only .table-header__actions,
+.table-header--filters-only .table-header__title {
+  display: none;
+}
+
+.table-header__title {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  width: 100%;
+  gap: var(--spacing-8);
+  flex-wrap: wrap;
+}
+
+.table-header__title:not(:only-child) {
+  /* margin-block-end: var(--spacing-8); FIXME: Removed due to the addition of the display current filters */
+}
+
+.table-header__filters {
+  display: flex;
+  align-items: center;
+  width: 100%;
+}
+
+.table-header__active-filters {
+  opacity: 0;
+  max-height: 0;
+  overflow: hidden;
+  flex-wrap: wrap;
+  position: relative;
+  margin-block-end: 0;
+  transition: all 0.3s ease-in-out;
+}
+
+.table-header__active-filters:first-child {
+  margin-inline-end: var(--spacing-4);
+}
+
+.table-header__active-filters.visible {
+  display: flex;
+  align-items: center;
+  opacity: 1;
+  max-height: 500px;
+  margin-block-end: var(--spacing-8);
+}
+
+.table-header__active-filters.filter-model {
+  margin-block-start: var(--spacing-8);
+}
+
+.table-header__actions {
+  display: flex;
+  gap: var(--spacing-8);
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.table-header__actions__icons {
+  display: flex;
+  gap: var(--spacing-8);
+  align-items: center;
+}
+
+.table-header__actions__icons button.button--ghost.secondary {
+  padding: 0;
+}
+
+.table-header__text-frame {
+  color: var(--text-icon-secondary);
+  line-height: var(--line-height-none);
+}
+
+/* 4. RESPONSIVE */
+@container (max-width: 500px) {
+  .table-header__title {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: var(--spacing-8);
+  }
+
+  .table-header__actions {
+    width: 100%;
+    justify-content: flex-start;
+  }
+}
+
+/* 5. OVERRIDE AG GRID filter area */
+/* DEFAULT XS - GHOST AND DEFAULT */
+.ag-filter-apply-panel-button {
+  all: unset !important;
+  padding-block: var(--spacing-4) !important;
+  padding-inline: var(--spacing-8) !important;
+  cursor: pointer !important;
+  background: var(--accent-primary) !important;
+  color: var(--white) !important;
+  border-radius: var(--border-radius-sm) !important;
+  margin-bottom: var(--spacing-2) !important;
+}
+
+.ag-filter-apply-panel-button:first-of-type {
+  all: unset !important;
+  padding-block: var(--spacing-4) !important;
+  padding-inline: var(--spacing-8) !important;
+  cursor: pointer !important;
+  color: var(--text-icon-primary) !important;
+  background: transparent !important;
+  border-radius: var(--border-radius-sm) !important;
+  margin-bottom: var(--spacing-2) !important;
+  margin-right: var(--spacing-2) !important;
+}
+
+.ag-filter-apply-panel-button:hover:not(:disabled) {
+  opacity: 0.9 !important;
+}
+
+.ag-filter-apply-panel-button:first-of-type:hover:not(:disabled) {
+  background: var(--surface-light) !important;
+}
+
+.ag-filter-apply-panel {
+  border-top: var(--border-normal) solid var(--border-light) !important;
+}

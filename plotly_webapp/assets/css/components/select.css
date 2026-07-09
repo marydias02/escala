@@ -1,0 +1,270 @@
+/* ---------------- INDEX ----------------------------
+1. BASE STYLES
+2. CUSTOM ARROW
+3. STATES
+4. OPTIONS MENU
+5. MULTI SELECT
+6. TOP LABEL / ADDITIONAL MESSAGE
+7. VARIANTS
+----------------------------------------------------- */
+
+.select {
+  width: 200px;
+}
+
+/* 1. BASE STYLES */
+.select .Select-control {
+  border-radius: var(--border-radius-md);
+  border: var(--border-normal) solid var(--border-light);
+  background: var(--select-background);
+}
+
+.select .Select-placeholder {
+  font-weight: var(--font-weight-base);
+  font-size: var(--font-size-sm);
+  letter-spacing: var(--letter-spacing-sm);
+  color: var(--text-icon-tertiary);
+}
+
+.select .Select-input {
+  font-weight: var(--font-weight-base);
+  font-size: var(--font-size-sm);
+  letter-spacing: var(--letter-spacing-sm);
+  color: var(--text-icon-primary);
+}
+
+.select .Select-input input {
+  color: var(--text-icon-primary);
+}
+
+/* 2. CUSTOM ARROW */
+.select .Select-arrow {
+  display: none;
+}
+
+.select .Select-arrow-zone::after {
+  content: "";
+  display: inline-block;
+  width: var(--spacing-16);
+  height: var(--spacing-16);
+  mask-image: url("/assets/icons/chevrons-up-down.svg");
+  mask-repeat: no-repeat;
+  mask-size: contain;
+  mask-position: center;
+  background-color: var(--text-icon-primary);
+}
+
+.select .Select-clear {
+  margin-top: -50%;
+}
+
+/* 3. STATES */
+
+/* Hover */
+.select .Select-control:hover {
+  background-color: var(--surface-lightest);
+}
+
+/* Active */
+.select .is-focused > .Select-control {
+  border: var(--border-normal) solid var(--border-medium);
+  outline: var(--border-focus) solid var(--border-lightest);
+  box-shadow: none;
+}
+.select .Select-control:focus,
+.select .Select-control:focus-within {
+  box-shadow: none;
+}
+
+/* Disabled */
+.select .is-disabled .Select-control {
+  background-color: var(--select-background);
+}
+
+.select .is-disabled .Select-placeholder {
+  color: var(--text-icon-disabled);
+}
+
+.select .is-disabled .Select-arrow-zone::after {
+  background-color: var(--text-icon-disabled);
+}
+
+/* Error */
+.select--error .Select-control {
+  border-radius: var(--border-radius-md) !important;
+  border: var(--border-normal) solid var(--negative-highlight) !important;
+}
+
+.select--error .select--error-message {
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-heavy);
+  line-height: var(--line-height-none);
+  letter-spacing: var(--letter-spacing-sm);
+  color: var(--negative-highlight);
+  margin-top: var(--spacing-4);
+  padding-left: var(--spacing-2);
+}
+
+/* 4. OPTIONS MENU */
+
+.select .Select-menu-outer {
+  border-radius: var(--border-radius-md);
+  border: var(--border-normal) solid var(--border-light);
+  background-color: var(--select-background);
+  margin-top: var(--spacing-4);
+  box-shadow: none;
+}
+
+/* Options */
+.select .VirtualizedSelectOption {
+  border-radius: var(--border-radius-md);
+  padding: var(--spacing-6);
+  font-weight: var(--font-weight-base);
+  font-size: var(--font-size-sm);
+  line-height: var(--line-height-none);
+  letter-spacing: var(--letter-spacing-sm);
+  color: var(--text-icon-primary);
+  cursor: pointer;
+}
+
+.select .VirtualizedSelectFocusedOption {
+  background-color: var(--surface-light);
+  box-shadow: none;
+}
+
+/* Selected option */
+.select .Select-value-label {
+  font-weight: var(--font-weight-base) !important;
+  font-size: var(--font-size-sm) !important;
+  letter-spacing: var(--letter-spacing-sm) !important;
+  color: var(--text-icon-primary) !important;
+}
+
+/* Disabled option */
+.select .Select-option.is-disabled {
+  color: var(--text-icon-disabled);
+  cursor: not-allowed;
+  background-color: var(--select-background);
+}
+
+/* "No results found" */
+.select .Select-noresults {
+  border-radius: var(--border-radius-md);
+  padding: var(--spacing-6);
+  font-weight: var(--font-weight-base);
+  font-size: var(--font-size-sm);
+  letter-spacing: var(--letter-spacing-sm);
+  color: var(--text-icon-tertiary);
+  background-color: var(--surface-lightest);
+}
+
+/* 5. MULTI SELECT */
+
+.select .Select--multi {
+  width: 300px;
+}
+
+.select .Select-multi-value-wrapper > .Select-value {
+  background-color: var(--select-background);
+  border-radius: var(--border-radius-sm);
+  border: var(--border-normal) solid var(--border-light);
+  color: var(--text-icon-primary);
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-base);
+  letter-spacing: var(--letter-spacing-sm);
+}
+
+.select .Select-multi-value-wrapper > .Select-value .Select-value-label {
+  padding: var(--spacing-2) var(--spacing-4);
+}
+
+.select .Select-multi-value-wrapper > .Select-value .Select-value-icon {
+  border-right: none;
+  padding: var(--spacing-1) var(--spacing-2);
+}
+
+.select .Select-multi-value-wrapper > .Select-value .Select-value-icon:hover {
+  background-color: var(--select-background);
+  color: var(--negative-primary);
+}
+
+/* 6. TOP LABEL / ADDITIONAL MESSAGE */
+
+.select .select-label,
+.select .select-additional_message {
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-heavy);
+  line-height: var(--line-height-none);
+  letter-spacing: var(--letter-spacing-sm);
+  color: var(--text-icon-secondary);
+}
+
+.select .select-label {
+  padding: var(--spacing-none) var(--spacing-2) var(--spacing-8)
+    var(--spacing-2);
+}
+
+.select .select-additional_message {
+  padding: var(--spacing-8) var(--spacing-2) var(--spacing-none)
+    var(--spacing-2);
+}
+
+/* 7. VARIANTS */
+
+/* light */
+
+.select--light .Select-control {
+  border: var(--border-normal) solid var(--white-20);
+}
+.select--light .Select-placeholder {
+  color: var(--text-icon-high-contrast);
+}
+.select--light .Select-input {
+  color: var(--text-icon-high-contrast);
+}
+.select--light .Select-input input {
+  color: var(--text-icon-high-contrast);
+}
+.select--light .Select-arrow-zone::after {
+  background-color: var(--text-icon-high-contrast);
+}
+.select--light .Select-control:hover {
+  background-color: var(--white-2);
+}
+.select--light .is-focused > .Select-control {
+  border: var(--border-normal) solid var(--white-8);
+  outline: var(--border-focus) solid var(--white-2);
+}
+.select--light .is-disabled .Select-placeholder {
+  color: var(--white-20);
+}
+.select--light .is-disabled .Select-arrow-zone::after {
+  background-color: var(--white-20);
+}
+.select--light .Select-menu-outer {
+  border: var(--border-normal) solid var(--white-20);
+}
+.select--light .VirtualizedSelectOption {
+  color: var(--text-icon-high-contrast);
+}
+.select--light .VirtualizedSelectFocusedOption {
+  background-color: var(--white-6);
+}
+.select--light .Select-value-label {
+  color: var(--text-icon-high-contrast) !important;
+}
+.select--light .Select-option.is-disabled {
+  color: var(--white-20);
+}
+.select--light .Select-noresults {
+  color: var(--white-20);
+  background-color: var(--white-2);
+}
+.select--light .Select-multi-value-wrapper > .Select-value {
+  border: var(--border-normal) solid var(--white-20);
+  color: var(--text-icon-high-contrast);
+}
+.select--light .select-label,
+.select--light .select-additional_message {
+  color: var(--white-60);
+}

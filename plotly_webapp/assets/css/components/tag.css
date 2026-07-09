@@ -1,0 +1,82 @@
+/* ---------------- INDEX ----------------------------
+1. BASE STYLES
+2. SIZE
+3. VARIANTS
+----------------------------------------------------- */
+
+/* 1. BASE STYLES */
+
+.tag {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: default;
+}
+
+.tag--disabled {
+    opacity: 0.5;
+}
+
+/* 2. SIZE */
+.tag--xs {
+  border-radius: var(--border-radius-sm);
+  gap: var(--spacing-2);
+  padding-block: var(--spacing-4);
+  padding-inline: var(--spacing-6);
+  font-size: var(--font-size-sm);
+  line-height: var(--line-height-none);
+}
+
+.tag--2xs {
+  border-radius: var(--border-radius-xs);
+  gap: var(--spacing-1);
+  padding-block: var(--spacing-2);
+  padding-inline: var(--spacing-4);
+  font-size: var(--font-size-xs);
+  line-height: var(--line-height-none);
+}
+
+.tag--xs .iconify {
+  width: 14px;
+  height: 14px;
+}
+
+.tag--2xs .iconify {
+  width: 11px;
+  height: 11px;
+}
+
+/* 3. VARIANTS */
+
+/* Outline */
+.tag--outline {
+  border: var(--border-normal) solid var(--border-medium);
+  color: var(--text-icon-primary);
+}
+
+/* Fill */
+.tag--fill {
+  background: var(--surface-light);
+  color: var(--text-icon-primary);
+}
+
+/* Positive */
+.tag--positive {
+  border: var(--positive-border) solid var(--border-positive);
+  background: var(--positive-background);
+  color: var(--positive-primary);
+}
+
+/* Negative */
+.tag--negative {
+  border: var(--negative-border) solid var(--border-negative);
+  background: var(--negative-background);
+  color: var(--negative-primary);
+}
+
+/* Mild */
+.tag--mild {
+  border: var(--warning-border) solid var(--border-light);
+  background: var(--warning-background);
+  color: var(--warning-primary);
+}

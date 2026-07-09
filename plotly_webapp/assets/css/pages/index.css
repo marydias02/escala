@@ -1,0 +1,140 @@
+/* --------------------------------------------- */
+/* HOME PAGE */
+/* --------------------------------------------- */
+
+/* ---------------- INDEX ----------------------------
+1. BASE STYLE
+2. HEADER SECTION
+3. INDICATORS SECTION
+4. TABLE SECTION
+5. MEDIA QUERIES
+----------------------------------------------------- */
+
+/* 1. BASE STYLE */
+
+.homepage__container {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-40);
+  margin-bottom: var(--spacing-40);
+}
+
+.homepage__content_section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-16);
+}
+
+/* 2. HEADER SECTION */
+
+.homepage__top_section {
+  width: 100%;
+}
+
+.homepage__top_section .actions-wrapper {
+  border-bottom: var(--border-normal) solid var(--border-light);
+  display: flex;
+  justify-content: space-between;
+  gap: var(--spacing-10);
+}
+
+.homepage__top_section .tabs-wrapper {
+  display: flex;
+  justify-content: flex-start;
+}
+
+.homepage__top_section .button-wrapper {
+  display: flex;
+  gap: var(--spacing-6);
+  align-items: center;
+  justify-content: flex-start;
+  flex-wrap: wrap;
+}
+
+/* 3. INDICATORS SECTION */
+
+.homepage__indicator_section-wrapper {
+  display: flex;
+  gap: var(--spacing-16);
+
+  padding: var(--spacing-12);
+  background-color: var(--surface-lightest);
+  border-radius: var(--border-radius-md);
+  border: var(--border-normal) solid var(--border-lightest);
+}
+
+.homepage__indicator_section-wrapper .indicator-card,
+.homepage__indicator_section-wrapper .tutorial-card,
+.homepage__indicator_section-wrapper .page-card {
+  width: 25%;
+  padding-left: var(--spacing-16);
+  border-left: var(--border-normal) solid var(--border-light);
+}
+
+.homepage__indicator_section-wrapper .indicator-card:first-child,
+.homepage__indicator_section-wrapper .tutorial-card:first-child,
+.homepage__indicator_section-wrapper .page-card:first-child {
+  width: 25%;
+  padding-left: var(--spacing-none);
+  border-left: none;
+}
+
+/* 4. TABLE SECTION */
+
+.table-section__graphic-wrapper {
+  margin-top: var(--spacing-16);
+}
+
+.table-section__graphic {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--border-radius-sm);
+  border: var(--border-normal) solid var(--border-light);
+}
+
+/* !!! THIS CLASS SHOULD BE DELETED, 
+ONLY HERE FOR DEMONSTRATION PURPOSES , 
+HEIGHT WILL BE AUTOMATICALLY DEFINED BY THE CONTENT !!! */
+.table-section__graphic {
+  background-color: var(--surface-lightest);
+  color: var(--text-icon-tertiary);
+  min-height: 232px;
+}
+
+/* 5. MEDIA QUERIES */
+@media (max-width: 1024px) {
+  .homepage__top_section .actions-wrapper {
+    border-bottom: var(--border-normal) solid var(--border-light);
+    display: flex;
+    flex-direction: column-reverse;
+    gap: var(--spacing-8);
+  }
+
+  .homepage__indicator_section-wrapper,
+  .homepage__workflow_section-wrapper {
+    flex-direction: column;
+  }
+
+  .homepage__indicator_section-wrapper .indicator-card,
+  .homepage__indicator_section-wrapper .tutorial-card,
+  .homepage__indicator_section-wrapper .page-card,
+  .homepage__workflow_section-wrapper .workflow-card {
+    width: 100%;
+    padding-top: var(--spacing-16);
+    border-top: var(--border-normal) solid var(--border-light);
+    padding-left: var(--spacing-none);
+    border-left: none;
+  }
+
+  .homepage__indicator_section-wrapper .indicator-card:first-child,
+  .homepage__indicator_section-wrapper .tutorial-card:first-child,
+  .homepage__indicator_section-wrapper .page-card:first-child,
+  .homepage__workflow_section-wrapper .workflow-card:first-child {
+    width: 100%;
+    padding-left: var(--spacing-none);
+    border-left: none;
+    padding-top: var(--spacing-none);
+    border-top: none;
+  }
+}

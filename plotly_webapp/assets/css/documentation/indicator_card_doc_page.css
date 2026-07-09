@@ -1,0 +1,30 @@
+/* ---------------- INDEX ----------------------------
+1. INDICATOR CARD DOCUMENTATION PAGE
+----------------------------------------------------- */
+
+.indicator_card_wrapper,
+.indicator_card_banner_wrapper {
+  padding: var(--spacing-12);
+  border-radius: var(--border-radius-md);
+  border: var(--border-normal) solid var(--border-lightest);
+  background-color: var(--surface-lightest);
+  margin: 0 auto;
+}
+
+.indicator_card_banner_wrapper {
+  width: 100%;
+  display: flex;
+  gap: var(--spacing-16);
+}
+
+.indicator_card_banner_wrapper .indicator-card {
+  width: 25%;
+  padding-left: var(--spacing-16);
+  border-left: var(--border-normal) solid var(--border-light);
+}
+
+.indicator_card_banner_wrapper .indicator-card:first-child {
+  width: 25%;
+  padding-left: var(--spacing-none);
+  border-left: none;
+}
