@@ -54,3 +54,4 @@ Thumbs.db
 
 #Ignore pdfs
 **/invoice_extraction/docs/*.pdf
+**/invoice_extraction/docs/*
