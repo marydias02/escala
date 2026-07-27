@@ -32,7 +32,11 @@ dependencies = [
 ]
 
 [dependency-groups]
-dev = ["ruff>=0.14.3"]
+dev = [
+    "alembic>=1.18.5",
+    "psycopg2-binary>=2.9.12",
+    "ruff>=0.14.3",
+]
 
 [tool.uv.sources]
 airpy = { index = "ltpypi" }
