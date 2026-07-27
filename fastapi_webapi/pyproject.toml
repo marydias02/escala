@@ -27,6 +27,8 @@ dependencies = [
     "pymupdf>=1.24.0",
     "pypdf>=5.0.0",
     "xlsxwriter>=3.2.9",
+    # Email parsing
+    "extract-msg>=0.54",
 ]
 
 [dependency-groups]
