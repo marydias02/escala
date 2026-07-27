@@ -4,6 +4,7 @@ from urllib.parse import urlparse
 import httpx
 from argon2 import PasswordHasher
 from argon2.exceptions import VerifyMismatchError
+from loguru import logger
 from fastapi import Depends, HTTPException, Request
 from fastapi.security import APIKeyHeader, OAuth2AuthorizationCodeBearer
 from jose import ExpiredSignatureError, JWTError, jwt
@@ -72,12 +73,28 @@ class OpenIdConnectAuthorizationCodeBearer(OAuth2AuthorizationCodeBearer):
             except ValueError:
                 scheme_name = "OIDC"
 
+        # Discovery is a network call. Do NOT let it fail app startup: when the
+        # OIDC provider is unset/unreachable (e.g. no provider configured yet),
+        # construct with empty endpoints so API-key routes still work. OIDC-protected
+        # routes re-run discovery at call time via decode_verified_token(), so they
+        # will surface the error only when actually used.
+        try:
+            discovery = oidc_discovery(self.metadata_url)
+            authorization_url = discovery["authorization_endpoint"]
+            token_url = discovery["token_endpoint"]
+            discovered_scopes = scopes or {k: "" for k in discovery["scopes_supported"]}
+        except Exception as exc:  # noqa: BLE001 - startup must not depend on OIDC reachability
+            logger.warning(f"OIDC discovery unavailable ({self.metadata_url!r}): {exc}. OIDC routes will fail until reachable.")
+            authorization_url = ""
+            token_url = ""
+            discovered_scopes = scopes or {}
+
         super().__init__(
             scheme_name=scheme_name,
             description="Leave secret input blank!",
-            authorizationUrl=oidc_discovery(self.metadata_url)["authorization_endpoint"],
-            tokenUrl=oidc_discovery(self.metadata_url)["token_endpoint"],
-            scopes=scopes or {k: "" for k in oidc_discovery(self.metadata_url)["scopes_supported"]},
+            authorizationUrl=authorization_url,
+            tokenUrl=token_url,
+            scopes=discovered_scopes,
         )
 
     async def decode_verified_token(self, token: str) -> dict[str, Any]:

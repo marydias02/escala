@@ -1,4 +1,6 @@
+from datetime import datetime
 from typing import Optional
+from uuid import UUID
 
 from pydantic import BaseModel
 from typing_extensions import TypedDict
@@ -35,3 +37,11 @@ class ItemStatisticsDict(TypedDict):
     average_score: float
     by_status: dict[str, int]
     by_category: dict[str, int]
+
+
+class ProcessRead(BaseModel):
+    process_id: UUID
+    sender_email: str
+    email_subject: Optional[str] = None
+    email_content: Optional[str] = None
+    reception_date: Optional[datetime] = None

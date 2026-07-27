@@ -29,6 +29,11 @@ DB_HOST = os.getenv("DB_HOST", "localhost")
 DB_PORT = os.getenv("DB_PORT", "5432")
 DB_NAME = os.getenv("DB_NAME", "postgres")
 
+# The runtime uses raw asyncpg, which accepts only a plain `postgresql`/`postgres`
+# scheme — not a SQLAlchemy-style driver suffix like `postgresql+asyncpg`. Strip
+# any `+driver` so a `.env` written for SQLAlchemy still works here.
+DB_SCHEME = DB_SCHEME.split("+", 1)[0]
+
 DATABASE_URI = f"{DB_SCHEME}://{DB_USER}:{DB_PASSWORD}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
 
 # AUTHENTICATION
