@@ -7,6 +7,7 @@ step had just deposited them. Live inbox fetching lives in `outlook_loader.py`.
 import io
 import zipfile
 from datetime import datetime
+from email.utils import parseaddr
 from pathlib import Path
 
 import extract_msg
@@ -134,6 +135,18 @@ def _collect_attachments(message) -> list[EmailAttachment]:
     return attachments
 
 
+def _extract_email_address(sender: str) -> str:
+    """Reduce a sender field to the bare email address.
+
+    Outlook exposes `sender` as a display form like
+    ``Rubina Caires | Grupo Sousa <rcaires@gruposousa.pt>``; downstream we want
+    only ``rcaires@gruposousa.pt``. ``parseaddr`` pulls the address out of the
+    angle brackets and falls back to the raw string when there are none.
+    """
+    _, address = parseaddr(sender or "")
+    return (address or (sender or "")).strip()
+
+
 def load_msg(msg_path: Path) -> LoadedEmail:
     """Parse one `.msg` file into a `LoadedEmail`.
 
@@ -148,7 +161,7 @@ def load_msg(msg_path: Path) -> LoadedEmail:
         reception_date = date.isoformat() if isinstance(date, datetime) else str(date or "")
 
         return LoadedEmail(
-            sender_email=(message.sender or "").strip(),
+            sender_email=_extract_email_address(message.sender),
             subject=(message.subject or "").strip(),
             body=message.body or "",
             reception_date=reception_date,

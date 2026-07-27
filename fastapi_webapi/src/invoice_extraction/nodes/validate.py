@@ -2,6 +2,7 @@ from typing import Optional
 
 from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, ToolMessage
+from loguru import logger
 
 from invoice_extraction.invoice_utils.llm_retry import invoke_with_retry
 from invoice_extraction.models import InvoiceData, ValidationReport
@@ -63,7 +64,8 @@ def validate_document(
 
     llm_with_tools = llm.bind_tools(VALIDATION_TOOLS)
 
-    for _ in range(MAX_TOOL_ROUNDS):
+    for round_number in range(1, MAX_TOOL_ROUNDS + 1):
+        logger.info(f"LLM call → validation (tools, round {round_number})")
         response = llm_with_tools.invoke(messages)
         messages.append(response)
 
@@ -74,4 +76,4 @@ def validate_document(
 
     structured_llm = llm.with_structured_output(ValidationReport)
 
-    return invoke_with_retry(structured_llm, [*messages, SHAPE_REQUEST])
+    return invoke_with_retry(structured_llm, [*messages, SHAPE_REQUEST], stage="validation (shaping)")

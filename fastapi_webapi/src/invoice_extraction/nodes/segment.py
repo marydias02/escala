@@ -27,4 +27,4 @@ def segment_document(
     system_message = build_segmentation_system_message(total_pages)
     human_message = build_segmentation_human_message(filename, encoded_pdf, total_pages)
 
-    return invoke_with_retry(structured_llm, [system_message, human_message])
+    return invoke_with_retry(structured_llm, [system_message, human_message], stage="chunking")

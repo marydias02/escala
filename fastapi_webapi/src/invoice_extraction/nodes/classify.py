@@ -19,4 +19,6 @@ def classify_document(llm: BaseChatModel, doc: InvoiceDocument) -> DocumentClass
     structured_llm = llm.with_structured_output(DocumentClassification)
     human_message = build_classification_human_message(doc.filename, doc.encoded_pdf)
 
-    return invoke_with_retry(structured_llm, [CLASSIFICATION_SYSTEM_MESSAGE, human_message])
+    return invoke_with_retry(
+        structured_llm, [CLASSIFICATION_SYSTEM_MESSAGE, human_message], stage="classification"
+    )

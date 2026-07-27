@@ -21,4 +21,6 @@ def extract_document(
         doc.filename, doc.encoded_pdf, classification
     )
 
-    return invoke_with_retry(structured_llm, [EXTRACTION_SYSTEM_MESSAGE, human_message])
+    return invoke_with_retry(
+        structured_llm, [EXTRACTION_SYSTEM_MESSAGE, human_message], stage="extraction"
+    )

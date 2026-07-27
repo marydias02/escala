@@ -28,10 +28,10 @@ MANIFEST_NAME = "email_content.json"
 
 # Re-ingest emails whose manifest already exists. Off by default so re-runs cost
 # no LLM calls.
-FORCE_REINGEST = False
+FORCE_REINGEST = True
 
 # Only ingest the first N emails (None = all). Useful for a cheap smoke test.
-INGEST_LIMIT: int | None = None
+INGEST_LIMIT: int | None = 5
 
 # Windows caps a full path at 260 characters by default. Email subjects in the
 # sample set reach 111 characters, so folder names are truncated well short of it.
