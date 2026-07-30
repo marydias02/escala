@@ -21,7 +21,7 @@ from utils.llm_factory import LLMFactory
 
 # Document types worth extracting. Anything else is an accounting document we do
 # not process here (receipts, debit notes, shipping documents, ...).
-EXTRACTABLE_TYPES = ("invoice", "credit_note")
+EXTRACTABLE_TYPES = ("invoice", "credit_note", "debit_note")
 
 
 @dataclass

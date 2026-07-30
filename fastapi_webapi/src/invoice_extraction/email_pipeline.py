@@ -33,6 +33,15 @@ from invoice_extraction.config import (
     ORIGINAL_EMAILS_DIR,
     PROCESSED_EMAILS_DIR,
 )
+from invoice_extraction.decisions import (
+    INBOX,
+    INGEST,
+    MANUAL,
+    REPLY,
+    TREASURY,
+    EmailDecision,
+    decide_email,
+)
 from invoice_extraction.extraction_pipeline import (
     ExtractionPipeline,
     PipelineResult,
@@ -50,7 +59,8 @@ from invoice_extraction.ingestion_pipeline import (
 )
 from invoice_extraction.invoice_utils.reporting import print_pipeline_result
 from invoice_extraction.loading import load_msg
-from invoice_extraction.models import DocumentClassification, ValidationReport
+from invoice_extraction.models import DocumentClassification, EmailIntent, ValidationReport
+from invoice_extraction.nodes import classify_email_intent
 from utils.llm_factory import LLMFactory
 from utils.utils_db import get_pool, insert_row, insert_rows, select
 
@@ -80,48 +90,17 @@ class EmailProcessingResult:
 
     already_processed marks an email skipped because its process was already in
     the database, or skipped by ingestion's on-disk manifest marker.
+
+    `decision` carries the email-level action, the reply text (if any) and the
+    final per-document actions. See `invoice_extraction.decisions`.
     """
 
     source: str
     ingestion: EmailIngestionResult
+    decision: EmailDecision
     extractions: list[PipelineResult] = field(default_factory=list)
-    should_reply_to_supplier: bool = False
-    reply_reason: str = ""
     process_id: Optional[str] = None
     already_processed: bool = False
-
-
-# --------------------------------------------------------------------------- #
-# Email-level decision — THE place to change the reply rule.
-# --------------------------------------------------------------------------- #
-
-
-def should_reply_to_supplier(
-    ingestion: EmailIngestionResult,
-    extractions: list[PipelineResult],
-) -> tuple[bool, str]:
-    """Decide whether to reply to the supplier — THE place to change this rule.
-
-    Initial rule (revisable): reply when the email produced NO usable invoice.
-    The single trigger is "no attachment reached 'validated'"; the reason then
-    distinguishes the three no-invoice cases so wording (and, later, the action)
-    can differ.
-
-    `ingestion` is passed in — rather than just the extractions — so we can tell
-    "no attachments" from "attachments but no PDF", and so a future body-aware
-    rule has the email body (via `email_content.json`) to hand. The body is not
-    used yet.
-    """
-    validated = [e for e in extractions if e.status == "validated"]
-    if validated:
-        return False, f"{len(validated)}/{len(extractions)} attachment(s) validated"
-
-    # No usable invoice — pick the reason that describes why.
-    if not ingestion.attachments:
-        return True, "email had no attachments"
-    if not any(a.status == "chunked" for a in ingestion.attachments):
-        return True, "email had attachments but none was a PDF"
-    return True, "PDF attachments present but none reached 'validated'"
 
 
 # --------------------------------------------------------------------------- #
@@ -164,25 +143,27 @@ def document_type_label(classification: Optional[DocumentClassification]) -> str
     return f"{type_label} ({state_label})"
 
 
-def derive_status(result: PipelineResult) -> str:
-    """Map a pipeline outcome to a document Status. Refine as lifecycle grows.
+def derive_status(result: PipelineResult, action: str) -> str:
+    """Map a document's outcome to a Status. Refine as the lifecycle grows.
 
-    validated -> Ingested (finished the pipeline)
-    skipped   -> Failed   (gated out: not an invoice / not an original — not usable)
-    failed    -> Failed   (a stage raised)
+    Driven by the DECIDED ACTION rather than the raw pipeline status, because the
+    two disagree in the ordinary case: a receipt bound for treasury and a proforma
+    bound back to the supplier both leave the pipeline as "skipped", yet neither
+    is a failure — the pipeline did its job and routed them.
+
+    Only a document that actually broke (a stage raised, so no classification) is
+    "Failed"; everything routed somewhere is "Pending" until that action happens.
     """
-    if result.status == "validated":
+    if action == INGEST:
         return "Ingested"
-    return "Failed"
+    if result.status == "failed":
+        return "Failed"
+    return "Pending"
 
 
-def derive_action(result: PipelineResult, should_reply: bool) -> str:
-    """Best-effort next action for a document — THE place to refine this mapping."""
-    if result.status == "validated":
-        return "Ingest in SAP"
-    if should_reply:
-        return "Sent back to Supplier"
-    return "Validate Manually"
+# NOTE: the per-document action is no longer derived here. It comes from
+# `decisions.decide_email`, which computes each document's action and then
+# suppresses the ones the email as a whole does not warrant.
 
 
 def _checked_to_dict(checked) -> Optional[dict]:
@@ -290,6 +271,37 @@ class EmailPipeline:
         self.ingestion = ingestion
         self.extraction = extraction
 
+    def _classify_body(
+        self, msg_path: Path, ingestion: EmailIngestionResult
+    ) -> Optional[EmailIntent]:
+        """Classify the email body, for the cases where no usable PDF came out.
+
+        Prefers the manifest ingestion just wrote; falls back to re-parsing the
+        `.msg` when there is no folder (an email with no attachments may not get
+        one). Returns None if neither source yields a body — `decide_email` then
+        leaves the email in the inbox rather than guessing.
+
+        Best-effort: a classifier failure must not lose the whole email, so it
+        degrades to None.
+        """
+        manifest = _load_manifest(ingestion.folder)
+        subject = manifest.get("email_subject")
+        body = manifest.get("email_content")
+
+        if subject is None and body is None:
+            try:
+                email = load_msg(msg_path)
+                subject, body = email.subject, email.body
+            except Exception as exc:  # noqa: BLE001 - fall back to "unknown intent"
+                print(f"  ⚠️  Could not read body for intent: {type(exc).__name__}: {exc}")
+                return None
+
+        try:
+            return classify_email_intent(self.extraction.llm, subject or "", body or "")
+        except Exception as exc:  # noqa: BLE001 - a failed classification is not fatal
+            print(f"  ⚠️  Email intent classification failed: {type(exc).__name__}: {exc}")
+            return None
+
     async def _persist(self, result: EmailProcessingResult) -> None:
         """Write one fct_processes row and its fct_documents rows."""
         ingestion = result.ingestion
@@ -309,12 +321,16 @@ class EmailPipeline:
         )
         result.process_id = str(process_id)
 
+        # Each document's FINAL action (post-suppression) comes from the decision.
+        # Paired by filename rather than by position so the two lists cannot drift.
+        actions = {d.filename: d.action for d in result.decision.documents}
+
         rows = [
             {
                 "process_id": process_id,
                 "document_type": document_type_label(extraction.classification),
-                "action": derive_action(extraction, result.should_reply_to_supplier),
-                "status": derive_status(extraction),
+                "action": actions.get(extraction.filename, MANUAL),
+                "status": derive_status(extraction, actions.get(extraction.filename, MANUAL)),
                 "document_content": build_document_content(extraction.validation),
                 "alerts_list": build_alerts_list(ingestion, extraction),
                 "created_by": "pipeline",
@@ -343,13 +359,14 @@ class EmailPipeline:
                 if await _process_exists(
                     email.sender_email, email.subject, parse_reception_date(email.reception_date)
                 ):
+                    skipped = EmailIngestionResult(
+                        source=source, status="skipped", message="already in database"
+                    )
                     return EmailProcessingResult(
                         source=source,
-                        ingestion=EmailIngestionResult(
-                            source=source, status="skipped", message="already in database"
-                        ),
+                        ingestion=skipped,
+                        decision=decide_email(skipped, []),
                         already_processed=True,
-                        reply_reason="skipped (already processed)",
                     )
             except Exception:  # noqa: BLE001 - dedup is best-effort; fall through to ingest
                 pass
@@ -358,14 +375,13 @@ class EmailPipeline:
         ingestion = self.ingestion.run(msg_path, output_root, force=force)
 
         # An already-ingested (manifest-skip) or failed email yields no fresh PDFs.
-        # Bundle and decide, but write nothing.
+        # Bundle and decide, but write nothing. No body classification here: a
+        # skip is already-decided work and a failure means nothing could be read.
         if ingestion.status != "ingested":
-            should_reply, reason = should_reply_to_supplier(ingestion, [])
             return EmailProcessingResult(
                 source=source,
                 ingestion=ingestion,
-                should_reply_to_supplier=should_reply,
-                reply_reason=reason,
+                decision=decide_email(ingestion, []),
                 already_processed=(ingestion.status == "skipped"),
             )
 
@@ -374,13 +390,15 @@ class EmailPipeline:
         extractions = self.extraction.run_batch(pdf_paths)
 
         # --- DECIDE -----------------------------------------------------------
-        should_reply, reason = should_reply_to_supplier(ingestion, extractions)
+        # No usable PDF (A1/A2) is the only case the body can change, so the extra
+        # LLM call is confined to it.
+        intent = self._classify_body(msg_path, ingestion) if not extractions else None
+        decision = decide_email(ingestion, extractions, intent=intent)
         result = EmailProcessingResult(
             source=source,
             ingestion=ingestion,
             extractions=extractions,
-            should_reply_to_supplier=should_reply,
-            reply_reason=reason,
+            decision=decision,
         )
 
         # --- PERSIST ----------------------------------------------------------
@@ -404,13 +422,14 @@ class EmailPipeline:
             except Exception as exc:  # noqa: BLE001 - keep the batch alive, inspect after
                 message = f"{type(exc).__name__}: {exc}"
                 print(f"  ❌ Failed: {message}")
+                failed = EmailIngestionResult(
+                    source=msg_path.name, status="failed", message=message
+                )
                 results.append(
                     EmailProcessingResult(
                         source=msg_path.name,
-                        ingestion=EmailIngestionResult(
-                            source=msg_path.name, status="failed", message=message
-                        ),
-                        reply_reason=f"processing failed: {message}",
+                        ingestion=failed,
+                        decision=decide_email(failed, []),
                     )
                 )
                 continue
@@ -433,19 +452,33 @@ def create_pipeline(llm_factory: Optional[LLMFactory] = None) -> EmailPipeline:
     )
 
 
+_ACTION_MARKERS = {
+    INGEST: "✅ SAP  ",
+    REPLY: "✉️  REPLY",
+    TREASURY: "🏦 TREAS",
+    MANUAL: "🔍 MANUAL",
+    INBOX: "📥 INBOX",
+}
+
+
 def print_email_summary(results: list[EmailProcessingResult]) -> None:
     """Email-level decisions, on top of the existing ingestion summary."""
     print("\n" + "=" * 70)
     print("EMAIL DECISIONS")
     print("=" * 70)
     for result in results:
+        decision = result.decision
         if result.already_processed and not result.extractions:
             marker = "⏭️  skip "
-        elif result.should_reply_to_supplier:
-            marker = "✉️  REPLY"
         else:
-            marker = "✅ ok   "
-        print(f"  {marker}  {result.source} — {result.reply_reason}")
+            marker = _ACTION_MARKERS.get(decision.action, decision.action)
+        print(f"  {marker}  {result.source} — {decision.reason}")
+
+        # The reply that would go out, and each document's own action.
+        for line in decision.reply_lines:
+            print(f"            ↳ {line}")
+        for document in decision.documents:
+            print(f"            · {document.filename}: {document.action} ({document.reason})")
 
 
 async def main() -> None:

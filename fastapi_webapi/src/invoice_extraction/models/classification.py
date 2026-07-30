@@ -60,12 +60,31 @@ class DocumentClassification(BaseModel):
 
     Proforma Invoice (provisional invoice)
     Original
-    Cópia
+    Cópia (copy)
     Duplicate (copy)
     Duplicado (copy)
     ANULADO (cancelled)
     Cancelled (cancelled)
 
     Return null when no state is explicitly indicated.
-    """,
+    """
     )
+    document_exception: Optional[
+        Confident[
+            Literal[
+                "condominio",
+                "insurance",
+                "extract"
+            ]
+        ]
+    ] = Field(
+        default=None,
+        description="""
+    Optional exceptions that should be populated when a document is a receipt. 
+    Condomínio refers to service charges of buildings. 
+    Insurance refers to receipts from insurance companies. 
+    Extract refers to bank extract. 
+    If none of the above applies, assume None. SHOULD BE NONE BY DEFAULT
+    """,   
+    ) 
+
