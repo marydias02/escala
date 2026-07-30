@@ -17,6 +17,11 @@ from invoice_extraction.invoice_utils.documents import load_document
 from invoice_extraction.invoice_utils.pdf_parser import build_attachment_evidence
 from invoice_extraction.models import DocumentClassification, InvoiceData, ValidationReport
 from invoice_extraction.nodes import classify_document, extract_document, validate_document
+from invoice_extraction.tracing import (
+    classification_summary,
+    span,
+    validation_summary,
+)
 from utils.llm_factory import LLMFactory
 
 # Document types worth extracting. Anything else is an accounting document we do
@@ -80,44 +85,62 @@ class ExtractionPipeline:
         pdf_path = Path(pdf_path)
         doc = load_document(pdf_path)
 
-        # --- CLASSIFICATION ---------------------------------------------------
-        classification = classify_document(self.llm, doc)
+        with span(f"extract:{doc.filename}", "CHAIN") as document_span:
+            document_span.set_inputs({"filename": doc.filename, "path": str(pdf_path)})
 
-        # --- GATE -------------------------------------------------------------
-        if not should_extract(classification):
-            message = _gate_message(classification)
-            print(message)
-            return PipelineResult(
-                filename=doc.filename,
-                status="skipped",
-                classification=classification,
-                message=message,
+            # --- CLASSIFICATION -----------------------------------------------
+            classification = classify_document(self.llm, doc)
+            document_span.set_attribute("classification", classification_summary(classification))
+
+            # --- GATE ---------------------------------------------------------
+            if not should_extract(classification):
+                message = _gate_message(classification)
+                print(message)
+                document_span.set_outputs({"status": "skipped", "message": message})
+                return PipelineResult(
+                    filename=doc.filename,
+                    status="skipped",
+                    classification=classification,
+                    message=message,
+                )
+
+            # --- EXTRACTION ---------------------------------------------------
+            invoice_data = extract_document(self.llm, doc, classification)
+
+            # --- PARSING (deterministic, no LLM) ------------------------------
+            # Feeds the validator ground truth to check the extraction against.
+            # Non-fatal: a parser failure just means validating without parsed text.
+            # Traced separately because autolog cannot see a non-LLM step, and
+            # "the validator had no parsed text to check against" is a common
+            # root cause of a low-confidence result.
+            with span(f"parse:{doc.filename}", "PARSER") as parse_span:
+                try:
+                    evidence = build_attachment_evidence(pdf_path, **PARSER_KWARGS)
+                    parsed_text = evidence.get("extracted_text") or None
+                except Exception as exc:  # noqa: BLE001 - validation still works without it
+                    print(f"⚠️  Could not parse {doc.filename}: {type(exc).__name__}: {exc}")
+                    parsed_text = None
+                    parse_span.set_outputs({"ok": False, "error": f"{type(exc).__name__}: {exc}"})
+                else:
+                    parse_span.set_outputs(
+                        {"ok": True, "chars": len(parsed_text) if parsed_text else 0}
+                    )
+
+            # --- VALIDATION ---------------------------------------------------
+            validation = validate_document(self.llm, invoice_data, parsed_text=parsed_text)
+
+            document_span.set_outputs(
+                {"status": "validated", "validation": validation_summary(validation)}
             )
 
-        # --- EXTRACTION -------------------------------------------------------
-        invoice_data = extract_document(self.llm, doc, classification)
-
-        # --- PARSING (deterministic, no LLM) ----------------------------------
-        # Feeds the validator ground truth to check the extraction against.
-        # Non-fatal: a parser failure just means validating without parsed text.
-        try:
-            evidence = build_attachment_evidence(pdf_path, **PARSER_KWARGS)
-            parsed_text = evidence.get("extracted_text") or None
-        except Exception as exc:  # noqa: BLE001 - validation still works without it
-            print(f"⚠️  Could not parse {doc.filename}: {type(exc).__name__}: {exc}")
-            parsed_text = None
-
-        # --- VALIDATION -------------------------------------------------------
-        validation = validate_document(self.llm, invoice_data, parsed_text=parsed_text)
-
-        return PipelineResult(
-            filename=doc.filename,
-            status="validated",
-            classification=classification,
-            invoice_data=invoice_data,
-            validation=validation,
-            message="ok",
-        )
+            return PipelineResult(
+                filename=doc.filename,
+                status="validated",
+                classification=classification,
+                invoice_data=invoice_data,
+                validation=validation,
+                message="ok",
+            )
 
     def run_batch(self, pdf_paths: list[Path]) -> list[PipelineResult]:
         """Run several documents, isolating failures so one bad file cannot kill the batch."""

@@ -20,6 +20,7 @@ the async flow. Writes go through the generic helpers in `utils.utils_db`.
 
 import asyncio
 import json
+import time
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
@@ -30,8 +31,10 @@ from invoice_extraction.config import (
     FORCE_REINGEST,
     INGEST_LIMIT,
     MANIFEST_NAME,
+    MLFLOW_EXPERIMENT,
     ORIGINAL_EMAILS_DIR,
     PROCESSED_EMAILS_DIR,
+    WRITE_TO_DB,
 )
 from invoice_extraction.decisions import (
     INBOX,
@@ -61,6 +64,15 @@ from invoice_extraction.invoice_utils.reporting import print_pipeline_result
 from invoice_extraction.loading import load_msg
 from invoice_extraction.models import DocumentClassification, EmailIntent, ValidationReport
 from invoice_extraction.nodes import classify_email_intent
+from invoice_extraction.tracing import (
+    decision_summary,
+    set_trace_tags,
+    setup_tracing,
+    span,
+)
+from invoice_extraction.tracing import (
+    flush as flush_traces,
+)
 from utils.llm_factory import LLMFactory
 from utils.utils_db import get_pool, insert_row, insert_rows, select
 
@@ -346,64 +358,117 @@ class EmailPipeline:
         output_root: Path = PROCESSED_EMAILS_DIR,
         force: bool = FORCE_REINGEST,
     ) -> EmailProcessingResult:
-        """Ingest one email, extract its PDFs, decide, and persist to Postgres."""
+        """Ingest one email, extract its PDFs, decide, and persist to Postgres.
+
+        The whole email is one trace: every ingestion, extraction and decision
+        span below nests under this one, so a single trace answers "what happened
+        to this email, and why".
+        """
         msg_path = Path(msg_path)
         source = msg_path.name
 
-        # --- DEDUP (DB): parse the email's identity cheaply (no LLM) and skip if
-        # it is already recorded. `.msg` parsing is cheap; the extra parse keeps
-        # the existing ingestion pipeline untouched.
-        if not force:
-            try:
-                email = load_msg(msg_path)
-                if await _process_exists(
-                    email.sender_email, email.subject, parse_reception_date(email.reception_date)
-                ):
-                    skipped = EmailIngestionResult(
-                        source=source, status="skipped", message="already in database"
-                    )
-                    return EmailProcessingResult(
-                        source=source,
-                        ingestion=skipped,
-                        decision=decide_email(skipped, []),
-                        already_processed=True,
-                    )
-            except Exception:  # noqa: BLE001 - dedup is best-effort; fall through to ingest
-                pass
+        with span(f"email:{source}", "CHAIN") as email_span:
+            email_span.set_inputs({"source": source, "force": force})
+            set_trace_tags(email=source)
 
-        # --- INGEST -----------------------------------------------------------
-        ingestion = self.ingestion.run(msg_path, output_root, force=force)
+            # --- DEDUP (DB): parse the email's identity cheaply (no LLM) and skip
+            # if it is already recorded. `.msg` parsing is cheap; the extra parse
+            # keeps the existing ingestion pipeline untouched.
+            if not force:
+                try:
+                    email = load_msg(msg_path)
+                    if await _process_exists(
+                        email.sender_email, email.subject, parse_reception_date(email.reception_date)
+                    ):
+                        skipped = EmailIngestionResult(
+                            source=source, status="skipped", message="already in database"
+                        )
+                        decision = decide_email(skipped, [])
+                        set_trace_tags(action=decision.action, outcome="already_processed")
+                        email_span.set_outputs(
+                            {"already_processed": True, "decision": decision_summary(decision)}
+                        )
+                        return EmailProcessingResult(
+                            source=source,
+                            ingestion=skipped,
+                            decision=decision,
+                            already_processed=True,
+                        )
+                except Exception:  # noqa: BLE001 - dedup is best-effort; fall through to ingest
+                    pass
 
-        # An already-ingested (manifest-skip) or failed email yields no fresh PDFs.
-        # Bundle and decide, but write nothing. No body classification here: a
-        # skip is already-decided work and a failure means nothing could be read.
-        if ingestion.status != "ingested":
-            return EmailProcessingResult(
+            # --- INGEST ---------------------------------------------------------
+            ingestion = self.ingestion.run(msg_path, output_root, force=force)
+
+            # An already-ingested (manifest-skip) or failed email yields no fresh
+            # PDFs. Bundle and decide, but write nothing. No body classification
+            # here: a skip is already-decided work and a failure means nothing
+            # could be read.
+            if ingestion.status != "ingested":
+                decision = decide_email(ingestion, [])
+                set_trace_tags(action=decision.action, outcome=ingestion.status)
+                email_span.set_outputs(
+                    {"ingestion_status": ingestion.status, "decision": decision_summary(decision)}
+                )
+                return EmailProcessingResult(
+                    source=source,
+                    ingestion=ingestion,
+                    decision=decision,
+                    already_processed=(ingestion.status == "skipped"),
+                )
+
+            # --- EXTRACT (this email's own PDFs only) ---------------------------
+            pdf_paths = _produced_pdf_paths(ingestion)
+            extractions = self.extraction.run_batch(pdf_paths)
+
+            # --- DECIDE ---------------------------------------------------------
+            # No usable PDF (A1/A2) is the only case the body can change, so the
+            # extra LLM call is confined to it.
+            intent = self._classify_body(msg_path, ingestion) if not extractions else None
+
+            # A span of its own even though it is pure, LLM-free business logic:
+            # the routing rules are the part most likely to be questioned, and
+            # this records the inputs they saw alongside the answer they gave.
+            with span(f"decide:{source}", "CHAIN") as decision_span:
+                decision_span.set_inputs(
+                    {
+                        "documents": [
+                            {"filename": e.filename, "status": e.status} for e in extractions
+                        ],
+                        "attachments": len(ingestion.attachments),
+                    }
+                )
+                decision = decide_email(ingestion, extractions, intent=intent)
+                decision_span.set_outputs(decision_summary(decision))
+
+            result = EmailProcessingResult(
                 source=source,
                 ingestion=ingestion,
-                decision=decide_email(ingestion, []),
-                already_processed=(ingestion.status == "skipped"),
+                extractions=extractions,
+                decision=decision,
             )
 
-        # --- EXTRACT (this email's own PDFs only) -----------------------------
-        pdf_paths = _produced_pdf_paths(ingestion)
-        extractions = self.extraction.run_batch(pdf_paths)
+            # Tagging the trace with the outcome is what makes "every email that
+            # went to Validate Manually" a one-line filter in the UI.
+            set_trace_tags(
+                action=decision.action,
+                outcome="processed",
+                documents=len(extractions),
+            )
+            email_span.set_outputs(
+                {
+                    "documents": len(extractions),
+                    "decision": decision_summary(decision),
+                }
+            )
 
-        # --- DECIDE -----------------------------------------------------------
-        # No usable PDF (A1/A2) is the only case the body can change, so the extra
-        # LLM call is confined to it.
-        intent = self._classify_body(msg_path, ingestion) if not extractions else None
-        decision = decide_email(ingestion, extractions, intent=intent)
-        result = EmailProcessingResult(
-            source=source,
-            ingestion=ingestion,
-            extractions=extractions,
-            decision=decision,
-        )
+            # --- PERSIST --------------------------------------------------------
+            if WRITE_TO_DB:
+                await self._persist(result)
+            else:
+                print("  💾 WRITE_TO_DB is off — not persisting")
 
-        # --- PERSIST ----------------------------------------------------------
-        await self._persist(result)
-        return result
+            return result
 
     async def run_batch(
         self,
@@ -417,6 +482,7 @@ class EmailPipeline:
         for msg_path in msg_paths:
             msg_path = Path(msg_path)
             print(f"\n{'=' * 70}\n📧 {msg_path.name}\n{'=' * 70}")
+            started = time.perf_counter()
             try:
                 result = await self.run(msg_path, output_root, force=force)
             except Exception as exc:  # noqa: BLE001 - keep the batch alive, inspect after
@@ -436,6 +502,7 @@ class EmailPipeline:
 
             if result.already_processed:
                 print("  ⏭️  already processed")
+            print(f"  ⏱️  {time.perf_counter() - started:.1f}s")
             results.append(result)
 
         return results
@@ -489,7 +556,11 @@ async def main() -> None:
     print(f"Processing {len(msg_paths)} email(s) from {ORIGINAL_EMAILS_DIR}")
     print(f"Output root: {PROCESSED_EMAILS_DIR}")
 
-    pool = await get_pool()
+    setup_tracing(experiment_name=MLFLOW_EXPERIMENT)
+
+    # Only open a pool when something will actually be written — the point of
+    # WRITE_TO_DB=False is being able to run (and trace) with no database up.
+    pool = await get_pool() if WRITE_TO_DB else None
     try:
         pipeline = create_pipeline()
         results = await pipeline.run_batch(msg_paths, PROCESSED_EMAILS_DIR, force=FORCE_REINGEST)
@@ -503,7 +574,10 @@ async def main() -> None:
         print_summary([r.ingestion for r in results])
         print_email_summary(results)
     finally:
-        pool.terminate()
+        # Traces export asynchronously, so flush before the process exits.
+        flush_traces()
+        if pool is not None:
+            pool.terminate()
 
 
 if __name__ == "__main__":

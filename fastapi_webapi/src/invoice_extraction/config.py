@@ -31,7 +31,13 @@ MANIFEST_NAME = "email_content.json"
 FORCE_REINGEST = True
 
 # Only ingest the first N emails (None = all). Useful for a cheap smoke test.
-INGEST_LIMIT: int | None = 5
+INGEST_LIMIT: int | None = 3
+
+# Persist results to Postgres. Off lets the pipeline be exercised (and traced)
+# with no database running, and keeps test runs out of fct_processes — note that
+# FORCE_REINGEST bypasses the DB dedup check, so with both on, every re-run would
+# otherwise insert another process row for the same email.
+WRITE_TO_DB = False
 
 # Windows caps a full path at 260 characters by default. Email subjects in the
 # sample set reach 111 characters, so folder names are truncated well short of it.
@@ -57,3 +63,11 @@ PARSER_KWARGS = {
     "min_good_chars_per_page": 200,
     "min_font_size": 5,
 }
+
+# -- Tracing (MLflow) ------------------------------------------------------
+# Development instrumentation only; see `invoice_extraction.tracing`. The
+# tracking URI itself is read from the MLFLOW_TRACKING_URI environment variable
+# (unset = tracing off), so pointing at a local server or at the company one is
+# an .env change rather than a code change.
+
+MLFLOW_EXPERIMENT = "invoice_extraction"

@@ -36,6 +36,7 @@ from invoice_extraction.invoice_utils.pdf_splitter import (
 from invoice_extraction.loading import load_msg
 from invoice_extraction.models import EmailAttachment, EmailContent, LoadedEmail
 from invoice_extraction.nodes import segment_document
+from invoice_extraction.tracing import span
 from utils.llm_factory import LLMFactory
 
 # Characters Windows forbids in a path component.
@@ -131,46 +132,70 @@ class IngestionPipeline:
             (folder / attachment.filename).write_bytes(attachment.data)
             return AttachmentResult(filename=attachment.filename, status="stored", message="not a pdf")
 
-        # Some senders produce PDFs with a broken xref table. Repair those up front
-        # so the page count, the model and the splitter all see the same valid bytes.
-        pdf_data = ensure_readable(attachment.data)
-        repaired = pdf_data is not attachment.data
-        if repaired:
-            print(f"  🔧 {attachment.filename}: repaired a malformed PDF before splitting")
+        with span(f"ingest:{attachment.filename}", "CHAIN") as attachment_span:
+            attachment_span.set_inputs(
+                {"filename": attachment.filename, "bytes": len(attachment.data)}
+            )
 
-        # The page count is deterministic and authoritative — the model is never
-        # asked for it, because VLMs cannot count pages reliably.
-        total_pages = count_pages(pdf_data)
+            # Some senders produce PDFs with a broken xref table. Repair those up front
+            # so the page count, the model and the splitter all see the same valid bytes.
+            pdf_data = ensure_readable(attachment.data)
+            repaired = pdf_data is not attachment.data
+            if repaired:
+                print(f"  🔧 {attachment.filename}: repaired a malformed PDF before splitting")
 
-        encoded_pdf = base64.b64encode(pdf_data).decode("utf-8")
-        segmentation = segment_document(
-            self.llm,
-            encoded_pdf=encoded_pdf,
-            filename=attachment.filename,
-            total_pages=total_pages,
-        )
+            # The page count is deterministic and authoritative — the model is never
+            # asked for it, because VLMs cannot count pages reliably.
+            total_pages = count_pages(pdf_data)
 
-        # Never trust the boundaries without checking them against the real page
-        # count: a gap loses a document, an overlap duplicates one.
-        problems = validate_segmentation(segmentation.documents, total_pages)
-        if problems:
-            print(f"  ⚠️  {attachment.filename}: segmentation coverage issues")
-            for problem in problems:
-                print(f"       - {problem}")
+            encoded_pdf = base64.b64encode(pdf_data).decode("utf-8")
+            segmentation = segment_document(
+                self.llm,
+                encoded_pdf=encoded_pdf,
+                filename=attachment.filename,
+                total_pages=total_pages,
+            )
 
-        splits = split_pdf(pdf_data, attachment.filename, segmentation.documents)
-        for split in splits:
-            (folder / split.filename).write_bytes(split.pdf_bytes)
+            # Never trust the boundaries without checking them against the real page
+            # count: a gap loses a document, an overlap duplicates one.
+            problems = validate_segmentation(segmentation.documents, total_pages)
+            if problems:
+                print(f"  ⚠️  {attachment.filename}: segmentation coverage issues")
+                for problem in problems:
+                    print(f"       - {problem}")
 
-        message = f"{len(splits)} document(s) from {total_pages} page(s)"
-        return AttachmentResult(
-            filename=attachment.filename,
-            status="chunked",
-            total_pages=total_pages,
-            split_filenames=[s.filename for s in splits],
-            problems=problems,
-            message=f"{message} (repaired)" if repaired else message,
-        )
+            splits = split_pdf(pdf_data, attachment.filename, segmentation.documents)
+            for split in splits:
+                (folder / split.filename).write_bytes(split.pdf_bytes)
+
+            # The boundaries the model chose, next to the problems they caused —
+            # the pair you need when a document comes out cut in the wrong place.
+            attachment_span.set_outputs(
+                {
+                    "total_pages": total_pages,
+                    "repaired": repaired,
+                    "documents": [
+                        {
+                            "start_page": boundary.start_page,
+                            "end_page": boundary.end_page,
+                            "confidence": boundary.confidence,
+                        }
+                        for boundary in segmentation.documents
+                    ],
+                    "split_filenames": [s.filename for s in splits],
+                    "problems": problems,
+                }
+            )
+
+            message = f"{len(splits)} document(s) from {total_pages} page(s)"
+            return AttachmentResult(
+                filename=attachment.filename,
+                status="chunked",
+                total_pages=total_pages,
+                split_filenames=[s.filename for s in splits],
+                problems=problems,
+                message=f"{message} (repaired)" if repaired else message,
+            )
 
     # -- emails ------------------------------------------------------------
 

@@ -38,6 +38,13 @@ Also determine the document state (document_state) ONLY when explicitly visible:
 
 Return null for document_state when no state is explicitly indicated.
 
+If applicable, include document_exception:
+- condominio
+- insurance
+- extract
+
+Return NULL if any of these apply. It is safer to return NULL when unsure.
+
 CONFIDENCE
 
 Every classified field must include an honest confidence score between 0 and 1.
@@ -97,6 +104,8 @@ Analyze the attached PDF.
 
 Classify ONLY the accounting nature of the document (document_type) and its
 legal state (document_state) when explicitly visible.
+
+If the document can be applied in any of the document_exception, include that field. If not, leave empty.
 
 Do NOT extract any invoice fields (no supplier, client, amounts, VAT, dates).
 
