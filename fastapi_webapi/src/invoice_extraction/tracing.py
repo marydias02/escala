@@ -21,14 +21,28 @@ company server later is a change of that one variable plus the two auth ones.
 The span tree for one email:
 
     email:<source>                          (CHAIN, the trace root)
-      ingest:<attachment.pdf>               (CHAIN)
-        ChatOpenAI                          (LLM, from autolog — segmentation)
-      extract:<document.pdf>                (CHAIN)
-        ChatOpenAI                          (LLM, from autolog — classification)
-        parse:<document.pdf>                (PARSER, deterministic, no LLM)
-        ChatOpenAI                          (LLM, from autolog — extraction)
-        ChatOpenAI                          (LLM, from autolog — validation)
-      decide:<source>                       (CHAIN, pure business rules)
+      ingest:<attachment.pdf>               (CHAIN, one per attachment)
+        1-chunking                          (LLM)
+          ChatOpenAI                        (from autolog)
+      extract:<document.pdf>                (CHAIN, one per split document)
+        2-classification                    (LLM)
+        3-parsing                           (PARSER, deterministic, no LLM)
+        4-extraction                        (LLM)
+        5-validation                        (LLM)
+          5a-validation:tools               (CHAIN, the bind_tools loop)
+            verify_client_nif               (TOOL)
+            verify_supplier_nif             (TOOL)
+          5b-validation:shaping             (LLM)
+      6-decision                            (CHAIN, pure business rules)
+
+The numbered STAGE_* spans exist because `mlflow.langchain.autolog()` names its
+spans after the LangChain class it intercepted (`ChatOpenAI`,
+`RunnableSequence`, ...), never after the pipeline step. Those names cannot be
+changed — `LiveSpan.name` has no setter — and a span processor can only mutate a
+span, not drop it. So the readable graph is built by wrapping each stage in a
+span of our own: the plumbing still appears, but underneath a meaningful parent.
+Distinct names also stop the UI from collapsing every LLM call in the email into
+one badged node.
 """
 
 import functools
@@ -50,6 +64,27 @@ except ImportError:  # pragma: no cover - exercised only when mlflow is absent
 
 
 EXPERIMENT_NAME = "invoice_extraction"
+
+# --------------------------------------------------------------------------- #
+# Stage names — the pipeline's data flow, as it should read in the graph.
+# --------------------------------------------------------------------------- #
+#
+# Numbered so the UI's graph view shows the order of the pipeline rather than an
+# unordered set of siblings. Defined here (not at each call site) so the sequence
+# can be read in one place and cannot drift out of order.
+
+STAGE_CHUNKING = "1-chunking"
+STAGE_CLASSIFICATION = "2-classification"
+STAGE_PARSING = "3-parsing"
+STAGE_EXTRACTION = "4-extraction"
+STAGE_VALIDATION = "5-validation"
+STAGE_VALIDATION_TOOLS = "5a-validation:tools"
+STAGE_VALIDATION_SHAPING = "5b-validation:shaping"
+STAGE_DECISION = "6-decision"
+
+# Off the numbered path on purpose: the body classifier runs only on the
+# no-usable-PDF branch, so numbering it would imply a step that usually is absent.
+STAGE_EMAIL_INTENT = "email-intent"
 
 # True once setup_tracing() has successfully connected. Every helper below checks
 # this, so an un-configured process silently produces no traces.
@@ -269,6 +304,68 @@ def set_trace_tags(**tags) -> None:
 # Autolog records the raw LLM exchange. These build the DERIVED view that makes a
 # trace worth opening: per-field confidences, what blocked ingestion, and the
 # routing decision with its reply text.
+
+
+def segmentation_summary(segmentation, problems: Optional[list] = None) -> dict:
+    """A DocumentSegmentation as span output: the boundaries and their confidence.
+
+    Paired with the coverage `problems` deliberately: a gap loses a document and
+    an overlap duplicates one, so the boundaries are only meaningful next to the
+    check that was run against them.
+    """
+    if segmentation is None:
+        return {"segmentation": None}
+
+    return {
+        "documents": [
+            {
+                "start_page": boundary.start_page,
+                "end_page": boundary.end_page,
+                "confidence": boundary.confidence,
+            }
+            for boundary in segmentation.documents
+        ],
+        "count": len(segmentation.documents),
+        "problems": problems or [],
+    }
+
+
+def invoice_data_summary(invoice) -> dict:
+    """An InvoiceData as span output: raw extracted values, before validation.
+
+    Kept next to `validation_summary` in the trace so the two can be compared —
+    that pair is what shows whether the validator corrected something (a
+    supplier/client swap, a misread total) or simply passed the extraction
+    through.
+    """
+    if invoice is None:
+        return {"invoice_data": None}
+
+    def field(confident) -> Optional[dict]:
+        if confident is None:
+            return None
+        return {
+            "value": confident.value,
+            "confidence": confident.confidence,
+            "evidence": confident.evidence,
+        }
+
+    summary: dict = {
+        name: field(getattr(invoice, name, None))
+        for name in (
+            "supplier_name",
+            "supplier_vat",
+            "client_name",
+            "client_vat",
+            "issue_date",
+            "base_amount",
+            "vat_amount",
+            "total_amount",
+            "currency",
+        )
+    }
+    summary["purchase_order"] = [field(po) for po in invoice.purchase_order]
+    return summary
 
 
 def classification_summary(classification) -> dict:

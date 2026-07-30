@@ -7,6 +7,7 @@ from invoice_extraction.prompts import (
     CLASSIFICATION_SYSTEM_MESSAGE,
     build_classification_human_message,
 )
+from invoice_extraction.tracing import STAGE_CLASSIFICATION, classification_summary, span
 
 
 def classify_document(llm: BaseChatModel, doc: InvoiceDocument) -> DocumentClassification:
@@ -19,6 +20,10 @@ def classify_document(llm: BaseChatModel, doc: InvoiceDocument) -> DocumentClass
     structured_llm = llm.with_structured_output(DocumentClassification)
     human_message = build_classification_human_message(doc.filename, doc.encoded_pdf)
 
-    return invoke_with_retry(
-        structured_llm, [CLASSIFICATION_SYSTEM_MESSAGE, human_message], stage="classification"
-    )
+    with span(STAGE_CLASSIFICATION, "LLM") as stage_span:
+        stage_span.set_inputs({"filename": doc.filename})
+        classification = invoke_with_retry(
+            structured_llm, [CLASSIFICATION_SYSTEM_MESSAGE, human_message], stage="classification"
+        )
+        stage_span.set_outputs(classification_summary(classification))
+        return classification

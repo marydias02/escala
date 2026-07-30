@@ -6,6 +6,7 @@ from invoice_extraction.prompts import (
     EMAIL_INTENT_SYSTEM_MESSAGE,
     build_email_intent_human_message,
 )
+from invoice_extraction.tracing import STAGE_EMAIL_INTENT, span
 
 
 def classify_email_intent(llm: BaseChatModel, subject: str, body: str) -> EmailIntent:
@@ -17,6 +18,15 @@ def classify_email_intent(llm: BaseChatModel, subject: str, body: str) -> EmailI
     structured_llm = llm.with_structured_output(EmailIntent)
     human_message = build_email_intent_human_message(subject, body)
 
-    return invoke_with_retry(
-        structured_llm, [EMAIL_INTENT_SYSTEM_MESSAGE, human_message], stage="email intent"
-    )
+    with span(STAGE_EMAIL_INTENT, "LLM") as stage_span:
+        stage_span.set_inputs({"subject": subject, "body_chars": len(body or "")})
+        intent = invoke_with_retry(
+            structured_llm, [EMAIL_INTENT_SYSTEM_MESSAGE, human_message], stage="email intent"
+        )
+        stage_span.set_outputs(
+            {
+                "is_invoice_related": intent.is_invoice_related.value,
+                "has_invoice_link": intent.has_invoice_link.value,
+            }
+        )
+        return intent

@@ -17,11 +17,7 @@ from invoice_extraction.invoice_utils.documents import load_document
 from invoice_extraction.invoice_utils.pdf_parser import build_attachment_evidence
 from invoice_extraction.models import DocumentClassification, InvoiceData, ValidationReport
 from invoice_extraction.nodes import classify_document, extract_document, validate_document
-from invoice_extraction.tracing import (
-    classification_summary,
-    span,
-    validation_summary,
-)
+from invoice_extraction.tracing import STAGE_PARSING, span
 from utils.llm_factory import LLMFactory
 
 # Document types worth extracting. Anything else is an accounting document we do
@@ -89,8 +85,9 @@ class ExtractionPipeline:
             document_span.set_inputs({"filename": doc.filename, "path": str(pdf_path)})
 
             # --- CLASSIFICATION -----------------------------------------------
+            # The `2-classification` span (and its summary) is created inside the
+            # node itself, so nothing is recorded here.
             classification = classify_document(self.llm, doc)
-            document_span.set_attribute("classification", classification_summary(classification))
 
             # --- GATE ---------------------------------------------------------
             if not should_extract(classification):
@@ -113,7 +110,7 @@ class ExtractionPipeline:
             # Traced separately because autolog cannot see a non-LLM step, and
             # "the validator had no parsed text to check against" is a common
             # root cause of a low-confidence result.
-            with span(f"parse:{doc.filename}", "PARSER") as parse_span:
+            with span(STAGE_PARSING, "PARSER") as parse_span:
                 try:
                     evidence = build_attachment_evidence(pdf_path, **PARSER_KWARGS)
                     parsed_text = evidence.get("extracted_text") or None
@@ -129,8 +126,13 @@ class ExtractionPipeline:
             # --- VALIDATION ---------------------------------------------------
             validation = validate_document(self.llm, invoice_data, parsed_text=parsed_text)
 
+            # The full report lives on the `5-validation` span; this is the
+            # document-level roll-up, so it stays short.
             document_span.set_outputs(
-                {"status": "validated", "validation": validation_summary(validation)}
+                {
+                    "status": "validated",
+                    "document_type": classification.document_type.value,
+                }
             )
 
             return PipelineResult(

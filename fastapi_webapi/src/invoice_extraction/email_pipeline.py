@@ -65,6 +65,7 @@ from invoice_extraction.loading import load_msg
 from invoice_extraction.models import DocumentClassification, EmailIntent, ValidationReport
 from invoice_extraction.nodes import classify_email_intent
 from invoice_extraction.tracing import (
+    STAGE_DECISION,
     decision_summary,
     set_trace_tags,
     setup_tracing,
@@ -429,7 +430,7 @@ class EmailPipeline:
             # A span of its own even though it is pure, LLM-free business logic:
             # the routing rules are the part most likely to be questioned, and
             # this records the inputs they saw alongside the answer they gave.
-            with span(f"decide:{source}", "CHAIN") as decision_span:
+            with span(STAGE_DECISION, "CHAIN") as decision_span:
                 decision_span.set_inputs(
                     {
                         "documents": [

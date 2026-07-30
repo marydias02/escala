@@ -168,20 +168,12 @@ class IngestionPipeline:
             for split in splits:
                 (folder / split.filename).write_bytes(split.pdf_bytes)
 
-            # The boundaries the model chose, next to the problems they caused —
-            # the pair you need when a document comes out cut in the wrong place.
+            # The boundaries themselves are on the `1-chunking` span; this is the
+            # attachment-level roll-up of what was actually written to disk.
             attachment_span.set_outputs(
                 {
                     "total_pages": total_pages,
                     "repaired": repaired,
-                    "documents": [
-                        {
-                            "start_page": boundary.start_page,
-                            "end_page": boundary.end_page,
-                            "confidence": boundary.confidence,
-                        }
-                        for boundary in segmentation.documents
-                    ],
                     "split_filenames": [s.filename for s in splits],
                     "problems": problems,
                 }

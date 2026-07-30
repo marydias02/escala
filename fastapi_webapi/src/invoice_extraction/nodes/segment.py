@@ -6,6 +6,7 @@ from invoice_extraction.prompts import (
     build_segmentation_human_message,
     build_segmentation_system_message,
 )
+from invoice_extraction.tracing import STAGE_CHUNKING, segmentation_summary, span
 
 
 def segment_document(
@@ -27,4 +28,12 @@ def segment_document(
     system_message = build_segmentation_system_message(total_pages)
     human_message = build_segmentation_human_message(filename, encoded_pdf, total_pages)
 
-    return invoke_with_retry(structured_llm, [system_message, human_message], stage="chunking")
+    with span(STAGE_CHUNKING, "LLM") as stage_span:
+        # `encoded_pdf` is deliberately not an input: it is the base64 of the whole
+        # attachment, and the autolog child span already records the prompt.
+        stage_span.set_inputs({"filename": filename, "total_pages": total_pages})
+        segmentation = invoke_with_retry(
+            structured_llm, [system_message, human_message], stage="chunking"
+        )
+        stage_span.set_outputs(segmentation_summary(segmentation))
+        return segmentation
