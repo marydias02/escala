@@ -45,9 +45,11 @@ REPLY_TEXT_NO_PDF = "Por favor enviar o documento em formato pdf"
 REPLY_TEXT_PROFORMA = "Documento proforma, por favor enviar o original"
 REPLY_TEXT_COPY = "Documento duplicado, por favor enviar o original"
 
-# Document types the extraction pipeline is willing to process. Kept in sync with
+# Document types routed by the B-cases below. Kept in sync with
 # `extraction_pipeline.EXTRACTABLE_TYPES` by intent, not by import, because this
 # module asks a different question (what to DO) than the gate (what to extract).
+# The two are not identical: the gate also extracts exception receipts, which are
+# routed by the C-cases here.
 _INVOICE_LIKE = ("invoice", "credit_note", "debit_note")
 
 # --------------------------------------------------------------------------- #
@@ -153,6 +155,39 @@ def _state_of(classification: DocumentClassification) -> str:
     return classification.document_state.value
 
 
+def _ingest_or_manual(result: PipelineResult, label: str) -> DocumentDecision:
+    """Book it, or send it to a human — the two hurdles every SAP-bound doc clears.
+
+    Two hurdles, not one: the pipeline must have finished AND the extraction must
+    be confident enough to book. Either failure sends the document to a human,
+    never to the supplier — the document itself is fine, it is our reading of it
+    that fell short.
+
+    `label` names the document in the reason (e.g. "invoice (original)",
+    "receipt (condominio)").
+    """
+    if result.status != "validated":
+        return DocumentDecision(
+            filename=result.filename,
+            action=MANUAL,
+            reason=f"{label} did not validate: {result.message}",
+        )
+
+    blockers = ingestion_blockers(result.validation)
+    if blockers:
+        return DocumentDecision(
+            filename=result.filename,
+            action=MANUAL,
+            reason=f"{label} not confident: {'; '.join(blockers)}",
+        )
+
+    return DocumentDecision(
+        filename=result.filename,
+        action=INGEST,
+        reason=f"{label} validated",
+    )
+
+
 def decide_document(result: PipelineResult) -> DocumentDecision:
     """Route ONE document. The per-type/per-state matrix, in full.
 
@@ -163,8 +198,9 @@ def decide_document(result: PipelineResult) -> DocumentDecision:
     B2        invoice-like + proforma                      -> reply (proforma)
     B3        invoice-like + copy                          -> reply (duplicate)
     B4/B6/B8  invoice-like + cancelled                     -> Left in Inbox
-    C1-C3     receipt + document_exception                 -> Forward to Treasury
-    C4        receipt, no exception                        -> Left in Inbox
+    C1-C3     receipt + exception, confident               -> Ingest in SAP
+    C1-C3     receipt + exception, NOT confident           -> Validate Manually
+    C4        receipt, no exception                        -> Forward to Treasury
     C5        other                                        -> Left in Inbox
     D1-D3     a stage raised                               -> Validate Manually
     """
@@ -192,30 +228,8 @@ def decide_document(result: PipelineResult) -> DocumentDecision:
     # --- B: invoice-like documents ----------------------------------------
     if doc_type in _INVOICE_LIKE:
         if state == "original":
-            # B1/B5/B7. Two hurdles, not one: the pipeline must have finished AND
-            # the extraction must be confident enough to book. Either failure
-            # sends the document to a human, never to the supplier — the document
-            # itself is fine, it is our reading of it that fell short.
-            if result.status != "validated":
-                return DocumentDecision(
-                    filename=result.filename,
-                    action=MANUAL,
-                    reason=f"{doc_type} (original) did not validate: {result.message}",
-                )
-
-            blockers = ingestion_blockers(result.validation)
-            if blockers:
-                return DocumentDecision(
-                    filename=result.filename,
-                    action=MANUAL,
-                    reason=f"{doc_type} (original) not confident: {'; '.join(blockers)}",
-                )
-
-            return DocumentDecision(
-                filename=result.filename,
-                action=INGEST,
-                reason=f"{doc_type} (original) validated",
-            )
+            # B1/B5/B7.
+            return _ingest_or_manual(result, f"{doc_type} (original)")
 
         if state == "proforma":  # B2
             return DocumentDecision(
@@ -243,17 +257,17 @@ def decide_document(result: PipelineResult) -> DocumentDecision:
     # --- C: receipts -------------------------------------------------------
     if doc_type == "receipt":
         # C1-C3. `document_exception` is only meaningful on a receipt, per the
-        # schema, so it is read only here.
+        # schema, so it is read only here. An exception receipt (condominio,
+        # insurance, bank extract) is booked exactly like an invoice — the
+        # extraction gate lets these through precisely so this can happen.
         exception = result.classification.document_exception
         if exception is not None:
-            return DocumentDecision(
-                filename=result.filename,
-                action=TREASURY,
-                reason=f"receipt ({exception.value})",
-            )
-        return DocumentDecision(  # C4
+            return _ingest_or_manual(result, f"receipt ({exception.value})")
+
+        # C4 — an ordinary receipt is not ours to book; treasury owns it.
+        return DocumentDecision(
             filename=result.filename,
-            action=INBOX,
+            action=TREASURY,
             reason="receipt with no exception",
         )
 

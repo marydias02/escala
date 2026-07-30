@@ -20,8 +20,8 @@ from invoice_extraction.nodes import classify_document, extract_document, valida
 from invoice_extraction.tracing import STAGE_PARSING, span
 from utils.llm_factory import LLMFactory
 
-# Document types worth extracting. Anything else is an accounting document we do
-# not process here (receipts, debit notes, shipping documents, ...).
+# Document types worth extracting on their own. Anything else is an accounting
+# document we do not process here (shipping documents, POs, ...).
 EXTRACTABLE_TYPES = ("invoice", "credit_note", "debit_note")
 
 
@@ -43,22 +43,53 @@ class PipelineResult:
     message: str = ""
 
 
-def should_extract(classification: DocumentClassification) -> bool:
-    """Deterministic gate: extract only invoice-like Originals.
+def _is_original(classification: DocumentClassification) -> bool:
+    """A null document_state reads as "original".
 
-    A null document_state is treated as "original" — real documents rarely print
-    the word "Original", so only an explicit copy / proforma / cancelled skips
-    extraction.
+    Real documents rarely print the word "Original", so only an explicit copy /
+    proforma / cancelled counts as non-original.
     """
-    return classification.document_type.value in EXTRACTABLE_TYPES and (
+    return (
         classification.document_state is None
         or classification.document_state.value == "original"
     )
 
 
+def _is_exception_receipt(classification: DocumentClassification) -> bool:
+    """A receipt carrying an exception (condominio / insurance / bank extract).
+
+    These are booked in SAP like invoices (cases C1-C3 in `decisions`), so they
+    need their amounts read even though the type is not invoice-like.
+    """
+    return (
+        classification.document_type.value == "receipt"
+        and classification.document_exception is not None
+    )
+
+
+def should_extract(classification: DocumentClassification) -> bool:
+    """Deterministic gate: invoice-like Originals, plus exception receipts.
+
+    The receipt branch is what feeds cases C1-C3 in `decisions.decide_document`:
+    those receipts are ingested, and a document cannot be ingested without its
+    fields having been extracted and validated first.
+    """
+    if _is_exception_receipt(classification):
+        return True
+
+    return classification.document_type.value in EXTRACTABLE_TYPES and _is_original(
+        classification
+    )
+
+
 def _gate_message(classification: DocumentClassification) -> str:
     """The user-facing reason a document was gated out."""
-    if classification.document_type.value not in EXTRACTABLE_TYPES:
+    doc_type = classification.document_type.value
+
+    if doc_type == "receipt":
+        return "document is a receipt with no exception"
+
+    if doc_type not in EXTRACTABLE_TYPES:
         return "document not invoice"
 
     state = (

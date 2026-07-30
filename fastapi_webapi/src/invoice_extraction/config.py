@@ -31,7 +31,7 @@ MANIFEST_NAME = "email_content.json"
 FORCE_REINGEST = True
 
 # Only ingest the first N emails (None = all). Useful for a cheap smoke test.
-INGEST_LIMIT: int | None = 5
+INGEST_LIMIT: int | None = 1
 
 # Persist results to Postgres. Off lets the pipeline be exercised (and traced)
 # with no database running, and keeps test runs out of fct_processes — note that
