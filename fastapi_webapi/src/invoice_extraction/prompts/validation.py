@@ -51,7 +51,13 @@ You have access to the following tools:
 - verify_supplier_nif(client_vat, supplier_vat) -> (bool, bool)
     Whether each VAT appears in the list of known SUPPLIERS.
 
-Use them to confirm the two parties. The strongest signal they give you:
+- supplier_requires_po(supplier_vat) -> bool
+    Whether the SUPPLIER requires a purchase order on this invoice.
+
+- po_exists(po_reference) -> bool
+    Whether a given PO reference is known in the PO system.
+
+Use verify_client_nif/verify_supplier_nif to confirm the two parties. The strongest signal they give you:
 
 - If the extracted SUPPLIER VAT is found in the CLIENT registry, and the
   extracted CLIENT VAT is found in the SUPPLIER registry, the two parties were
@@ -59,6 +65,11 @@ Use them to confirm the two parties. The strongest signal they give you:
   say so in the notes.
 - A VAT found in neither registry is not an error — it just means the party is
   unknown. Keep the value and note it.
+
+Use supplier_requires_po on the supplier_vat and, if it returns true, check each
+purchase_order candidate with po_exists. A PO that does not exist is not
+necessarily wrong (the registry may be incomplete), but lower its confidence
+accordingly and say so in notes.
 
 CONFIDENCE
 
@@ -112,6 +123,7 @@ def build_validation_human_message(
     extracted_data = {
         "supplier_name": extraction.supplier_name.value if extraction.supplier_name else None,
         "supplier_vat": extraction.supplier_vat.value if extraction.supplier_vat else None,
+        "document_number": extraction.document_number.value if extraction.document_number else None,
         "client_name": extraction.client_name.value if extraction.client_name else None,
         "client_vat": extraction.client_vat.value if extraction.client_vat else None,
         # `purchase_order` is a LIST of Confident[str] — unwrap each entry.

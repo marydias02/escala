@@ -98,6 +98,7 @@ def print_extraction_result(
     print("-" * 7)
     _print_field("Supplier", invoice.supplier_name)
     _print_field("Supplier VAT", invoice.supplier_vat)
+    _print_field("Document number", invoice.document_number)
     _print_field("Client", invoice.client_name)
     _print_field("Client VAT", invoice.client_vat)
 
@@ -125,6 +126,7 @@ def print_validation_result(filename: str, validation: Optional[ValidationReport
     _print_field("Supplier", validation.supplier_name)
     _print_field("Supplier ID", validation.supplier_id)
     _print_field("Supplier VAT", validation.supplier_vat)
+    _print_field("Document number", validation.document_number)
     _print_field("BU", validation.bu_name)
     _print_field("BU ID", validation.bu_id)
     _print_field("BU VAT", validation.bu_vat)

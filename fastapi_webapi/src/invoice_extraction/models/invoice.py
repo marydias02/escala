@@ -93,6 +93,31 @@ class InvoiceData(BaseModel):
         """,
     )
 
+    document_number: Optional[Confident[str]] = Field(
+        default=None,
+        description="""
+        The document's own identifying number, as assigned by the supplier.
+
+        Usually labelled:
+
+        Invoice No
+        Invoice Number
+        Fatura N.º
+        FT
+        Receipt No
+        Recibo N.º
+
+        This identifies THIS document, not a purchase order and not a
+        supplier/client registry id.
+
+        Do NOT return:
+
+        - purchase order numbers
+        - supplier or client VAT/NIF
+        - due date or issue date
+        """,
+    )
+
     purchase_order: List[Confident[str]] = Field(
         default_factory=list,
         description="""

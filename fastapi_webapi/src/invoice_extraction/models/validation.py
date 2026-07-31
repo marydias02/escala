@@ -39,6 +39,11 @@ class ValidationReport(BaseModel):
         description="Validated VAT/NIF of the supplier. Portuguese NIFs normalized to PT#########.",
     )
 
+    document_number: Optional[Checked[str]] = Field(
+        default=None,
+        description="Validated document number (invoice/receipt number) assigned by the supplier.",
+    )
+
     bu_name: Optional[Checked[str]] = Field(
         default=None,
         description=(

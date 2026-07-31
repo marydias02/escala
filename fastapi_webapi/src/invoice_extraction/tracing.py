@@ -355,6 +355,7 @@ def invoice_data_summary(invoice) -> dict:
         for name in (
             "supplier_name",
             "supplier_vat",
+            "document_number",
             "client_name",
             "client_vat",
             "issue_date",
@@ -412,6 +413,7 @@ def validation_summary(validation) -> dict:
         "supplier_name",
         "supplier_id",
         "supplier_vat",
+        "document_number",
         "bu_name",
         "bu_id",
         "bu_vat",
