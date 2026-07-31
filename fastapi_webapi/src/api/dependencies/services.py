@@ -2,6 +2,7 @@ from fastapi import Depends
 from typing_extensions import Annotated
 
 from api.services.air_example import AirExampleService
+from api.services.extraction_service import ExtractionService
 from api.services.process_service import ProcessService
 from api.services.service_example import ItemService
 
@@ -25,6 +26,13 @@ async def get_air_service() -> AirExampleService:
 
 
 AirExampleServiceDependency = Annotated[AirExampleService, Depends(get_air_service)]
+
+
+async def get_extraction_service() -> ExtractionService:
+    return ExtractionService()
+
+
+ExtractionServiceDep = Annotated[ExtractionService, Depends(get_extraction_service)]
 
 
 # These dependencies might seem redundant now, but it's here to allow easy extension in the future
