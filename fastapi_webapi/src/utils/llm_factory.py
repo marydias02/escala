@@ -72,7 +72,6 @@ class LLMFactory:
             openai_api_key=settings.OPENAI_API_KEY,
             openai_api_base=settings.OPENAI_API_BASE,
             openai_model=settings.OPENAI_MODEL,
-            azure_embedding_deployment=settings.AZURE_EMBEDDING_DEPLOYMENT,
             embeddings_model=settings.EMBEDDINGS_MODEL,
             temperature=settings.LLM_TEMPERATURE,
             max_tokens=settings.LLM_MAX_TOKENS,
@@ -116,8 +115,7 @@ class LLMFactory:
             model: Embeddings model name (uses default if not provided)
 
         Returns:
-            OpenAIEmbeddings or AzureOpenAIEmbeddings instance
-
+            OpenAIEmbeddings 
         Example:
             >>> embeddings = factory.create_embeddings()
             >>> vectors = await embeddings.aembed_documents(["Hello", "World"])

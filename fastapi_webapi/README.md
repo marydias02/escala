@@ -14,7 +14,7 @@
    ```bash
    uv run python -m app.main
    or
-   uvicorn api.main:app --reload
+   uv run uvicorn api.main:app --reload --app-dir src
    ```
    The API will be available at `http://localhost:8000`
    - Swagger UI: `http://localhost:8000/docs`

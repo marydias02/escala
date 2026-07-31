@@ -1,5 +1,6 @@
-from typing import Optional
 from pathlib import Path
+from typing import Optional
+
 from pydantic_settings import BaseSettings
 
 
@@ -31,6 +32,11 @@ class Settings(BaseSettings):
     LLM_TEMPERATURE: float = 0.0
     LLM_MAX_TOKENS: int = 4000
     LLM_TIMEOUT: int = 150
+
+    # Tracing (MLflow). Unset disables tracing entirely — see
+    # `invoice_extraction.tracing`. Declared here because Settings rejects
+    # unknown .env keys, so an undeclared one would break app startup.
+    MLFLOW_TRACKING_URI: Optional[str] = None
 
     class Config:
         env_file = str(Path(__file__).parent.parent.parent / ".env")

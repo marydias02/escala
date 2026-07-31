@@ -1,0 +1,109 @@
+from typing import Optional
+
+import polars as pl
+
+from api.sql import BaseRepository
+from invoice_extraction.decisions import INGEST, MANUAL, REPLY
+
+_DOCUMENT_LIST_COLUMNS = """
+    document_id,
+    document_content -> 'document_number' ->> 'value' AS document_number,
+    document_content -> 'supplier_name' ->> 'value' AS supplier_name,
+    document_content -> 'bu_name' ->> 'value' AS bu_name,
+    (document_content -> 'total_amount' ->> 'value')::float AS total_amount,
+    to_date(document_content -> 'issue_date' ->> 'value', 'DD-MM-YYYY') AS issue_date,
+    created_at,
+    action
+"""
+
+
+class ExtractionBigNumbers(BaseRepository):
+    __table_name__ = "fct_documents"
+
+    async def count_pending_manual_validation(self) -> int:
+        query = f"""
+        SELECT COUNT(*) FROM {self.table}
+        WHERE action = $1 AND status = 'Pending'
+        """
+        return await self.query_scalar(query, parameters=[MANUAL])
+
+    async def count_auto_ingested_by_week(self) -> dict[str, tuple[int, int]]:
+        query = f"""
+        SELECT
+            date_trunc('week', created_at) AS week,
+            COUNT(*) FILTER (
+                WHERE action = $1 AND status = 'Ingested' AND last_modified_by IS NULL
+            ) AS matched,
+            COUNT(*) AS total
+        FROM {self.table}
+        WHERE date_trunc('week', created_at) IN (date_trunc('week', now()), date_trunc('week', now()) - interval '1 week')
+        GROUP BY week
+        """
+        return await self._matched_and_total_by_week(query, parameters=[INGEST])
+
+    async def count_returned_to_supplier_by_week(self) -> dict[str, tuple[int, int]]:
+        query = f"""
+        SELECT
+            date_trunc('week', created_at) AS week,
+            COUNT(*) FILTER (WHERE action = $1) AS matched,
+            COUNT(*) AS total
+        FROM {self.table}
+        WHERE date_trunc('week', created_at) IN (date_trunc('week', now()), date_trunc('week', now()) - interval '1 week')
+        GROUP BY week
+        """
+        return await self._matched_and_total_by_week(query, parameters=[REPLY])
+
+    async def _matched_and_total_by_week(self, query: str, parameters: list) -> dict[str, tuple[int, int]]:
+        df = await self.query_df(query, parameters=parameters)
+        result: dict[str, tuple[int, int]] = {"current": (0, 0), "previous": (0, 0)}
+        if df.is_empty():
+            return result
+        current_week = df["week"].max()
+        for row in df.iter_rows(named=True):
+            key = "current" if row["week"] == current_week else "previous"
+            result[key] = (row["matched"], row["total"])
+        return result
+
+
+class DocumentsRepository(BaseRepository):
+    __table_name__ = "fct_documents"
+
+    async def list_priority_documents(self, limit: int = 100) -> pl.DataFrame:
+        query = f"""
+        SELECT {_DOCUMENT_LIST_COLUMNS}
+        FROM {self.table}
+        WHERE action = $1 AND status = 'Pending'
+        ORDER BY created_at DESC
+        LIMIT $2
+        """
+        return await self.query_df(query, parameters=[MANUAL, limit])
+
+    async def list_all_documents(self, limit: int = 100) -> pl.DataFrame:
+        query = f"""
+        SELECT {_DOCUMENT_LIST_COLUMNS}
+        FROM {self.table}
+        ORDER BY created_at DESC
+        LIMIT $1
+        """
+        return await self.query_df(query, parameters=[limit])
+
+    async def get_document(self, document_id: str) -> Optional[dict]:
+        query = f"""
+        SELECT document_id, alerts_list, document_content
+        FROM {self.table}
+        WHERE document_id = $1
+        """
+        return await self.query_dict(query, parameters=[document_id])
+
+    async def get_document_email(self, document_id: str) -> Optional[dict]:
+        query = f"""
+        SELECT p.sender_email, p.email_subject, p.email_content, p.reception_date
+        FROM {self.table} d
+        JOIN fct_processes p ON p.process_id = d.process_id
+        WHERE d.document_id = $1
+        """
+        return await self.query_dict(query, parameters=[document_id])
+
+    async def get_process_id(self, document_id: str) -> Optional[str]:
+        query = f"SELECT process_id FROM {self.table} WHERE document_id = $1"
+        return await self.query_scalar(query, parameters=[document_id])

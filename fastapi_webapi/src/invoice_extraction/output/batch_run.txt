@@ -1,0 +1,167 @@
+Running 3 document(s) from C:\Users\rodrigo.sousa\_Projetos\ESCALA\escala\fastapi_webapi\src\invoice_extraction\docs\splits
+
+document is invoice, but it is copy
+################################################################################
+# FT-4302108_001.pdf  [validated]
+################################################################################
+ok
+
+================================================================================
+📄 FT-4302108_001.pdf
+================================================================================
+
+Classification
+--------------
+Type           invoice                                 🟢 1.00
+               evidence: Factura
+State          original                                🟢 1.00
+               evidence: Original
+
+================================================================================
+📄 FT-4302108_001.pdf
+================================================================================
+
+Parties
+-------
+Supplier       ACTIVIDADES TRANSITÁRIAS, LDA.          🟢 0.98
+               evidence: ACTIVIDADES TRANSITÁRIAS, LDA.
+Supplier VAT   PT512046158                             🟢 0.95
+               evidence: CONTRIBUINTE N.º 512 046 158
+Client         AZORFISK UNIPESSOAL, LDA                🟢 0.98
+               evidence: AZORFISK UNIPESSOAL, LDA
+Client VAT     PT513791345                             🟢 0.95
+               evidence: Número de Contribuinte: 513791345
+
+Amounts
+-------
+Issue date     03-02-2023                              🟢 1.00
+               evidence: Data de Emissão: 03-02-2023
+Base           3568.0                                  🟢 0.95
+               evidence: Total Liquido: 3 568,00 €
+VAT            189.6                                   🟢 0.98
+               evidence: Valor IVA: 189,60 €
+Total          3757.6                                  🟢 0.98
+               evidence: Valor Total: 3 757,60 €
+Currency       EUR                                     🟢 0.95
+               evidence: Valor Total: 3 757,60 €
+PO              -                                  
+
+================================================================================
+📄 FT-4302108_001.pdf
+================================================================================
+
+Validated parties
+-----------------
+Supplier       ACTIVIDADES TRANSITÁRIAS, LDA.          🟢 0.99
+Supplier ID     -                                  
+Supplier VAT   PT512046158                             🟢 1.00
+BU             AZORFISK UNIPESSOAL, LDA                🟢 0.99
+BU ID           -                                  
+BU VAT         PT513791345                             🟢 1.00
+
+Validated amounts
+-----------------
+Issue date     03-02-2023                              🟢 1.00
+Base           3568.0                                  🟢 1.00
+VAT            189.6                                   🟢 1.00
+Total          3757.6                                  🟢 1.00
+Currency       EUR                                     🟢 1.00
+PO              -                                  
+
+Notes
+-----
+verify_client_nif -> (client: True, supplier: False); verify_supplier_nif -> (client: False, supplier: True). No swap. names/vats match parsed text. issue_date and amounts match parsed text. purchase_order absent in parsed text.
+
+################################################################################
+# FT-4302108_002.pdf  [skipped]
+################################################################################
+document is invoice, but it is copy
+
+================================================================================
+📄 FT-4302108_002.pdf
+================================================================================
+
+Classification
+--------------
+Type           invoice                                 🟢 1.00
+               evidence: Factura
+State          copy                                    🟢 1.00
+               evidence: Cópia
+
+================================================================================
+📄 FT-4302108_002.pdf
+================================================================================
+
+⏭️  No extraction - classified as invoice / copy.
+
+################################################################################
+# Invoice 229555.pdf  [validated]
+################################################################################
+ok
+
+================================================================================
+📄 Invoice 229555.pdf
+================================================================================
+
+Classification
+--------------
+Type           invoice                                 🟢 0.99
+               evidence: INVOICE
+State           -                                  
+
+================================================================================
+📄 Invoice 229555.pdf
+================================================================================
+
+Parties
+-------
+Supplier       Broekman Shipping B.V.                  🟢 0.99
+               evidence: Broekman Shipping B.V.
+Supplier VAT   NL800822274B01                          🟢 0.95
+               evidence: VAT NL800822274B01
+Client         GSLines Transportes Maritimos LDA       🟢 0.95
+               evidence: GSLines Transportes Maritimos LDA
+Client VAT     PT511011911                             🟢 0.90
+               evidence: PT511011911
+
+Amounts
+-------
+Issue date     01-08-2026                              🟢 0.95
+               evidence: 01/08/2026
+Base           104.0                                   🟢 0.95
+               evidence: Basis VAT 104,00
+VAT            0.0                                     🟢 0.95
+               evidence: VAT Amount 0,00
+Total          104.0                                   🟢 0.95
+               evidence: TO PAY EUR 104,00
+Currency       EUR                                     🟢 0.99
+               evidence: Curr. EUR
+PO             5000355882                              🟢 0.90
+               evidence: 5000355882
+
+================================================================================
+📄 Invoice 229555.pdf
+================================================================================
+
+Validated parties
+-----------------
+Supplier       Broekman Shipping B.V.                  🔴 0.60
+Supplier ID     -                                  
+Supplier VAT   NL800822274B01                          🟢 1.00
+BU             GSLines Transportes Maritimos LDA       🟢 1.00
+BU ID           -                                  
+BU VAT         PT511011911                             🟢 1.00
+
+Validated amounts
+-----------------
+Issue date     02-07-2026                              🟢 1.00
+Base           104.0                                   🟢 1.00
+VAT            0.0                                     🟢 1.00
+Total          104.0                                   🟢 1.00
+Currency       EUR                                     🟢 1.00
+PO             5000355882                              🟢 1.00
+
+Notes
+-----
+issue_date corrected from 01-08-2026 (was due date) to 02-07-2026 (invoice date on doc). supplier_vat in supplier registry. client_vat in client registry. supplier_name not in parsed text; kept @0.6. PO 5000355882 present.
+

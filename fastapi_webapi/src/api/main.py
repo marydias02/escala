@@ -13,14 +13,14 @@ from api.routers import include_all_routers
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
     from api import setup_logger
-    from api.repositories import declare_tables
     from api.sql import init_database_pool
 
     setup_logger(debug=DEBUG_MODE)
 
+    # Schema is managed by Alembic migrations (`alembic upgrade head`), not created
+    # at startup — the app assumes the database is already migrated.
     db_pool = await init_database_pool()
     try:
-        await declare_tables()
         yield
     finally:
         db_pool.terminate()
