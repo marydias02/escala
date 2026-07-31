@@ -488,7 +488,8 @@
         <h3>Document type &amp; state</h3>
         <span class="span-name mono">nodes.classify_document · span 2-classification</span>
       </div>
-      <p>Produces a <code>DocumentClassification</code>: <code>document_type</code> (invoice / credit_note / debit_note / receipt / other), <code>document_state</code> (original / proforma / copy / cancelled, nullable), and <code>document_exception</code> (only meaningful on receipts — condominio / insurance / bank extract).</p>
+      <p>Produces a <code>DocumentClassification</code>: <code>document_type</code> (invoice / credit_note / debit_note / receipt / other), <code>document_state</code> (original / proforma / copy / cancelled, nullable), <code>document_number</code> (the supplier's own reference for this document), and <code>document_exception</code> (only meaningful on receipts — condominio / insurance / bank extract).</p>
+      <p class="muted"><code>document_number</code> is read here, at classification, rather than at extraction — deliberately. It is read on <strong>every</strong> document, whatever its type or state, because routing needs it to match a proforma or copy (which never reach extraction) against the original in the same email. See §06.</p>
     </div>
 
     <div class="stage-card">
@@ -511,7 +512,7 @@
         <h3>Structured field extraction</h3>
         <span class="span-name mono">nodes.extract_document · span 4-extraction</span>
       </div>
-      <p>Produces <code>InvoiceData</code> (<code>models/invoice.py</code>) — every field a <code>Confident[T]</code> carrying <code>value</code>, <code>confidence</code> and an <code>evidence</code> snippet. Fields: <code>supplier_name</code>, <code>supplier_vat</code>, <code>client_name</code>, <code>client_vat</code>, <code>document_number</code>, <code>purchase_order[]</code>, <code>issue_date</code>, <code>base_amount</code>, <code>vat_amount</code>, <code>total_amount</code>, <code>currency</code>. Never guessed — null whenever ambiguous.</p>
+      <p>Produces <code>InvoiceData</code> (<code>models/invoice.py</code>) — every field a <code>Confident[T]</code> carrying <code>value</code>, <code>confidence</code> and an <code>evidence</code> snippet. Fields: <code>supplier_name</code>, <code>supplier_vat</code>, <code>client_name</code>, <code>client_vat</code>, <code>purchase_order[]</code>, <code>issue_date</code>, <code>base_amount</code>, <code>vat_amount</code>, <code>total_amount</code>, <code>currency</code>. Never guessed — null whenever ambiguous. <code>document_number</code> is <strong>not</strong> here — it now lives on <code>DocumentClassification</code> (§03), read earlier so routing has it even for documents that are gated out before extraction.</p>
     </div>
 
     <div class="stage-card">
@@ -573,8 +574,14 @@
     </div>
 
     <div class="stage-card">
-      <h3 style="margin-bottom: var(--space-2);">Independent PO check</h3>
-      <p><code>decisions.build_alerts_list</code> runs a second, deterministic check after validation completes — it can only disagree with the LLM's own tool-informed conclusion if the LLM got it wrong. If <code>tools.po_confirmation.supplier_requires_po(supplier_vat)</code> is true, the document is flagged unless every PO reference in <code>po_list</code> resolves via <code>po_exists()</code>. This produces alert strings (in Portuguese, reviewer-facing) written to <code>fct_documents.alerts_list</code>, alongside per-field "missing" / "low confidence" alerts — but does not itself change the routing action.</p>
+      <h3 style="margin-bottom: var(--space-2);">PO check — now routes, not just alerts</h3>
+      <p><code>decisions.missing_pos</code> is a second, independent deterministic check — it can only disagree with the LLM's own tool-informed conclusion (formed with the same tools during validation) if the LLM got it wrong. When <code>tools.po_confirmation.supplier_requires_po(supplier_vat)</code> is true it returns one of three things, and each routes differently in <code>_ingest_or_escalate</code>:</p>
+      <ul>
+        <li><code>None</code> — no PO required, or every PO on the document resolves via <code>po_exists()</code> → proceeds to <span class="action-pill action-ingest">Ingest in SAP</span>.</li>
+        <li><code>[]</code> — the supplier requires a PO and the document carries none → <span class="action-pill action-reply">Sent back to Supplier</span> ("Documento sem nota de encomenda...") — the supplier's omission, only they can fix it.</li>
+        <li>a non-empty list — PO references on the document that don't resolve → <span class="action-pill action-manual">Validate Manually</span> — ours to investigate, not the supplier's.</li>
+      </ul>
+      <p class="muted"><code>build_alerts_list</code> calls the same <code>missing_pos</code> function, so an alert and its routing action can never disagree. A supplier VAT we never read is not a PO problem — it's already caught by the <code>REQUIRED_FIELDS</code> gate above.</p>
     </div>
   </section>
 
@@ -583,12 +590,30 @@
       <span class="section-num">06 — Routing decision</span>
       <h2>Case matrix (decisions.py)</h2>
       <p class="section-desc">
-        Two layers: <code>decide_document(result)</code> routes one document, pure and
-        LLM-free. <code>decide_email(...)</code> rolls per-document decisions into the single
-        reply the email may get, and <strong>suppresses</strong> replies the email doesn't
-        warrant — if anything in the email is going to SAP, a duplicate/proforma alongside
-        the original is not chased with the supplier.
+        Two vocabularies, because the layers answer different questions. A <code>DocumentAction</code>
+        is what happens to one piece of paper — <code>decide_document(result, original_keys)</code>
+        routes it, pure and LLM-free. An <code>EmailAction</code> is what the email as a whole owes
+        someone — <code>decide_email(...)</code> rolls the per-document actions up into a
+        <strong>list</strong> (<code>EmailDecision.actions</code>), since one email can warrant
+        several things at once: a reply for one document AND a treasury forward for another.
       </p>
+    </div>
+
+    <div class="stage-card">
+      <h3 style="margin-bottom: var(--space-2);">Duplicate filing, ahead of every type rule</h3>
+      <p><code>original_document_keys(extractions)</code> collects the <code>(document_type, normalized document_number)</code>
+      of every document in the email whose state reads as <em>original</em> (explicit <code>original</code>, or a
+      NULL state — real documents rarely print the word). Every document is then decided against that
+      same set via <code>decide_document(result, original_keys)</code>: a non-original whose key matches
+      one already in the set is filed away as
+      <span class="action-pill action-manual" style="background: rgb(255 255 255 / 10%); color: var(--color-text-muted);">Ignore (has original)</span>
+      before any type/state rule runs — there is nothing to ask for and nothing to book twice.</p>
+      <p class="muted">The type is part of the key, not just the number, because numbering is per document
+      series — an invoice and a receipt can legitimately share a number. <code>document_number</code> is read at
+      <strong>classification</strong> (not extraction) specifically so this comparison covers documents that never
+      reach extraction at all, like a proforma or a copy. Numbers are compared via
+      <code>normalize_document_number</code> — casefolded, spaces/dots/hyphens stripped — since suppliers rarely
+      print the same reference identically twice.</p>
     </div>
 
     <div class="table-wrap">
@@ -611,11 +636,14 @@
       <table class="matrix">
         <caption>B — Invoice-like documents (invoice / credit_note / debit_note)</caption>
         <thead>
-          <tr><th>Case</th><th>State</th><th>Confidence</th><th>Action</th></tr>
+          <tr><th>Case</th><th>State</th><th>Confidence / PO</th><th>Action</th></tr>
         </thead>
         <tbody>
-          <tr><td class="case-id">B1 / B5 / B7</td><td>Original (null state reads as original)</td><td>All required fields ≥ 0.7</td><td><span class="action-pill action-ingest">Ingest in SAP</span></td></tr>
+          <tr><td class="case-id">B0</td><td>Non-original, key matches an original elsewhere in the email</td><td>—</td><td><span class="action-pill action-inbox">Ignore (has original)</span> — checked first, ahead of every other rule</td></tr>
+          <tr><td class="case-id">B1 / B5 / B7</td><td>Original (null state reads as original)</td><td>All required fields ≥ 0.7, PO satisfied</td><td><span class="action-pill action-ingest">Ingest in SAP</span></td></tr>
           <tr><td class="case-id">B1 / B5 / B7</td><td>Original</td><td>Any field missing or &lt; 0.7</td><td><span class="action-pill action-manual">Validate Manually</span></td></tr>
+          <tr><td class="case-id">B1 / B5 / B7</td><td>Original, confident</td><td>Supplier requires PO, document has none</td><td><span class="action-pill action-reply">Sent back to Supplier</span> — "Documento sem nota de encomenda..."</td></tr>
+          <tr><td class="case-id">B1 / B5 / B7</td><td>Original, confident</td><td>PO(s) present but not found in the PO list</td><td><span class="action-pill action-manual">Validate Manually</span></td></tr>
           <tr><td class="case-id">B2</td><td>Proforma</td><td>—</td><td><span class="action-pill action-reply">Sent back to Supplier</span> — "Documento proforma, por favor enviar o original"</td></tr>
           <tr><td class="case-id">B3</td><td>Copy</td><td>—</td><td><span class="action-pill action-reply">Sent back to Supplier</span> — "Documento duplicado, por favor enviar o original"</td></tr>
           <tr><td class="case-id">B4 / B6 / B8</td><td>Cancelled</td><td>—</td><td><span class="action-pill action-inbox">Left in Inbox</span> — nothing to ask for, nothing to book</td></tr>
@@ -630,8 +658,10 @@
           <tr><th>Case</th><th>Condition</th><th>Action</th></tr>
         </thead>
         <tbody>
-          <tr><td class="case-id">C1–C3</td><td>Receipt with exception (condominio / insurance / bank extract), confident</td><td><span class="action-pill action-ingest">Ingest in SAP</span> — booked exactly like an invoice</td></tr>
+          <tr><td class="case-id">C0</td><td>Non-original, key matches an original elsewhere in the email</td><td><span class="action-pill action-inbox">Ignore (has original)</span></td></tr>
+          <tr><td class="case-id">C1–C3</td><td>Receipt with exception (condominio / insurance / bank extract), confident, PO satisfied</td><td><span class="action-pill action-ingest">Ingest in SAP</span> — booked exactly like an invoice</td></tr>
           <tr><td class="case-id">C1–C3</td><td>Receipt with exception, not confident</td><td><span class="action-pill action-manual">Validate Manually</span></td></tr>
+          <tr><td class="case-id">C1–C3</td><td>Receipt with exception, confident, PO problem</td><td>same PO split as B1/B5/B7 above</td></tr>
           <tr><td class="case-id">C4</td><td>Ordinary receipt, no exception</td><td><span class="action-pill action-treasury">Forward to Treasury</span> — not ours to book</td></tr>
           <tr><td class="case-id">C5</td><td>"Other" — shipping docs, POs, bank statements</td><td><span class="action-pill action-inbox">Left in Inbox</span> — not processed</td></tr>
         </tbody>
@@ -651,8 +681,28 @@
     </div>
 
     <div class="stage-card">
-      <h3 style="margin-bottom: var(--space-2);">Suppression rule</h3>
-      <p>If <strong>any</strong> document in the email resolves to <span class="action-pill action-ingest">Ingest in SAP</span>, every <span class="action-pill action-reply">Sent back to Supplier</span> decision in that same email is downgraded to <span class="action-pill action-inbox">Left in Inbox</span> (reason suffixed <code>"(suppressed: email also has an original)"</code>). Otherwise the email-level action is the first of, in priority order: <strong>Ingest</strong> &gt; <strong>Treasury</strong> &gt; <strong>Manual</strong> &gt; <strong>Inbox</strong>.</p>
+      <h3 style="margin-bottom: var(--space-2);">Email-level roll-up (roll_up_actions)</h3>
+      <p><code>EmailDecision.actions</code> is a <strong>list</strong>, built by <code>roll_up_actions</code> from
+      <code>EMAIL_ACTION_RULES</code> — an email can owe several things at once (a reply for one document, a
+      treasury forward for another), so both appear rather than one dominating.</p>
+      <div class="table-wrap">
+        <table class="matrix">
+          <thead><tr><th>Email action</th><th>Triggered by any document action</th></tr></thead>
+          <tbody>
+            <tr><td><span class="action-pill action-reply">Reply to supplier</span></td><td><code>REPLY</code></td></tr>
+            <tr><td><span class="action-pill action-treasury">Forward to treasury</span></td><td><code>TREASURY</code></td></tr>
+            <tr><td><span class="action-pill action-inbox">Keep in Inbox</span></td><td><code>INBOX</code> or <code>MANUAL</code></td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="muted"><span class="action-pill action-inbox" style="background: rgb(0 165 144 / 22%); color: #5eeedb;">Archive</span>
+      is the exception — checked first and exclusive of the rules above. It fires only when
+      <strong>every</strong> document in the email resolved to <code>INGEST</code> or <code>IGNORE</code>: nothing is
+      booked-and-pending, nothing is owed to anyone, so the email leaves the inbox entirely. An email with no
+      documents at all falls back to <span class="action-pill action-inbox">Keep in Inbox</span> rather than
+      Archive — "nothing to do" and "everything done" are different states. This replaces the old suppression rule
+      (downgrading a REPLY when an INGEST was present in the same email) — that case is now handled earlier, by
+      duplicate filing against <code>original_keys</code> (B0/C0 above).</p>
     </div>
   </section>
 
@@ -684,7 +734,9 @@
       <p class="section-desc">
         Development instrumentation only — never shown to a client. Degrades to a no-op when
         <code>MLFLOW_TRACKING_URI</code> is unset, so the pipelines run unchanged without it.
-        Every email is one trace; the span tree below is what one email with a single PDF
+        <code>ENABLE_TRACING</code> (config.py) is a second, independent master switch — flip it off
+        to run with zero tracing overhead (e.g. a large batch) without touching the <code>.env</code>
+        tracking URI. Every email is one trace; the span tree below is what one email with a single PDF
         produces.
       </p>
     </div>

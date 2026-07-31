@@ -17,7 +17,7 @@ It is organized as two pipelines composed by one orchestrator:
   LLM's segmentation before it's trusted.
 
 - **Extraction** (`extraction_pipeline.py`) — `CLASSIFY → EXTRACT → VALIDATE`
-  Runs on one already-split PDF at a time. Classifies the document type/state, decides
+  Runs on one already-split PDF at a time. Classifies the document type/state/number, decides
   (deterministically) whether it's worth extracting, pulls out the structured fields, and
   cross-checks them against a parsed-text baseline to produce a `ValidationReport` with a
   confidence score per field.
@@ -26,9 +26,16 @@ It is organized as two pipelines composed by one orchestrator:
   each PDF the email produced → make one email-level routing decision
   (`decisions.py`) → persist `fct_processes` / `fct_documents` rows to Postgres.
 
-Business routing rules (Ingest in SAP / Reply to supplier / Forward to Treasury / Validate
-Manually / Leave in Inbox) live entirely in `decisions.py`, kept deliberately separate from the
-pipelines so they can be read and changed without touching extraction logic.
+Business routing rules live entirely in `decisions.py`, kept deliberately separate from the
+pipelines so they can be read and changed without touching extraction logic. Two action
+vocabularies: each **document** gets exactly one `DocumentAction` (Ingest in SAP / Sent back to
+Supplier / Forward to Treasury / Validate Manually / Keep in Inbox / Ignore — has original), while
+an **email** can warrant several `EmailAction`s at once (Reply to supplier / Forward to treasury /
+Keep in Inbox / Archive), rolled up from its documents' actions. Documents are matched against the
+other originals in the same email by `(document_type, document_number)` so a duplicate/proforma is
+filed away rather than acted on twice, and a document from a PO-required supplier is checked for a
+resolvable purchase order before being booked. See [process.html](process.html) for the full case
+matrix.
 
 
 ## Missing (NEXT STEPS)
