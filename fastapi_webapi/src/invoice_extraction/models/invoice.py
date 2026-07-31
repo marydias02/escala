@@ -93,30 +93,11 @@ class InvoiceData(BaseModel):
         """,
     )
 
-    document_number: Optional[Confident[str]] = Field(
-        default=None,
-        description="""
-        The document's own identifying number, as assigned by the supplier.
-
-        Usually labelled:
-
-        Invoice No
-        Invoice Number
-        Fatura N.º
-        FT
-        Receipt No
-        Recibo N.º
-
-        This identifies THIS document, not a purchase order and not a
-        supplier/client registry id.
-
-        Do NOT return:
-
-        - purchase order numbers
-        - supplier or client VAT/NIF
-        - due date or issue date
-        """,
-    )
+    # NOTE: `document_number` is deliberately NOT here. It is read during
+    # CLASSIFICATION (see `DocumentClassification.document_number`), because the
+    # routing rules need it for documents that never reach extraction at all —
+    # a proforma or a copy is gated out, yet its number is exactly what decides
+    # whether the same email already carried the original.
 
     purchase_order: List[Confident[str]] = Field(
         default_factory=list,

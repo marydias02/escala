@@ -1,4 +1,8 @@
-from invoice_extraction.models.classification import DocumentClassification
+from invoice_extraction.models.classification import (
+    DocumentClassification,
+    document_number_of,
+    normalize_document_number,
+)
 from invoice_extraction.models.common import Checked, Confident
 from invoice_extraction.models.email import EmailAttachment, EmailContent, LoadedEmail
 from invoice_extraction.models.email_intent import EmailIntent
@@ -18,4 +22,6 @@ __all__ = [
     "InvoiceData",
     "LoadedEmail",
     "ValidationReport",
+    "document_number_of",
+    "normalize_document_number",
 ]

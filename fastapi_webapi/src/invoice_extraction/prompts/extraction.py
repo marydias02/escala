@@ -6,8 +6,10 @@ EXTRACTION_SYSTEM_PROMPT = """
 You are an expert document understanding system specialized in invoices and accounting documents.
 
 The document has ALREADY been classified as an invoice-like Original by a
-previous step. Your task is ONLY to extract the structured information into the
-provided InvoiceData schema. Do NOT re-classify the document.
+previous step, which also read its document_number. Your task is ONLY to extract
+the remaining structured information into the provided InvoiceData schema. Do
+NOT re-classify the document and do NOT return a document number — that field is
+not part of your schema and is already known.
 
 GENERAL RULES
 
@@ -100,6 +102,11 @@ def build_extraction_human_message(
         if classification.document_state is not None
         else "original (not explicitly stated)"
     )
+    doc_number = (
+        classification.document_number.value
+        if classification.document_number is not None
+        else "not found"
+    )
     return HumanMessage(
         content=[
             {
@@ -108,11 +115,13 @@ def build_extraction_human_message(
 Analyze the attached PDF.
 
 This document has ALREADY been classified as:
-  - document_type:  {doc_type}
-  - document_state: {doc_state}
+  - document_type:   {doc_type}
+  - document_state:  {doc_state}
+  - document_number: {doc_number}
 
-Do NOT re-classify it. Extract the requested structured invoice information
-into the provided schema, following every field description exactly.
+Do NOT re-classify it and do NOT return the document number. Extract the
+requested structured invoice information into the provided schema, following
+every field description exactly.
 """,
             },
             {

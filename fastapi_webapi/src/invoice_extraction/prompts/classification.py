@@ -3,8 +3,9 @@ from langchain_core.messages import HumanMessage, SystemMessage
 CLASSIFICATION_SYSTEM_PROMPT = """
 You are an expert document understanding system specialized in invoices and accounting documents.
 
-Your task is ONLY to classify the document into the provided schema. You must
-NOT extract invoice fields — a separate step handles extraction.
+Your task is to classify the document into the provided schema. A separate step
+handles extraction, so you must NOT extract invoice fields — with ONE deliberate
+exception, document_number, described below.
 
 GENERAL RULES
 
@@ -44,6 +45,21 @@ If applicable, include document_exception:
 - extract
 
 Return NULL if any of these apply. It is safer to return NULL when unsure.
+
+DOCUMENT NUMBER
+
+Also read document_number: the document's OWN identifying number, as assigned by
+the supplier. Labels include Invoice No, Invoice Number, Fatura N.º, FT,
+Receipt No, Recibo N.º.
+
+This is the one non-classification value you are asked for, and it is asked for
+here rather than at extraction because a later step must match duplicates
+against their originals BEFORE extraction runs. So read it on EVERY document,
+whatever its type or state — a proforma, a copy and a cancelled document all
+carry a number, and those are precisely the cases the match depends on.
+
+Do NOT return a purchase order number, a supplier/client VAT or NIF, or a date.
+Return null when no such number is visible.
 
 CONFIDENCE
 
@@ -102,12 +118,15 @@ def build_classification_human_message(filename: str, encoded_pdf: str) -> Human
                 "text": """
 Analyze the attached PDF.
 
-Classify ONLY the accounting nature of the document (document_type) and its
+Classify the accounting nature of the document (document_type) and its
 legal state (document_state) when explicitly visible.
 
 If the document can be applied in any of the document_exception, include that field. If not, leave empty.
 
-Do NOT extract any invoice fields (no supplier, client, amounts, VAT, dates).
+Also read document_number — the document's own number assigned by the supplier.
+Read it whatever the document's type or state.
+
+Do NOT extract any other invoice fields (no supplier, client, amounts, VAT, dates).
 
 Follow the provided schema exactly.
 """,

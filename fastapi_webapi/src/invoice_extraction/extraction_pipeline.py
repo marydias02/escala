@@ -15,7 +15,12 @@ from config.settings import settings
 from invoice_extraction.config import PARSER_KWARGS, PROCESSED_EMAILS_DIR
 from invoice_extraction.invoice_utils.documents import load_document
 from invoice_extraction.invoice_utils.pdf_parser import build_attachment_evidence
-from invoice_extraction.models import DocumentClassification, InvoiceData, ValidationReport
+from invoice_extraction.models import (
+    DocumentClassification,
+    InvoiceData,
+    ValidationReport,
+    document_number_of,
+)
 from invoice_extraction.nodes import classify_document, extract_document, validate_document
 from invoice_extraction.tracing import STAGE_PARSING, span
 from utils.llm_factory import LLMFactory
@@ -155,7 +160,14 @@ class ExtractionPipeline:
                     )
 
             # --- VALIDATION ---------------------------------------------------
-            validation = validate_document(self.llm, invoice_data, parsed_text=parsed_text)
+            # The document number comes from classification, not extraction — see
+            # `DocumentClassification.document_number`.
+            validation = validate_document(
+                self.llm,
+                invoice_data,
+                parsed_text=parsed_text,
+                document_number=document_number_of(classification),
+            )
 
             # The full report lives on the `5-validation` span; this is the
             # document-level roll-up, so it stays short.

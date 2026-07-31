@@ -69,6 +69,35 @@ class DocumentClassification(BaseModel):
     Return null when no state is explicitly indicated.
     """
     )
+    document_number: Optional[Confident[str]] = Field(
+        default=None,
+        description="""
+    The document's own identifying number, as assigned by the supplier.
+
+    Usually labelled:
+
+    Invoice No
+    Invoice Number
+    Fatura N.º
+    FT
+    Receipt No
+    Recibo N.º
+
+    This identifies THIS document, not a purchase order and not a
+    supplier/client registry id.
+
+    Do NOT return:
+
+    - purchase order numbers
+    - supplier or client VAT/NIF
+    - due date or issue date
+
+    Read this number on EVERY document, whatever its type or state — including
+    proformas, copies and cancelled documents. It is what allows a duplicate to
+    be matched against its original.
+    """,
+    )
+
     document_exception: Optional[
         Confident[
             Literal[
@@ -80,11 +109,39 @@ class DocumentClassification(BaseModel):
     ] = Field(
         default=None,
         description="""
-    Optional exceptions that should be populated when a document is a receipt. 
-    Condomínio refers to service charges of buildings. 
-    Insurance refers to receipts from insurance companies. 
-    Extract refers to bank extract. 
+    Optional exceptions that should be populated when a document is a receipt.
+    Condomínio refers to service charges of buildings.
+    Insurance refers to receipts from insurance companies.
+    Extract refers to bank extract.
     If none of the above applies, assume None. SHOULD BE NONE BY DEFAULT
-    """,   
-    ) 
+    """,
+    )
+
+
+def normalize_document_number(value: Optional[str]) -> Optional[str]:
+    """The comparable form of a document number, or None when there is nothing to compare.
+
+    Suppliers rarely print the same number identically twice: "FT 2024/123",
+    "FT2024/123" and "ft 2024/123" are one document. Matching a duplicate against
+    its original therefore compares this form, not the raw string — casefolded,
+    with spaces, dots and hyphens dropped.
+
+    Separators are dropped rather than collapsed because they are decorative in
+    these references; digits and letters are not, so nothing that distinguishes
+    two real documents is lost.
+    """
+    if value is None:
+        return None
+
+    normalized = "".join(
+        char for char in value.casefold() if char.isalnum()
+    )
+    return normalized or None
+
+
+def document_number_of(classification: Optional[DocumentClassification]) -> Optional[str]:
+    """The raw document number read at classification, or None."""
+    if classification is None or classification.document_number is None:
+        return None
+    return classification.document_number.value
 

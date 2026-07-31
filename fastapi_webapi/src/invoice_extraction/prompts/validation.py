@@ -41,6 +41,11 @@ the bu_* fields.
 supplier_id and bu_id are internal registry identifiers. They are NOT present in
 the document and cannot be derived from it — always return null for both.
 
+document_number was read by the classification step rather, so it reaches you
+from a different source. Validate it exactly as you would any other value:
+confirm it against the parsed text, correct it when the parsed text explicitly
+supports a different number, and lower its confidence when you cannot confirm it.
+
 TOOLS
 
 You have access to the following tools:
@@ -114,16 +119,21 @@ VALIDATION_SYSTEM_MESSAGE = SystemMessage(content=VALIDATION_SYSTEM_PROMPT)
 def build_validation_human_message(
     extraction: InvoiceData,
     parsed_text: Optional[str] = None,
+    document_number: Optional[str] = None,
 ) -> HumanMessage:
     """Build the validation message for a single, already-extracted document.
 
     Includes the extracted invoice data plus the deterministically parsed text,
     and asks the model to validate the former against the latter.
+
+    `document_number` is passed separately because it is read at CLASSIFICATION
+    rather than at extraction — it is not a field of `InvoiceData`.
     """
     extracted_data = {
         "supplier_name": extraction.supplier_name.value if extraction.supplier_name else None,
         "supplier_vat": extraction.supplier_vat.value if extraction.supplier_vat else None,
-        "document_number": extraction.document_number.value if extraction.document_number else None,
+        # From the classification stage, not from `extraction`.
+        "document_number": document_number,
         "client_name": extraction.client_name.value if extraction.client_name else None,
         "client_vat": extraction.client_vat.value if extraction.client_vat else None,
         # `purchase_order` is a LIST of Confident[str] — unwrap each entry.

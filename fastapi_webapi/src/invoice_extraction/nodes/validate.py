@@ -62,6 +62,7 @@ def validate_document(
     llm: BaseChatModel,
     invoice: InvoiceData,
     parsed_text: Optional[str] = None,
+    document_number: Optional[str] = None,
 ) -> ValidationReport:
     """Validate extracted invoice data, using the registry tools, into a ValidationReport.
 
@@ -72,10 +73,16 @@ def validate_document(
                         registry as needed (capped at MAX_TOOL_ROUNDS).
       2. Shaping pass — the whole conversation is replayed through
                         `with_structured_output` to produce the report.
+
+    `document_number` comes from the CLASSIFICATION stage, not from `invoice` —
+    it is read there so duplicates can be matched before extraction runs. It is
+    still validated here, since the report is what reaches the database.
     """
     messages: list[BaseMessage] = [
         VALIDATION_SYSTEM_MESSAGE,
-        build_validation_human_message(invoice, parsed_text=parsed_text),
+        build_validation_human_message(
+            invoice, parsed_text=parsed_text, document_number=document_number
+        ),
     ]
 
     llm_with_tools = llm.bind_tools(VALIDATION_TOOLS)

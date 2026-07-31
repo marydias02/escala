@@ -71,6 +71,8 @@ def print_classification_result(filename: str, classification: DocumentClassific
     print("-" * 14)
     _print_field("Type", classification.document_type)
     _print_field("State", classification.document_state)
+    _print_field("Document Number", classification.document_number)
+    _print_field("Exception", classification.document_exception)
 
 
 def print_extraction_result(
@@ -98,7 +100,6 @@ def print_extraction_result(
     print("-" * 7)
     _print_field("Supplier", invoice.supplier_name)
     _print_field("Supplier VAT", invoice.supplier_vat)
-    _print_field("Document number", invoice.document_number)
     _print_field("Client", invoice.client_name)
     _print_field("Client VAT", invoice.client_vat)
 
