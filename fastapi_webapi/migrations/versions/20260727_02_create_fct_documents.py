@@ -4,22 +4,26 @@ Revision ID: 20260727_02
 Revises: 20260727_01
 Create Date: 2026-07-27 15:40:00.000000
 
-document_content is stored as a single JSONB column with the shape:
+document_content is stored as a single JSONB column. Each value-bearing field is
+either null or a {"value", "confidence"} object, preserving the validator's
+confidence score for later review/thresholding:
     {
-        "supplier_name": str,
-        "supplier_id": str,
-        "supplier_vat": str,
-        "bu_name": str,
-        "bu_id": str,
-        "bu_vat": str,
-        "issue_date": date,
-        "base_amount": float,
-        "vat_amount": float,
-        "total_amount": float,
-        "currency": str,
-        "po_list": list[str],
+        "supplier_name": {"value": str, "confidence": float} | None,
+        "supplier_id": {"value": str, "confidence": float} | None,
+        "supplier_vat": {"value": str, "confidence": float} | None,
+        "document_number": {"value": str, "confidence": float} | None,
+        "bu_name": {"value": str, "confidence": float} | None,
+        "bu_id": {"value": str, "confidence": float} | None,
+        "bu_vat": {"value": str, "confidence": float} | None,
+        "issue_date": {"value": date, "confidence": float} | None,
+        "base_amount": {"value": float, "confidence": float} | None,
+        "vat_amount": {"value": float, "confidence": float} | None,
+        "total_amount": {"value": float, "confidence": float} | None,
+        "currency": {"value": str, "confidence": float} | None,
+        "po_list": [{"value": str, "confidence": float}, ...],
     }
-Validation of this shape is handled in the application layer (Pydantic).
+Built by build_document_content in invoice_extraction/email_pipeline.py; shape
+is validated in the application layer (Pydantic), not enforced by the DB.
 
 """
 from typing import Sequence, Union
