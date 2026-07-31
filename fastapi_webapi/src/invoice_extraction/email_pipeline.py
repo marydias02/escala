@@ -43,6 +43,7 @@ from invoice_extraction.decisions import (
     REPLY,
     TREASURY,
     EmailDecision,
+    build_alerts_list,
     decide_email,
 )
 from invoice_extraction.extraction_pipeline import (
@@ -86,6 +87,7 @@ _CONTENT_FIELDS = [
     "supplier_name",
     "supplier_id",
     "supplier_vat",
+    "document_number",
     "bu_name",
     "bu_id",
     "bu_vat",
@@ -200,11 +202,6 @@ def build_document_content(validation: Optional[ValidationReport]) -> dict:
     }
     content["po_list"] = [_checked_to_dict(po) for po in validation.po_list]
     return content
-
-
-def build_alerts_list(ingestion: EmailIngestionResult, result: PipelineResult) -> list[str]:
-    """Alerts for one document. Empty for now — THE place to wire real sources."""
-    return []
 
 
 def parse_reception_date(value: Optional[str]) -> Optional[datetime]:
@@ -345,7 +342,7 @@ class EmailPipeline:
                 "action": actions.get(extraction.filename, MANUAL),
                 "status": derive_status(extraction, actions.get(extraction.filename, MANUAL)),
                 "document_content": build_document_content(extraction.validation),
-                "alerts_list": build_alerts_list(ingestion, extraction),
+                "alerts_list": build_alerts_list(extraction),
                 "created_by": "pipeline",
             }
             for extraction in result.extractions

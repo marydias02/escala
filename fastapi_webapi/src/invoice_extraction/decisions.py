@@ -19,9 +19,11 @@ business rules can be read without reading the pipeline.
 from dataclasses import dataclass, field
 from typing import Literal, Optional
 
+from invoice_extraction.config import MIN_CONFIDENCE
 from invoice_extraction.extraction_pipeline import PipelineResult
 from invoice_extraction.ingestion_pipeline import EmailIngestionResult
 from invoice_extraction.models import DocumentClassification, EmailIntent, ValidationReport
+from invoice_extraction.tools.po_confirmation import po_exists, supplier_requires_po
 
 # The complete action vocabulary. Written to `fct_documents.action`, so a Literal
 # rather than free-form strings — a typo cannot silently invent a sixth action.
@@ -74,10 +76,22 @@ REQUIRED_FIELDS = (
     "currency",
 )
 
-# 0.85 keeps only the upper half of the validator's own "0.70-0.89 = probably
-# correct but some ambiguity" band. Money-moving data, so ambiguity goes to a
-# human.
-MIN_CONFIDENCE = 0.85
+def _field_problems(
+    validation: ValidationReport, field_labels: dict[str, str]
+) -> list[tuple[str, str, Optional[float]]]:
+    """(field_name, label, confidence) for every missing or low-confidence field.
+
+    confidence is None for a missing field, so callers can tell the two cases
+    apart without re-deriving which one they're in.
+    """
+    problems: list[tuple[str, str, Optional[float]]] = []
+    for name, label in field_labels.items():
+        checked = getattr(validation, name, None)
+        if checked is None:
+            problems.append((name, label, None))
+        elif checked.confidence < MIN_CONFIDENCE:
+            problems.append((name, label, checked.confidence))
+    return problems
 
 
 def ingestion_blockers(validation: Optional[ValidationReport]) -> list[str]:
@@ -89,15 +103,61 @@ def ingestion_blockers(validation: Optional[ValidationReport]) -> list[str]:
     if validation is None:
         return ["no validation report"]
 
-    blockers: list[str] = []
-    for name in REQUIRED_FIELDS:
-        checked = getattr(validation, name, None)
-        if checked is None:
-            blockers.append(f"{name} missing")
-        elif checked.confidence < MIN_CONFIDENCE:
-            blockers.append(f"{name} confidence {checked.confidence:.2f} < {MIN_CONFIDENCE}")
+    return [
+        f"{name} missing" if confidence is None
+        else f"{name} confidence {confidence:.2f} < {MIN_CONFIDENCE}"
+        for name, _label, confidence in _field_problems(
+            validation, {name: name for name in REQUIRED_FIELDS}
+        )
+    ]
 
-    return blockers
+
+# Every ValidationReport field except supplier_id/bu_id (always null pre-registry
+# lookup) and notes/po_list (handled separately, below). Portuguese labels since
+# alerts_list is reviewer-facing.
+_ALERT_FIELD_LABELS = {
+    "supplier_name": "Nome do fornecedor",
+    "supplier_vat": "NIF do fornecedor",
+    "document_number": "Número do documento",
+    "bu_name": "Nome do cliente",
+    "bu_vat": "NIF do cliente",
+    "issue_date": "Data de emissão",
+    "base_amount": "Valor base",
+    "vat_amount": "Valor de IVA",
+    "total_amount": "Valor total",
+    "currency": "Moeda",
+}
+
+
+def build_alerts_list(result: PipelineResult) -> list[str]:
+    """Alerts for one document: missing/low-confidence fields, PO checks.
+
+    Written to `fct_documents.alerts_list`, so entries are short, human-readable
+    Portuguese strings for a reviewer, not machine codes.
+    """
+    validation = result.validation
+    if validation is None:
+        return ["Documento não validado"]
+
+    alerts = [
+        f"Campo em falta: {label}" if confidence is None
+        else f"Confiança baixa: {label} ({confidence:.2f})"
+        for _name, label, confidence in _field_problems(validation, _ALERT_FIELD_LABELS)
+    ]
+
+    # Second, independent deterministic check — can only disagree with the
+    # LLM's own tool-informed conclusion (formed using these same tools during
+    # validation) if the LLM got it wrong - they can be calledusing invoke method independently
+    supplier_vat = validation.supplier_vat.value if validation.supplier_vat else None
+    if supplier_vat and supplier_requires_po.invoke({"supplier_vat": supplier_vat}):
+        if not validation.po_list:
+            alerts.append("Fornecedor requer nota de encomenda e nenhuma foi encontrada")
+        else:
+            for po in validation.po_list:
+                if po.value and not po_exists.invoke({"po_reference": po.value}):
+                    alerts.append(f"Nota de encomenda não encontrada: {po.value}")
+
+    return alerts
 
 
 @dataclass

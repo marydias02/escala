@@ -31,13 +31,13 @@ MANIFEST_NAME = "email_content.json"
 FORCE_REINGEST = True
 
 # Only ingest the first N emails (None = all). Useful for a cheap smoke test.
-INGEST_LIMIT: int | None = 1
+INGEST_LIMIT: int | None = 20
 
 # Persist results to Postgres. Off lets the pipeline be exercised (and traced)
 # with no database running, and keeps test runs out of fct_processes — note that
 # FORCE_REINGEST bypasses the DB dedup check, so with both on, every re-run would
 # otherwise insert another process row for the same email.
-WRITE_TO_DB = False
+WRITE_TO_DB = True
 
 # Windows caps a full path at 260 characters by default. Email subjects in the
 # sample set reach 111 characters, so folder names are truncated well short of it.
@@ -63,6 +63,13 @@ PARSER_KWARGS = {
     "min_good_chars_per_page": 200,
     "min_font_size": 5,
 }
+
+# -- Validation / decisions -------------------------------------------------
+
+# 0.7 keeps only the upper half of the validator's own "0.70-0.89 = probably
+# correct but some ambiguity" band. Money-moving data, so ambiguity goes to a
+# human.
+MIN_CONFIDENCE = 0.7
 
 # -- Tracing (MLflow) ------------------------------------------------------
 # Development instrumentation only; see `invoice_extraction.tracing`. The
