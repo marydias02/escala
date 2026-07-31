@@ -28,6 +28,7 @@ from typing import Optional
 
 from config.settings import settings
 from invoice_extraction.config import (
+    ENABLE_TRACING,
     FORCE_REINGEST,
     INGEST_LIMIT,
     MANIFEST_NAME,
@@ -37,11 +38,13 @@ from invoice_extraction.config import (
     WRITE_TO_DB,
 )
 from invoice_extraction.decisions import (
-    INBOX,
+    EMAIL_ARCHIVE,
+    EMAIL_INBOX,
+    EMAIL_REPLY,
+    EMAIL_TREASURY,
+    IGNORE,
     INGEST,
     MANUAL,
-    REPLY,
-    TREASURY,
     EmailDecision,
     build_alerts_list,
     decide_email,
@@ -168,9 +171,15 @@ def derive_status(result: PipelineResult, action: str) -> str:
 
     Only a document that actually broke (a stage raised, so no classification) is
     "Failed"; everything routed somewhere is "Pending" until that action happens.
+
+    An IGNORE document is the exception to that last part: nothing is ever going
+    to happen to a duplicate whose original we already hold, so calling it
+    "Pending" would leave a row that never resolves.
     """
     if action == INGEST:
         return "Ingested"
+    if action == IGNORE:
+        return "Ignored"
     if result.status == "failed":
         return "Failed"
     return "Pending"
@@ -382,7 +391,7 @@ class EmailPipeline:
                             source=source, status="skipped", message="already in database"
                         )
                         decision = decide_email(skipped, [])
-                        set_trace_tags(action=decision.action, outcome="already_processed")
+                        set_trace_tags(action=", ".join(decision.actions), outcome="already_processed")
                         email_span.set_outputs(
                             {"already_processed": True, "decision": decision_summary(decision)}
                         )
@@ -404,7 +413,7 @@ class EmailPipeline:
             # could be read.
             if ingestion.status != "ingested":
                 decision = decide_email(ingestion, [])
-                set_trace_tags(action=decision.action, outcome=ingestion.status)
+                set_trace_tags(action=", ".join(decision.actions), outcome=ingestion.status)
                 email_span.set_outputs(
                     {"ingestion_status": ingestion.status, "decision": decision_summary(decision)}
                 )
@@ -449,7 +458,7 @@ class EmailPipeline:
             # Tagging the trace with the outcome is what makes "every email that
             # went to Validate Manually" a one-line filter in the UI.
             set_trace_tags(
-                action=decision.action,
+                action=", ".join(decision.actions),
                 outcome="processed",
                 documents=len(extractions),
             )
@@ -517,12 +526,13 @@ def create_pipeline(llm_factory: Optional[LLMFactory] = None) -> EmailPipeline:
     )
 
 
+# Email-level markers. An email can carry several actions, so these are joined
+# rather than looked up one-for-one.
 _ACTION_MARKERS = {
-    INGEST: "✅ SAP  ",
-    REPLY: "✉️  REPLY",
-    TREASURY: "🏦 TREAS",
-    MANUAL: "🔍 MANUAL",
-    INBOX: "📥 INBOX",
+    EMAIL_ARCHIVE: "📦 ARCHIVE",
+    EMAIL_REPLY: "✉️  REPLY",
+    EMAIL_TREASURY: "🏦 TREAS",
+    EMAIL_INBOX: "📥 INBOX",
 }
 
 
@@ -536,7 +546,9 @@ def print_email_summary(results: list[EmailProcessingResult]) -> None:
         if result.already_processed and not result.extractions:
             marker = "⏭️  skip "
         else:
-            marker = _ACTION_MARKERS.get(decision.action, decision.action)
+            marker = " + ".join(
+                _ACTION_MARKERS.get(action, action) for action in decision.actions
+            )
         print(f"  {marker}  {result.source} — {decision.reason}")
 
         # The reply that would go out, and each document's own action.
@@ -554,7 +566,10 @@ async def main() -> None:
     print(f"Processing {len(msg_paths)} email(s) from {ORIGINAL_EMAILS_DIR}")
     print(f"Output root: {PROCESSED_EMAILS_DIR}")
 
-    setup_tracing(experiment_name=MLFLOW_EXPERIMENT)
+    if ENABLE_TRACING:
+        setup_tracing(experiment_name=MLFLOW_EXPERIMENT)
+    else:
+        print("ℹ️  ENABLE_TRACING is off — tracing disabled")
 
     # Only open a pool when something will actually be written — the point of
     # WRITE_TO_DB=False is being able to run (and trace) with no database up.

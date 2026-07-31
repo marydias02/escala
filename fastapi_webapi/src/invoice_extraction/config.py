@@ -31,7 +31,7 @@ MANIFEST_NAME = "email_content.json"
 FORCE_REINGEST = True
 
 # Only ingest the first N emails (None = all). Useful for a cheap smoke test.
-INGEST_LIMIT: int | None = 20
+INGEST_LIMIT: int | None = 1
 
 # Persist results to Postgres. Off lets the pipeline be exercised (and traced)
 # with no database running, and keeps test runs out of fct_processes — note that
@@ -76,5 +76,10 @@ MIN_CONFIDENCE = 0.7
 # tracking URI itself is read from the MLFLOW_TRACKING_URI environment variable
 # (unset = tracing off), so pointing at a local server or at the company one is
 # an .env change rather than a code change.
+
+# Master switch, independent of MLFLOW_TRACKING_URI: flip off to run the
+# pipeline with zero tracing overhead (e.g. a large batch) without touching
+# the .env tracking URI.
+ENABLE_TRACING = True
 
 MLFLOW_EXPERIMENT = "invoice_extraction"

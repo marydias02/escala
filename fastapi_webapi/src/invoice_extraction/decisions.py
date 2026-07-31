@@ -17,35 +17,85 @@ business rules can be read without reading the pipeline.
 """
 
 from dataclasses import dataclass, field
-from typing import Literal, Optional
+from typing import Final, Literal, Optional
 
 from invoice_extraction.config import MIN_CONFIDENCE
 from invoice_extraction.extraction_pipeline import PipelineResult
 from invoice_extraction.ingestion_pipeline import EmailIngestionResult
-from invoice_extraction.models import DocumentClassification, EmailIntent, ValidationReport
+from invoice_extraction.models import (
+    DocumentClassification,
+    EmailIntent,
+    ValidationReport,
+    document_number_of,
+    normalize_document_number,
+)
 from invoice_extraction.tools.po_confirmation import po_exists, supplier_requires_po
 
-# The complete action vocabulary. Written to `fct_documents.action`, so a Literal
-# rather than free-form strings — a typo cannot silently invent a sixth action.
-Action = Literal[
-    "Ingest in SAP",
-    "Sent back to Supplier",
-    "Forward to Treasury",
-    "Left in Inbox",
-    "Validate Manually",
+
+# Two vocabularies, because the layers answer different questions. A DOCUMENT
+# gets exactly one action — what to do with that piece of paper. An EMAIL can
+# warrant several at once: a reply to the supplier for one document AND a
+# treasury forward for another.
+#
+# Each string is written once, as a `Final` constant, and the Literal is built
+# from those constants — so the names and the type cannot drift apart. `Final` is
+# what makes a constant usable inside `Literal[...]`; a plain assignment is not.
+
+INGEST: Final = "Ingest in SAP"
+REPLY: Final = "Sent back to Supplier"
+TREASURY: Final = "Forward to Treasury"
+INBOX: Final = "Keep in Inbox"
+MANUAL: Final = "Validate Manually"
+# A duplicate whose original is in the same email: not booked, not chased, but
+# still recorded, so the audit trail shows the copy arrived.
+IGNORE: Final = "Ignore (has original)"
+
+# What reaches `fct_documents.action`.
+DocumentAction = Literal[
+    INGEST,
+    REPLY,
+    TREASURY,
+    INBOX,
+    MANUAL,
+    IGNORE,
 ]
 
-INGEST: Action = "Ingest in SAP"
-REPLY: Action = "Sent back to Supplier"
-TREASURY: Action = "Forward to Treasury"
-INBOX: Action = "Left in Inbox"
-MANUAL: Action = "Validate Manually"
+EMAIL_ARCHIVE: Final = "Archive"
+EMAIL_INBOX: Final = "Keep in Inbox"
+EMAIL_REPLY: Final = "Reply to supplier"
+EMAIL_TREASURY: Final = "Forward to treasury"
+
+EmailAction = Literal[
+    EMAIL_ARCHIVE,
+    EMAIL_INBOX,
+    EMAIL_REPLY,
+    EMAIL_TREASURY,
+]
+
+# How the per-document actions roll up into the email's own. Ordered, and read in
+# order, so the resulting list runs from most to least consequential.
+#
+# ARCHIVE is deliberately absent: it is not "at least one" like the others but
+# "all of them", and is handled separately in `decide_email`.
+EMAIL_ACTION_RULES: Final = (
+    (EMAIL_REPLY, (REPLY,)),
+    (EMAIL_TREASURY, (TREASURY,)),
+    (EMAIL_INBOX, (INBOX, MANUAL)),
+)
+
+# An email whose documents are ALL in this set is finished — nothing is owed to
+# anyone, so it leaves the inbox.
+_ARCHIVABLE: Final = (INGEST, IGNORE)
 
 # Reply wording, in Portuguese, per reason. Only reasons that can produce a
 # REPLY appear here.
 REPLY_TEXT_NO_PDF = "Por favor enviar o documento em formato pdf"
 REPLY_TEXT_PROFORMA = "Documento proforma, por favor enviar o original"
 REPLY_TEXT_COPY = "Documento duplicado, por favor enviar o original"
+REPLY_TEXT_NO_PO = (
+    "Documento sem nota de encomenda, por favor enviar o documento com a "
+    "nota de encomenda"
+)
 
 # Document types routed by the B-cases below. Kept in sync with
 # `extraction_pipeline.EXTRACTABLE_TYPES` by intent, not by import, because this
@@ -112,6 +162,49 @@ def ingestion_blockers(validation: Optional[ValidationReport]) -> list[str]:
     ]
 
 
+def missing_pos(validation: Optional[ValidationReport]) -> Optional[list[str]]:
+    """The PO problem on this document, if any. One source of truth for routing
+    and alerts.
+
+    Returns None when there is nothing wrong — the supplier does not require a
+    PO, or it requires one and every PO on the document was found. Otherwise:
+
+    - `[]`  the supplier requires a PO and the document carries none.
+    - list  the PO references the document carries that we cannot find.
+
+    The two cases route differently (see `_ingest_or_manual`), so they are
+    distinguished by the empty list rather than collapsed into a bool.
+
+    Second, independent deterministic check — can only disagree with the LLM's
+    own tool-informed conclusion (formed using these same tools during
+    validation) if the LLM got it wrong. The tools are invoked directly so the
+    answer does not depend on the LLM having called them.
+
+    A supplier VAT we never read is not a PO problem: with no VAT there is no
+    requirement to look up, and the missing VAT already blocks ingestion via
+    REQUIRED_FIELDS.
+    """
+    if validation is None:
+        return None
+
+    supplier_vat = validation.supplier_vat.value if validation.supplier_vat else None
+    if not supplier_vat:
+        return None
+
+    if not supplier_requires_po.invoke({"supplier_vat": supplier_vat}):
+        return None
+
+    if not validation.po_list:
+        return []
+
+    unknown = [
+        po.value
+        for po in validation.po_list
+        if po.value and not po_exists.invoke({"po_reference": po.value})
+    ]
+    return unknown or None
+
+
 # Every ValidationReport field except supplier_id/bu_id (always null pre-registry
 # lookup) and notes/po_list (handled separately, below). Portuguese labels since
 # alerts_list is reviewer-facing.
@@ -145,17 +238,13 @@ def build_alerts_list(result: PipelineResult) -> list[str]:
         for _name, label, confidence in _field_problems(validation, _ALERT_FIELD_LABELS)
     ]
 
-    # Second, independent deterministic check — can only disagree with the
-    # LLM's own tool-informed conclusion (formed using these same tools during
-    # validation) if the LLM got it wrong - they can be calledusing invoke method independently
-    supplier_vat = validation.supplier_vat.value if validation.supplier_vat else None
-    if supplier_vat and supplier_requires_po.invoke({"supplier_vat": supplier_vat}):
-        if not validation.po_list:
-            alerts.append("Fornecedor requer nota de encomenda e nenhuma foi encontrada")
-        else:
-            for po in validation.po_list:
-                if po.value and not po_exists.invoke({"po_reference": po.value}):
-                    alerts.append(f"Nota de encomenda não encontrada: {po.value}")
+    # Same check that routes the document, so an alert and its action can never
+    # disagree.
+    pos = missing_pos(validation)
+    if pos == []:
+        alerts.append("Fornecedor requer nota de encomenda e nenhuma foi encontrada")
+    elif pos:
+        alerts.extend(f"Nota de encomenda não encontrada: {po}" for po in pos)
 
     return alerts
 
@@ -170,20 +259,23 @@ class DocumentDecision:
     """
 
     filename: str
-    action: Action
+    action: DocumentAction
     reason: str
     reply_text: Optional[str] = None
 
 
 @dataclass
 class EmailDecision:
-    """The email-level outcome: one optional reply, plus each document's action.
+    """The email-level outcome: what the email warrants, plus each document's action.
 
-    `documents` holds the FINAL per-document actions, after suppression — so it
-    is what should be written to `fct_documents.action`.
+    `actions` is a LIST: one email can owe several things at once — a reply to
+    the supplier for one document and a treasury forward for another.
+
+    `documents` holds the per-document actions, and is what is written to
+    `fct_documents.action`.
     """
 
-    action: Action
+    actions: list[EmailAction]
     reason: str
     documents: list[DocumentDecision] = field(default_factory=list)
     reply_lines: list[str] = field(default_factory=list)
@@ -191,7 +283,7 @@ class EmailDecision:
 
     @property
     def should_reply(self) -> bool:
-        return self.action == REPLY
+        return EMAIL_REPLY in self.actions
 
     @property
     def reply_body(self) -> str:
@@ -215,13 +307,45 @@ def _state_of(classification: DocumentClassification) -> str:
     return classification.document_state.value
 
 
-def _ingest_or_manual(result: PipelineResult, label: str) -> DocumentDecision:
-    """Book it, or send it to a human — the two hurdles every SAP-bound doc clears.
+def original_document_keys(extractions: list[PipelineResult]) -> set[tuple[str, str]]:
+    """(document_type, normalized number) of every ORIGINAL in one email.
 
-    Two hurdles, not one: the pipeline must have finished AND the extraction must
-    be confident enough to book. Either failure sends the document to a human,
-    never to the supplier — the document itself is fine, it is our reading of it
-    that fell short.
+    "Original" is `_state_of` — an explicit `original`, or a NULL state, since
+    real documents rarely print the word. No type is excluded: two copies of the
+    same receipt are as redundant as two copies of the same invoice, and only one
+    of each should be acted on.
+
+    The type is part of the key, not just the number. Numbering is per document
+    series, so an invoice and a receipt can legitimately share a number — keying
+    on the number alone would let a receipt original file away an invoice copy,
+    silently dropping a real invoice.
+
+    Feeds `decide_document`, which files a duplicate away when its own key is in
+    here. Computed once per email rather than per document so the comparison is
+    O(n) and every document is judged against the same set.
+    """
+    return {
+        (result.classification.document_type.value, number)
+        for result in extractions
+        if result.classification is not None
+        and _state_of(result.classification) == "original"
+        and (number := normalize_document_number(document_number_of(result.classification)))
+    }
+
+
+def _ingest_or_escalate(result: PipelineResult, label: str) -> DocumentDecision:
+    """Book it, or escalate — the hurdles every SAP-bound document clears.
+
+    Three hurdles: the pipeline must have finished, the extraction must be
+    confident enough to book, and the document must satisfy its supplier's PO
+    requirement.
+
+    The first two failures send the document to a human, never to the supplier —
+    the document itself is fine, it is our reading of it that fell short. The PO
+    hurdle splits: a document with NO PO from a supplier that requires one is
+    the supplier's omission and only the supplier can fix it, so it goes back to
+    them; a PO we cannot find in the PO list is ours to investigate, so a human
+    gets it.
 
     `label` names the document in the reason (e.g. "invoice (original)",
     "receipt (condominio)").
@@ -241,6 +365,21 @@ def _ingest_or_manual(result: PipelineResult, label: str) -> DocumentDecision:
             reason=f"{label} not confident: {'; '.join(blockers)}",
         )
 
+    pos = missing_pos(result.validation)
+    if pos == []:
+        return DocumentDecision(
+            filename=result.filename,
+            action=REPLY,
+            reason=f"{label} has no PO and the supplier requires one",
+            reply_text=REPLY_TEXT_NO_PO,
+        )
+    if pos:
+        return DocumentDecision(
+            filename=result.filename,
+            action=MANUAL,
+            reason=f"{label} has PO(s) not found in the PO list: {', '.join(pos)}",
+        )
+
     return DocumentDecision(
         filename=result.filename,
         action=INGEST,
@@ -248,11 +387,21 @@ def _ingest_or_manual(result: PipelineResult, label: str) -> DocumentDecision:
     )
 
 
-def decide_document(result: PipelineResult) -> DocumentDecision:
+def decide_document(
+    result: PipelineResult,
+    original_keys: Optional[set[tuple[str, str]]] = None,
+) -> DocumentDecision:
     """Route ONE document. The per-type/per-state matrix, in full.
+
+    `original_keys` is the (document_type, number) pairs this email already holds
+    an original of (see `original_document_keys`). A non-original matching one of
+    them is filed away before any other rule is considered — we have the real
+    thing, so there is nothing to ask for and nothing to book. Pass None to
+    decide a document in isolation.
 
     Cases (see also the tables agreed with the business):
 
+    B0/C0     any non-original whose original is in the email -> Left in Inbox
     B1/B5/B7  invoice-like + original, confident            -> Ingest in SAP
     B1/B5/B7  invoice-like + original, NOT confident        -> Validate Manually
     B2        invoice-like + proforma                      -> reply (proforma)
@@ -263,6 +412,11 @@ def decide_document(result: PipelineResult) -> DocumentDecision:
     C4        receipt, no exception                        -> Forward to Treasury
     C5        other                                        -> Left in Inbox
     D1-D3     a stage raised                               -> Validate Manually
+
+    The PO requirement cuts across the ingestable cases (B1/B5/B7 and C1-C3):
+    a confident document whose supplier requires a PO but that carries none is
+    sent back to the supplier, and one carrying a PO absent from the PO list
+    goes to a human. See `_ingest_or_escalate`.
     """
     # --- D: the pipeline failed on this document ---------------------------
     # `classification` is None on the failure path today, so no type rule can
@@ -285,11 +439,37 @@ def decide_document(result: PipelineResult) -> DocumentDecision:
     doc_type = result.classification.document_type.value
     state = _state_of(result.classification)
 
+    # --- B0/C0: we already hold the original of this document --------------
+    # Ahead of every type rule, because it does not depend on them: whatever a
+    # duplicate is a duplicate OF, and whatever becomes of that original, a
+    # second copy is not ours to act on twice. Two copies of one receipt send a
+    # single receipt to treasury; a copy of an invoice is not requested back from
+    # the supplier who already sent it.
+    #
+    # Matched on (type, number): numbering is per document series, so an invoice
+    # and a receipt may share a number without being the same document.
+    #
+    # This is why `document_number` is read at CLASSIFICATION: a copy never
+    # reaches extraction, so its number exists here only because every document
+    # is asked for one.
+    if state != "original" and original_keys:
+        number = normalize_document_number(document_number_of(result.classification))
+        if number is not None and (doc_type, number) in original_keys:
+            raw = document_number_of(result.classification)
+            return DocumentDecision(
+                filename=result.filename,
+                action=IGNORE,
+                reason=(
+                    f"{doc_type} is {state}; original with document number "
+                    f"{raw} is in this email"
+                ),
+            )
+
     # --- B: invoice-like documents ----------------------------------------
     if doc_type in _INVOICE_LIKE:
         if state == "original":
             # B1/B5/B7.
-            return _ingest_or_manual(result, f"{doc_type} (original)")
+            return _ingest_or_escalate(result, f"{doc_type} (original)")
 
         if state == "proforma":  # B2
             return DocumentDecision(
@@ -322,7 +502,7 @@ def decide_document(result: PipelineResult) -> DocumentDecision:
         # extraction gate lets these through precisely so this can happen.
         exception = result.classification.document_exception
         if exception is not None:
-            return _ingest_or_manual(result, f"receipt ({exception.value})")
+            return _ingest_or_escalate(result, f"receipt ({exception.value})")
 
         # C4 — an ordinary receipt is not ours to book; treasury owns it.
         return DocumentDecision(
@@ -358,6 +538,52 @@ def _dedupe_reply_lines(decisions: list[DocumentDecision]) -> list[str]:
     return [f"{', '.join(files)}: {text}" for text, files in by_text.items()]
 
 
+def roll_up_actions(decisions: list[DocumentDecision]) -> list[EmailAction]:
+    """The email-level actions its documents add up to. THE roll-up rule.
+
+    An email can warrant several things at once, so this returns a LIST, ordered
+    by `EMAIL_ACTION_RULES` (most consequential first). One document contributing
+    a reply and another a treasury forward yields both.
+
+    ARCHIVE is exclusive and is tested first: it means every document is finished
+    (booked, or ignored as a duplicate) and so nothing is owed to anyone. It can
+    never appear next to another action — an email still owing a reply is not
+    archived.
+
+    An email with no documents at all falls back to the inbox rather than being
+    archived, since "nothing to do" and "everything done" are different states.
+    """
+    if not decisions:
+        return [EMAIL_INBOX]
+
+    if all(d.action in _ARCHIVABLE for d in decisions):
+        return [EMAIL_ARCHIVE]
+
+    actions = [
+        email_action
+        for email_action, document_actions in EMAIL_ACTION_RULES
+        if any(d.action in document_actions for d in decisions)
+    ]
+
+    # Defensive: every non-archivable document action appears in
+    # EMAIL_ACTION_RULES, so this is unreachable unless a new DocumentAction is
+    # added without a rule. Falling back to the inbox keeps such an email visible
+    # to a human instead of silently actionless.
+    return actions or [EMAIL_INBOX]
+
+
+def _email_reason(decisions: list[DocumentDecision]) -> str:
+    """One line summarising why the email got its actions.
+
+    Names only the documents that DROVE an action — a booked or ignored document
+    needs no explanation, so a mixed email reads as the problems it still has.
+    """
+    driving = [d for d in decisions if d.action not in _ARCHIVABLE]
+    if not driving:
+        return f"{len(decisions)} document(s) processed, nothing outstanding"
+    return "; ".join(d.reason for d in driving)
+
+
 def decide_email(
     ingestion: EmailIngestionResult,
     extractions: list[PipelineResult],
@@ -376,17 +602,22 @@ def decide_email(
     A3  ingestion failed                   -> Left in Inbox
     A4  ingestion skipped (already done)   -> Left in Inbox
     A5  PDFs produced but no extractions   -> Left in Inbox
+
+    Documents are decided against the email's set of originals
+    (`original_document_keys`), so a duplicate whose original is in the same
+    email is filed away rather than acted on. A duplicate with no matching
+    original still gets its reply.
     """
     # --- A3: ingestion itself failed — nothing was ever read. --------------
     if ingestion.status == "failed":
         return EmailDecision(
-            action=INBOX,
+            actions=[EMAIL_INBOX],
             reason=f"ingestion failed: {ingestion.message or 'unknown error'}",
         )
 
     # --- A4: already processed; the earlier run owns the decision. ---------
     if ingestion.status == "skipped":
-        return EmailDecision(action=INBOX, reason="already processed")
+        return EmailDecision(actions=[EMAIL_INBOX], reason="already processed")
 
     # --- A1/A2: no usable PDF came out of this email. ----------------------
     # Both cases ask the same question of the body, so they share a branch; the
@@ -401,7 +632,7 @@ def decide_email(
             # there was nothing to extract. Defensive: a splitter bug, not a
             # supplier problem.
             return EmailDecision(
-                action=INBOX,
+                actions=[EMAIL_INBOX],
                 reason="PDFs reported but no documents extracted",
             )
 
@@ -411,7 +642,7 @@ def decide_email(
         # emails arguably deserve their own "fetch from portal" action later.
         if intent is None:
             return EmailDecision(
-                action=INBOX,
+                actions=[EMAIL_INBOX],
                 reason=f"{reason} (body not classified)",
                 intent=None,
             )
@@ -421,7 +652,7 @@ def decide_email(
 
         if is_invoice and not has_link:
             return EmailDecision(
-                action=REPLY,
+                actions=[EMAIL_REPLY],
                 reason=f"{reason}; body is invoice-related with no link",
                 reply_lines=[REPLY_TEXT_NO_PDF],
                 intent=intent,
@@ -431,38 +662,20 @@ def decide_email(
             detail = "body is invoice-related but links to the document"
         else:
             detail = "body is not invoice-related"
-        return EmailDecision(action=INBOX, reason=f"{reason}; {detail}", intent=intent)
-
-    # --- Documents exist: decide each, then roll up. -----------------------
-    decisions = [decide_document(result) for result in extractions]
-
-    # SUPPRESSION. If anything in this email is going to SAP, we got what we
-    # needed and the supplier is not chased — a duplicate alongside its original
-    # is not a problem. Suppressed documents fall back to the inbox.
-    if any(d.action == INGEST for d in decisions):
-        for decision in decisions:
-            if decision.action == REPLY:
-                decision.action = INBOX
-                decision.reason = f"{decision.reason} (suppressed: email also has an original)"
-                decision.reply_text = None
-
-    reply_lines = _dedupe_reply_lines(decisions)
-    if reply_lines:
         return EmailDecision(
-            action=REPLY,
-            reason="; ".join(d.reason for d in decisions if d.action == REPLY),
-            documents=decisions,
-            reply_lines=reply_lines,
+            actions=[EMAIL_INBOX], reason=f"{reason}; {detail}", intent=intent
         )
 
-    # No reply. The email-level action reports what dominated, in this order:
-    # something booked > something for treasury > something needing a human.
-    for action, reason in (
-        (INGEST, "document(s) ready for SAP"),
-        (TREASURY, "document(s) forwarded to treasury"),
-        (MANUAL, "document(s) need manual validation"),
-    ):
-        if any(d.action == action for d in decisions):
-            return EmailDecision(action=action, reason=reason, documents=decisions)
+    # --- Documents exist: decide each, then roll up. -----------------------
+    # The originals are gathered first so every document is judged against the
+    # same set — a duplicate is filed away inside decide_document, not corrected
+    # afterwards.
+    original_keys = original_document_keys(extractions)
+    decisions = [decide_document(result, original_keys) for result in extractions]
 
-    return EmailDecision(action=INBOX, reason="no action required", documents=decisions)
+    return EmailDecision(
+        actions=roll_up_actions(decisions),
+        reason=_email_reason(decisions),
+        documents=decisions,
+        reply_lines=_dedupe_reply_lines(decisions),
+    )

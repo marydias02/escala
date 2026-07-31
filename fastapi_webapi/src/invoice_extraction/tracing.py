@@ -355,7 +355,6 @@ def invoice_data_summary(invoice) -> dict:
         for name in (
             "supplier_name",
             "supplier_vat",
-            "document_number",
             "client_name",
             "client_vat",
             "issue_date",
@@ -375,6 +374,11 @@ def classification_summary(classification) -> dict:
     Every field is a `Confident[...]`, so each carries the verbatim snippet the
     model based itself on — the fastest way to tell a genuine "DUPLICADO" stamp
     from a hallucinated one.
+
+    `document_number` is here rather than in `invoice_data_summary` because it is
+    read at classification: the routing rules match duplicates against their
+    originals on it, and a proforma never reaches extraction. When a duplicate
+    was NOT suppressed, this field and its evidence are where to look first.
     """
     if classification is None:
         return {"classification": None}
@@ -391,6 +395,7 @@ def classification_summary(classification) -> dict:
     return {
         "document_type": field(classification.document_type),
         "document_state": field(classification.document_state),
+        "document_number": field(classification.document_number),
         "document_exception": field(classification.document_exception),
     }
 
@@ -448,7 +453,7 @@ def decision_summary(decision) -> dict:
         return {"decision": None}
 
     return {
-        "action": decision.action,
+        "actions": list(decision.actions),
         "reason": decision.reason,
         "reply_lines": decision.reply_lines,
         "should_reply": decision.should_reply,
