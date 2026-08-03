@@ -53,29 +53,39 @@ def IndicatorCard(
 
     sections = []
     for value, caption, badge_value, badge_delta in rows:
-        value_children = [html.P(str(value), className="body-xl")]
+        value_block = html.Div(
+            children=[
+                html.P(str(value), className="body-xl"),
+            ],
+            className="indicator-card__value",
+        )
+
+        footer_children = []
+
         if badge_value is not None and badge_delta is not None:
-            value_children.append(Badge(badge_value, badge_delta))
+            footer_children.append(Badge(badge_value, badge_delta))
 
         if caption is not None:
-            sections.append(
+            footer_children.append(
+                html.P(caption, className="body-xs indicator-card__caption")
+            )
+
+        section_children = [value_block]
+
+        if footer_children:
+            section_children.append(
                 html.Div(
-                    className="indicator-card__content",
-                    children=[
-                        html.Div(className="indicator-card__value", children=value_children),
-                        html.P(caption, className="body-sm"),
-                    ],
+                    className="indicator-card__footer",
+                    children=footer_children,
                 )
             )
-        else:
-            sections.append(
-                html.Div(
-                    className="indicator-card__content",
-                    children=[
-                        html.Div(className="indicator-card__value", children=value_children),
-                    ],
-                )
+
+        sections.append(
+            html.Div(
+                className="indicator-card__content",
+                children=section_children,
             )
+        )
 
     blocks.append(
         html.Div(

@@ -29,6 +29,9 @@
 
 .homepage__top_section {
   width: 100%;
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
 }
 
 .homepage__top_section .actions-wrapper {
@@ -49,6 +52,15 @@
   align-items: center;
   justify-content: flex-start;
   flex-wrap: wrap;
+}
+
+.homepage__updated_section {
+  align-items: right;
+}
+
+.homepage__updated_section {
+  color: var(--text-icon-secondary);
+  font-weight: normal;
 }
 
 /* 3. INDICATORS SECTION */
@@ -91,15 +103,6 @@
   justify-content: center;
   border-radius: var(--border-radius-sm);
   border: var(--border-normal) solid var(--border-light);
-}
-
-/* !!! THIS CLASS SHOULD BE DELETED, 
-ONLY HERE FOR DEMONSTRATION PURPOSES , 
-HEIGHT WILL BE AUTOMATICALLY DEFINED BY THE CONTENT !!! */
-.table-section__graphic {
-  background-color: var(--surface-lightest);
-  color: var(--text-icon-tertiary);
-  min-height: 232px;
 }
 
 /* 5. MEDIA QUERIES */

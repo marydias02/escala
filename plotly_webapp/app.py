@@ -34,7 +34,7 @@ app = Dash(
 
 app.layout = html.Div(
     [
-        dcc.Store(id="sidebar--state", data={"open": True}),
+        dcc.Store(id="sidebar--state", data={"open": False}),
         html.Aside(
             className="app__sidebar",
             id="app__sidebar",
@@ -57,23 +57,15 @@ app.layout = html.Div(
                     ],
                 ),
                 html.Div(
-                    className="sidebar__dropdown",
-                    children=[
-                        Select(select_options=['Workspace A', 'Workspace B', 'Workspace C'],
-                               placeholder="Select Workspace",
-                               select_color_mode="custom_light",
-                               select_background_color="var(--accent-sidebar)"
-                               )
-                    ],
-                ),
-                html.Div(
                     className="sidebar__menu",
                     children=[
-                        Menu(title="Homepage", href="/", icon="lucide:home"),
+                        Menu(title="Extraction", href="/", icon="lucide:scan-text"),
+                        Menu(title="Template", href="/home", icon="lucide:file-text"),
                         Menu(title="Grid", href="/grid"),
                         Menu(title="Segmented Control", href="/components/segmented-control"),
                         Menu(title="Banner", href="/components/banner"),
                         Menu(title="Tabs", href="/components/tabs"),
+                        Menu(title="Detalhe", href="/detail"),
                         Menu(title="Button", href="/components/button"),
                         Menu(title="Table", href="/components/table"),
                         Menu(title="Section", href="/components/section"),
@@ -86,22 +78,22 @@ app.layout = html.Div(
                         Menu(title="Tutorial Card", href="/components/cards/tutorial-card"),
                         Menu(title="Workflow Card", href="/components/cards/workflow-card"),
                         Menu(title="Menu", href="/components/menu", icon="lucide:square-asterisk"),
-                        Menu(
-                            title="Menu with subpages",
-                            children=[
-                                dcc.Link("Item", href="/components/menu"),
-                                dcc.Link("Extremely Long Item Here On the Nav", href="/components/menu"),
-                            ],
-                        ),
+                        # Menu(
+                        #     title="Menu with subpages",
+                        #     children=[
+                        #         dcc.Link("Item", href="/components/menu"),
+                        #         dcc.Link("Extremely Long Item Here On the Nav", href="/components/menu"),
+                        #     ],
+                        # ),
                         Menu(title="Sidebar Footer", href="/components/sidebar-footer"),
-                        Menu(title="User Avatar", href="/components/avatar"),
+                        # Menu(title="User Avatar", href="/components/avatar"),
                     ],
                 ),
                 html.Div(
                     className="sidebar__footer-wrapper",
                     children=[
                         SidebarFooter(
-                            username="Elisa Sampaio",
+                            username="Carolina Melim",
                             avatar_size="s",
                         ),
                     ],
@@ -134,11 +126,11 @@ app.layout = html.Div(
                 html.Div(
                     className="app__main",
                     children=[
-                        dcc.Location(id="url", refresh=False),
+                        dcc.Location(id="url", refresh="callback-nav"),
                         page_container,
                     ],
                 ),
-                Footer(client_name="DesignSystem ® 2026")
+                Footer(client_name="Grupo Sousa ® 2026")
             ],
         ),
     ],
