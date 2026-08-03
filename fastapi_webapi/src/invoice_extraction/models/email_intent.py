@@ -1,0 +1,67 @@
+from pydantic import BaseModel, Field
+
+from invoice_extraction.models.common import Confident
+
+
+class EmailIntent(BaseModel):
+    """Why an email that produced no usable PDF might still deserve an action.
+
+    Asked only when an email yielded no PDF — either no attachments at all, or
+    attachments that were not PDFs. Two independent questions:
+
+    - was the email trying to deliver an accounting document?
+    - did it point at that document with a link instead of attaching it?
+
+    Only an invoice-related email with NO link is a supplier mistake worth a
+    reply. An invoice-related email WITH a link is a document we must fetch
+    ourselves, not one the supplier forgot to send.
+    """
+
+    is_invoice_related: Confident[bool] = Field(
+        description="""
+    True when the email is trying to deliver, or is asking about, an accounting
+    document (invoice, credit note, debit note, receipt).
+
+    Signals that make this True:
+
+    - the body refers to an attached/enclosed invoice, fatura, factura, recibo,
+      nota de crédito, nota de débito;
+    - the body announces a document being sent ("em anexo", "segue", "attached",
+      "please find");
+    - the body chases payment of, or asks about, a specific document.
+
+    Signals that make this False:
+
+    - general correspondence, questions, scheduling, marketing, newsletters;
+    - automated notifications unrelated to a specific document;
+    - delivery notes or purchase orders with no accounting document involved.
+
+    Return False when the body is empty or gives no indication either way.
+    """
+    )
+
+    has_invoice_link: Confident[bool] = Field(
+        description="""
+    True when the email points at a document to be downloaded rather than
+    attaching it.
+
+    Signals that make this True:
+
+    - a URL the body presents as where the invoice lives (supplier portal,
+      billing portal, "consulte a sua fatura em", "download your invoice",
+      "acesse aqui", a link to a .pdf);
+    - instructions to log into a portal or account to obtain the document.
+
+    Signals that make this False:
+
+    - no URL at all;
+    - URLs that are plainly not the document: the sender's homepage, social
+      media icons, email-signature links, unsubscribe links, tracking pixels,
+      privacy-policy or legal boilerplate links.
+
+    Judge what the link is FOR, not whether a link exists. A signature link in
+    an otherwise attachment-less invoice email is False.
+
+    Return False when the body is empty.
+    """
+    )

@@ -9,24 +9,10 @@ from api.sql import BaseRepository
 class ItemRepository(BaseRepository):
     __table_name__ = "item"
 
-    async def declare_table(self) -> None:
-        create_table = f"""
-        CREATE TABLE IF NOT EXISTS {self.table} (
-            id SERIAL PRIMARY KEY,
-            code VARCHAR(50) UNIQUE NOT NULL,
-            description TEXT NOT NULL,
-            category VARCHAR(50) NOT NULL,
-            status VARCHAR(20) NOT NULL,
-            score FLOAT NOT NULL
-        )
-        """
-        code_index = f"CREATE UNIQUE INDEX IF NOT EXISTS idx_{self.table}_code ON {self.table} (code)"
-        category_index = f"CREATE INDEX IF NOT EXISTS idx_{self.table}_category ON {self.table} (category)"
-        status_index = f"CREATE INDEX IF NOT EXISTS idx_{self.table}_status ON {self.table} (status)"
-        await self.execute(create_table)
-        await self.execute(code_index)
-        await self.execute(category_index)
-        await self.execute(status_index)
+    # NOTE: kept as a reference example. Schema is now managed by Alembic — the
+    # `item` table has no migration yet, so these endpoints will error until one
+    # is added (out of scope). Previously a declare_table() here created it at
+    # startup; that mechanism was removed when Alembic became the source of truth.
 
     async def get(self, _id: int | str) -> Optional[dict[str, Any]]:
         query = f"SELECT * FROM {self.table} WHERE id = $1"

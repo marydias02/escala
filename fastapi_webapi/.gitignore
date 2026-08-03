@@ -50,3 +50,11 @@ Thumbs.db
 *.lp
 *.ilp
 *.mps
+
+
+#Ignore pdfs
+**/invoice_extraction/docs/*.pdf
+**/invoice_extraction/docs/*
+
+#Ignore traces
+**/traces/*
