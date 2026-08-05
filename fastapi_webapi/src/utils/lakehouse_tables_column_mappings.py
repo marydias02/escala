@@ -1,0 +1,102 @@
+"""Commonly used column meanings for SAP tables replicated to the lakehouse."""
+
+ACDOCA_COLUMN_DESCRIPTIONS: dict[str, str] = {
+    # Client / keys
+    "RCLNT": "Client",
+    "RLDNR": "Ledger",
+    "RBUKRS": "Company code",
+    "GJAHR": "Fiscal year",
+    "BELNR": "Accounting document number",
+    "DOCLN": "Journal entry item (universal journal line ID)",
+    "BUZEI": "Posting line number within the accounting document",
+    # Document header
+    "BLART": "Document type",
+    "BSCHL": "Posting key",
+    "BUDAT": "Posting date",
+    "BLDAT": "Document date",
+    "CPUDT": "Entry date (date the document was created in the system)",
+    "CPUTM": "Entry time",
+    "USNAM": "User name who created the document",
+    "XBLNR": "Reference document number",
+    "AWTYP": "Reference procedure (business transaction that generated the entry, e.g. RMRP for invoices)",
+    "AWKEY": "Reference key linking back to the source document (e.g. invoice/MM document number + fiscal year)",
+    "AWORG": "Reference organizational unit",
+    "SGTXT": "Item text",
+    "ZUONR": "Assignment field, often used for open item clearing/matching",
+    "SHKZG": "Debit/credit indicator ('S' = debit, 'H' = credit)",
+    "POPER": "Posting period",
+    "PERIV": "Fiscal year variant",
+    "VORGN": "Business transaction type",
+    # Amounts / currencies
+    "TSL": "Amount in transaction (document) currency",
+    "HSL": "Amount in company code (local) currency",
+    "KSL": "Amount in group/global currency",
+    "OSL": "Amount in hard/freely-defined second local currency",
+    "RTCUR": "Transaction currency key",
+    "RHCUR": "Company code (local) currency key",
+    "RKCUR": "Group currency key",
+    "MSL": "Quantity",
+    "MEINH": "Base unit of measure",
+    # G/L account & organizational assignments
+    "RACCT": "G/L account number",
+    "KTOSL": "Transaction key (determines automatic G/L account posting)",
+    "RCNTR": "Cost center",
+    "PRCTR": "Profit center",
+    "SEGMENT": "Segment (for segment reporting, e.g. IFRS 8)",
+    "GSBER": "Business area",
+    "KOKRS": "Controlling area",
+    "FUNC_AREA": "Functional area",
+    "WERKS": "Plant",
+    "MATNR": "Material number",
+    "AUFNR": "Order number (internal order)",
+    "PS_PSP_PNR": "WBS element (project structure)",
+    # Business partners
+    "KUNNR": "Customer number",
+    "LIFNR": "Vendor number",
+    "VBUND": "Trading partner company (for intercompany elimination)",
+    "RASSC": "Trading partner / affiliated company (consolidation)",
+}
+
+BUT000_COLUMN_DESCRIPTIONS: dict[str, str] = {
+    # Keys / category
+    "CLIENT": "Client",
+    "PARTNER": "Business partner number",
+    "TYPE": "Business partner category (1 = Person, 2 = Organization, 3 = Group)",
+    "BPKIND": "Business partner grouping",
+    "BU_GROUP": "Business partner grouping (alternate/legacy field)",
+    "PARTNER_GUID": "Business partner GUID",
+    # Status flags
+    "XBLCK": "Central block indicator (business partner blocked centrally)",
+    "XDELE": "Central deletion flag",
+    # Organization data (TYPE = 2)
+    "NAME_ORG1": "Organization name, line 1",
+    "NAME_ORG2": "Organization name, line 2",
+    "NAME_ORG3": "Organization name, line 3",
+    "NAME_ORG4": "Organization name, line 4",
+    "LEGALORG": "Legal form of the organization",
+    # Person data (TYPE = 1)
+    "TITLE": "Form-of-address key",
+    "TITLE_LET": "Form-of-address text used in letters",
+    "NAME_FIRST": "First name",
+    "NAME_LAST": "Last name",
+    "NAME_LAST2": "Second last name",
+    "NAMEMIDDLE": "Middle name",
+    "BIRTHPL": "Place of birth",
+    "BIRTHDT": "Date of birth",
+    "DEATHDT": "Date of death",
+    "NATPERSON": "Indicator: natural person (vs. legal entity)",
+    # Group data (TYPE = 3)
+    "NAME_GRP1": "Group name, line 1",
+    "NAME_GRP2": "Group name, line 2",
+    # Search / communication
+    "BU_SORT1": "Search term 1 (used for matching/lookup)",
+    "BU_SORT2": "Search term 2 (used for matching/lookup)",
+    "LANGU": "Communication language",
+    "LANGU_CORR": "Correspondence language",
+    "ADDRCOMM": "Address number for communication data",
+    # Audit
+    "CREATEDON": "Date the business partner was created",
+    "CREATEDBY": "User who created the business partner",
+    "CHANGEDON": "Date of the last change",
+    "CHANGEDBY": "User who made the last change",
+}
