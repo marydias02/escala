@@ -14,7 +14,7 @@ def Breadcrumb():
 
 def build_breadcrumb_items(pathname: str):
     if not pathname or pathname == "/":
-        return [("Extraction", "/")]
+        return [("Extração", "/")]
 
     parts = pathname.strip("/").split("/")
     links = []
@@ -23,7 +23,7 @@ def build_breadcrumb_items(pathname: str):
         href = "/" + "/".join(parts[: i + 1])
         links.append((label, href))
 
-    return [("Extraction", "/")] + links
+    return [("Extração", "/")] + links
 
 
 def build_breadcrumb_content(label):

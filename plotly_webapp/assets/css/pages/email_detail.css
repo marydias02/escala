@@ -65,7 +65,7 @@
 }
 
 .email_detail__content_section {
-  height: 600px;
+  height: 700px;
   /* border-radius: var(--border-radius-md);
   border: var(--border-normal) solid var(--border-lightest); */
 }
@@ -149,6 +149,7 @@
 
 .email_detail__input {
   width: 95%;
+  height: 28px;
 }
 
 .email_detail__indicator_section-wrapper {

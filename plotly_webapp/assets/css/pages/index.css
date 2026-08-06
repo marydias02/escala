@@ -78,7 +78,7 @@
 .homepage__indicator_section-wrapper .indicator-card,
 .homepage__indicator_section-wrapper .tutorial-card,
 .homepage__indicator_section-wrapper .page-card {
-  width: 25%;
+  width: 33.33%;
   padding-left: var(--spacing-16);
   border-left: var(--border-normal) solid var(--border-light);
 }
@@ -86,7 +86,7 @@
 .homepage__indicator_section-wrapper .indicator-card:first-child,
 .homepage__indicator_section-wrapper .tutorial-card:first-child,
 .homepage__indicator_section-wrapper .page-card:first-child {
-  width: 25%;
+  width: 33.33%;
   padding-left: var(--spacing-none);
   border-left: none;
 }
@@ -103,6 +103,10 @@
   justify-content: center;
   border-radius: var(--border-radius-sm);
   border: var(--border-normal) solid var(--border-light);
+}
+
+.homepage__tab {
+  margin-bottom: 1rem;
 }
 
 /* 5. MEDIA QUERIES */

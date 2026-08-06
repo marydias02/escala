@@ -1,5 +1,5 @@
 from datetime import date, datetime
-from typing import Optional
+from typing import Optional, Any
 from uuid import UUID
 
 from pydantic import BaseModel
@@ -67,6 +67,13 @@ class DocumentRead(BaseModel):
     issue_date: Optional[date] = None
     created_at: datetime
     action: Optional[str] = None
+    status: Optional[str] = None
+
+
+class DocumentUpdate(BaseModel):
+    document_id: UUID
+    alerts_list: list[str]
+    document_content: dict[str, Any]
 
 
 class ConfidentValue(BaseModel):

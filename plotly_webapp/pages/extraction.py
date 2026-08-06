@@ -25,55 +25,222 @@ from components.table.shared.action_bar import action_bar
 import pandas as pd
 from functools import partial
 
+from assets.api_calls.extraction_api import get_big_numbers, get_priority_documents, get_all_documents, get_pending_documents
+
 
 dash.register_page(
     __name__,
     path="/",
-    title="Extraction",
+    title="Extracao",
 )
 
 
-MediumTabs = Tabs(
-    value="overview",
-    size="medium",
-    children=[
-        Tab(
-            label="Overview",
-            value="overview",
-            className="lucide--layout-dashboard",
-        ),
-        Tab(
-            label="Statistics",
-            value="statistics",
-            className="lucide--chart-no-axes-combined",
-        ),
-        Tab(
-            label="Insights",
-            value="insights",
-            className="lucide--lightbulb",
-        ),
-        Tab(
-            label="Reports",
-            value="reports",
-            className="lucide--file-text",
-        ),
-    ],
-)
+kpis = get_big_numbers()
+
+def trend(delta):
+    if delta > 0:
+        return "increase"
+    if delta < 0:
+        return "decrease"
+    return "neutral"
+
+def fmt_pct(value):
+    return f"{value:g}%"
+
+def fmt_delta(value):
+    return f"{abs(value):g}%"
 
 
 ######  TABLE 1  ######
-priority_df = pd.read_csv("assets/data/dummy_priority_processes.csv")
-
-# yearly_df, yearly_col_defs, monthly_df, monthly_col_defs = create_demo_tab_table()
-
+priority_documents = get_priority_documents()   # list[dict]
 
 ######  TABLE 2  ######
-all_processes_df = pd.read_csv("assets/data/dummy_all_processes.csv")
+all_documents = get_all_documents()             # list[dict]
+
+######  TABLE 3  ######
+pending_documents = get_pending_documents()     # list[dict]
 
 # df = load_group_table_data()
 # brand_cols, year_cols = get_brand_and_year_columns(list(df.columns))
 # simple_table_column_defs = create_simple_table_column_defs(brand_cols, year_cols)
 
+
+documents_col_def = [
+    {
+        "field": "document_number",
+        "headerName": "Documento",
+        "width": 160,
+    },
+    {
+        "field": "bu_name",
+        "headerName": "Unidade de Negócio",
+        "minWidth": 220,
+    },
+    {
+        "field": "supplier_name",
+        "headerName": "Fornecedor",
+        "minWidth": 220,
+    },
+    {
+        "field": "total_amount",
+        "headerName": "Valor",
+        "width": 120,
+    },
+    {
+        "field": "issue_date",
+        "headerName": "Data de Emissão",
+        "width": 150,
+    },
+    {
+        "field": "created_at",
+        "headerName": "Data de Processamento",
+        "width": 200,
+    },
+    {
+        "field": "action",
+        "headerName": "Ação",
+        "width": 180,
+        "cellRenderer": "Action",
+    },
+    {
+        "field": "status",
+        "headerName": "Estado",
+        "width": 120,
+        "cellRenderer": "Status",
+    },
+]
+
+short_documents_col_def = [
+    {
+        "field": "created_at",
+        "headerName": "Data de Processamento",
+        "width": 260,
+    },
+    {
+        "field": "action",
+        "headerName": "Ação",
+        "width": 335,
+        "cellRenderer": "Action",
+    },
+    {
+        "field": "status",
+        "headerName": "Estado",
+        "width": 220,
+        "cellRenderer": "Status",
+    },
+]
+
+
+MediumTabs = Tabs(
+    value="all",
+    size="medium",
+    children=[
+        Tab(
+            label="Processamento de Faturas",
+            value="all",
+            className="lucide--focus",
+            children=[
+                Section(
+                    title="Processos Prioritários",
+                    content=[
+                        TableV1(
+                            data_frames=[
+                                {
+                                    "df": priority_documents,
+                                    "col_def": documents_col_def
+                                }
+                            ],
+                            grid_id="priority-processes-table",
+                            dashGridOptions={
+                                "rowSelection": {
+                                    "mode": "singleRow",
+                                    "headerCheckbox": False,
+                                    "checkboxes": False,
+                                    "enableClickSelection": True,
+                                },
+                                "defaultColDef": {
+                                    "filter": True, 
+                                    "sortable": True, 
+                                    "resizable": True,
+                                    "flex":0,
+                                },
+                            },
+                            height={"mode": "px", "value": 250},
+                        ),
+                    ],
+                    open=True
+                ),
+                Section(
+                    title="Todos os Processos",
+                    content=[
+                        TableV1(
+                            data_frames=[
+                                {
+                                    "df": all_documents,
+                                    "col_def": documents_col_def
+                                }
+                            ],
+                            grid_id="all-processes-table",
+                            dashGridOptions={
+                                "rowSelection": {
+                                    "mode": "singleRow",
+                                    "headerCheckbox": False,
+                                    "checkboxes": False,
+                                    "enableClickSelection": True,
+                                },
+                                "defaultColDef": {
+                                    "filter": True, 
+                                    "sortable": True, 
+                                    "resizable": True,
+                                    "flex":0,
+                                },
+                            },
+                            height={"mode": "px", "value": 330},
+                        ),
+                    ],
+                    open=True
+                )
+            ]
+        ),
+        Tab(
+            label="Processos sem Seguimento",
+            value="pending",
+            className="lucide--file-clock",
+            children=[
+                Section(
+                    title="Processos Pendentes",
+                    content=[
+                        TableV1(
+                            data_frames=[
+                                {
+                                    "df": pending_documents,
+                                    "col_def": short_documents_col_def
+                                }
+                            ],
+                            grid_id="pending-processes-table",
+                            dashGridOptions={
+                                "rowSelection": {
+                                    "mode": "singleRow",
+                                    "headerCheckbox": False,
+                                    "checkboxes": False,
+                                    "enableClickSelection": True,
+                                },
+                                "defaultColDef": {
+                                    "filter": True, 
+                                    "sortable": True, 
+                                    "resizable": True,
+                                    "flex":0,
+                                },
+                            },
+                            height={"mode": "px", "value": 250},
+                        ),
+                    ],
+                    open=True
+                ),
+            ]
+        ),
+    ],
+)
 
 
 
@@ -87,7 +254,7 @@ layout = html.Div(
                     children=[
                         PageHeader(
                             icon = "lucide:scan-text",
-                            title = "Extraction",  
+                            title = "Extração",  
                         ),
                         html.P("Atualizado há 5 segundos", className="body-xs homepage__updated_section")
                     ],                  
@@ -106,87 +273,37 @@ layout = html.Div(
                                         IndicatorCard(
                                             label_text="Faturas para Validação",
                                             label_tooltip="faturas pendentes de validação",
-                                            rows=[("150", "última semana", "12%", "decrease")]
+                                            rows=[(kpis["pending_manual_validation"],"última semana", "50%", "decrease")]
                                         ),
                                         IndicatorCard(
                                             label_text="Faturas Ingeridas Automaticamente",
                                             label_tooltip="extra info",
-                                            rows=[("93%", "última semana", "2%", "increase")]
+                                            rows=[(fmt_pct(kpis["auto_ingested"]["pct"]),
+                                                "última semana",
+                                                fmt_delta(kpis["auto_ingested"]["delta_pp"]),
+                                                trend(kpis["auto_ingested"]["delta_pp"]))]
                                         ),
                                         IndicatorCard(
                                             label_text="Faturas Devolvidas ao Fornecedor",
                                             label_tooltip="extra info",
-                                            rows=[("3%", "última semana", "10%", "increase")]
+                                            rows=[(fmt_pct(kpis["returned_to_supplier"]["pct"]),
+                                                "última semana",
+                                                fmt_delta(kpis["returned_to_supplier"]["delta_pp"]),
+                                                trend(kpis["returned_to_supplier"]["delta_pp"]))]
                                         ),
-                                        IndicatorCard(
-                                            label_text="Emails por Processar",
-                                            label_tooltip="extra info",
-                                            rows=[("5", "última semana", "15%", "decrease")]
-                                        )
+                                        # IndicatorCard(
+                                        #     label_text="Emails por Processar",
+                                        #     label_tooltip="extra info",
+                                        #     rows=[("5", "última semana", "15%", "decrease")]
+                                        # )
                                     ]
                                 ),
                             ],
                             open=True
                         ),
-                        Section(
-                            title="Processos Prioritários",
-                            content=[
-                                TableV1(
-                                    data_frames=[
-                                        {
-                                            "df": priority_df,
-                                        }
-                                    ],
-                                    grid_id="priority-processes-table",
-                                    dashGridOptions={
-                                        "rowSelection": {
-                                            "mode": "singleRow",
-                                            "headerCheckbox": False,
-                                            "checkboxes": False,
-                                            "enableClickSelection": True,
-                                        },
-                                        "defaultColDef": {
-                                            "filter": True, 
-                                            "sortable": True, 
-                                            "resizable": True,
-                                            "flex":0,
-                                        },
-                                    },
-                                    height={"mode": "px", "value": 250},
-                                ),
-                            ],
-                            open=True
-                        ),
-                        Section(
-                            title="Todos os Processos",
-                            content=[
-                                TableV1(
-                                    data_frames=[
-                                        {
-                                            "df": all_processes_df,
-                                        }
-                                    ],
-                                    grid_id="all-processes-table",
-                                    dashGridOptions={
-                                        "rowSelection": {
-                                            "mode": "singleRow",
-                                            "headerCheckbox": False,
-                                            "checkboxes": False,
-                                            "enableClickSelection": True,
-                                        },
-                                        "defaultColDef": {
-                                            "filter": True, 
-                                            "sortable": True, 
-                                            "resizable": True,
-                                            "flex":0,
-                                        },
-                                    },
-                                    height={"mode": "px", "value": 330},
-                                ),
-                            ],
-                            open=True
-                        )
+                        MediumTabs
                     ]
+                    
                 )
             ]           
         )
@@ -206,5 +323,5 @@ def go_to_detail(priority_rows, all_rows):
     if not rows:
         raise PreventUpdate
 
-    ref_number = rows[0]["Número de Referência"]
-    return f"/detail/{ref_number}"
+    ref_number = rows[0]["document_id"]
+    return f"/detalhe/{ref_number}"

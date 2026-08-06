@@ -1,5 +1,5 @@
 import dash
-from dash import html, dcc
+from dash import html, dcc, Input, Output, State, callback_context
 from dash_iconify import DashIconify
 from dash.dcc import Tab
 
@@ -26,38 +26,60 @@ from components.table.shared.action_bar import action_bar
 import pandas as pd
 from functools import partial
 
+from assets.api_calls.extraction_api import get_document_details, alter_document_details
+
 
 dash.register_page(
     __name__,
-    path_template="/detail/<ref_number>",
+    path_template="/detalhe/<ref_number>",
     title="Detalhe do Email",
 )
 
 
 
-######  TABLES  ######
-fields_df = pd.read_csv("assets/data/email_fields.csv")
-
-df = pd.read_csv("assets/data/dummy_all_processes.csv")
-
-
-
-
 def layout(ref_number=None, **kwargs):
-    match = df.loc[df["Número de Referência"].astype(str) == str(ref_number)]
     
-    if not match.empty:
-        data_recepcao = pd.to_datetime(match.iloc[0]["Data de Receção"], dayfirst=True).date()
-        business_unit = match.iloc[0]["Unidade de Negócio"]
-        supplier_name = match.iloc[0]["Fornecedor"]
+    match = get_document_details(str(ref_number))
+    
+    if match:
+        fields = match.get("fields", {})
+        alerts = match.get("alerts", [])
+
+        issue_date = fields.get("issue_date", {}).get("value")
+        data_recepcao = (
+            pd.to_datetime(issue_date, dayfirst=True).date()
+            if issue_date
+            else None
+        )
+
+        business_unit = fields.get("bu_name", {}).get("value")
+        # bu_vat = fields.get("bu_vat", {}).get("value")
+        
+        supplier_name = fields.get("supplier_name", {}).get("value")
+        supplier_vat = fields.get("supplier_vat", {}).get("value")
+        
+        total_amount = fields.get("total_amount", {}).get("value")
+        vat_amount = fields.get("vat_amount", {}).get("value")
+        base_amount = fields.get("base_amount", {}).get("value")
+        currency = fields.get("currency", {}).get("value")
+
     else:
+        fields = {}
+        alerts = []
         data_recepcao = None
         business_unit = None
+        # bu_vat = None
         supplier_name = None
+        supplier_vat = None
+        total_amount = None
+        currency = None
         
     
     return html.Div(
     [  
+        dcc.Store(id="document_id_store", data=str(ref_number)),
+        dcc.Store(id="document_fields_store", data=fields),
+        dcc.Store(id="document_alerts_store", data=alerts),
         html.Div( 
             className="email_detail__container",
             children=[
@@ -101,81 +123,36 @@ def layout(ref_number=None, **kwargs):
                                   content=[
                                     html.Ul(
                                         className="email_detail__invoice_errors",
-                                        children = [
-                                      html.Li([
-                                        html.Div([
-                                          html.Div(
-                                              [
-                                                  html.H4("Campo Errado", className="body-sm"),
-                                                  Label("VAT do Fornecedor Errado"),
-                                              ],
-                                              className="email_detail__invoice_text",
-                                          ),
-                                          html.Div([
-                                          Button("Correção", icon="lucide:chevron-right", variant="outline"),
-                                          TableBanner(
-                                            message="",
-                                            variant = "positive",
-                                            icon = "lucide:check",
-                                          ),
-                                          ],
-                                          className="email_detail__invoice_button_icon"
-                                          )
-                                      ],
-                                      className="email_detail__invoice_item",
-                                  )
-                                      ]
-                                  ),
-                                  html.Li([
-                                    html.Div([
-                                      html.Div(
-                                          [
-                                              html.H4("Campo Errado", className="body-sm"),
-                                              Label("Número do Fornecedor Errado"),
-                                          ],
-                                          className="email_detail__invoice_text",
-                                      ),
-                                      html.Div([
-                                      Button("Ver erro", icon="lucide:chevron-right", variant="outline"),
-                                      TableBanner(
-                                        message="",
-                                        variant = "negative",
-                                        icon = "lucide:x",
-                                      ),
-                                      ],
-                                      className="email_detail__invoice_button_icon"
-                                      )
-                                  ],
-                                  className="email_detail__invoice_item",
-                              )
-                                  ]
-                              ),
-                              html.Li([
-                                html.Div([
-                                  html.Div(
-                                      [
-                                          html.H4("Campo Errado", className="body-sm"),
-                                          Label("VAT do Fornecedor Errado"),
-                                      ],
-                                      className="email_detail__invoice_text",
-                                  ),
-                                  html.Div([
-                                  Button("Correção", icon="lucide:chevron-right", variant="outline"),
-                                  TableBanner(
-                                    message="",
-                                    variant = "negative",
-                                    icon = "lucide:x",
-                                  ),
-                                  ],
-                                  className="email_detail__invoice_button_icon"
-                                  )
-                              ],
-                              className="email_detail__invoice_item",
-                          )
-                              ]
-                          )
-                                      ],
-                                  )
+                                        children=[
+                                            html.Li(
+                                                html.Div(
+                                                    [
+                                                        html.Div(
+                                                            [
+                                                                html.H4(a.split(":", 1)[0].strip(), className="body-sm"),
+                                                                Label(a.split(":", 1)[1].strip()),
+                                                            ],
+                                                            className="email_detail__invoice_text",
+                                                        ),
+                                                        html.Div(
+                                                        #     [
+                                                        #         Button("Correção", icon="lucide:chevron-right", variant="outline"),
+                                                        #         TableBanner(
+                                                        #             message="",
+                                                        #             variant="positive",
+                                                        #             icon="lucide:check",
+                                                        #         ),
+                                                        #     ],
+                                                        #     className="email_detail__invoice_button_icon",
+                                                            DashIconify(icon="lucide:triangle-alert", className="email_detail__invoice_button_icon")
+                                                        ),
+                                                      ],
+                                                    className="email_detail__invoice_item",
+                                                )
+                                            )
+                                            for a in alerts
+                                        ],
+                                    )
                                   ],
                                   open=True
                                 ),
@@ -189,65 +166,88 @@ def layout(ref_number=None, **kwargs):
                                                 html.Div(
                                                     className="email_detail__field",
                                                     children=[
-                                        Label(label_text="Número do Fornecedor"),
-                              
-                                        dcc.Input(id='supplier_num', value=ref_number, type='number', className="email_detail__input"),
-                                         ],
-                ),
-                html.Div(
-                    className="email_detail__field",
-                    children=[
-                                        Label(label_text="Unidade de Negócio"),
-                                       
-                                        dcc.Input(id='company_code', value=business_unit, type='text', className="email_detail__input"),
-                                         ],
-                ),
-                 html.Div(
-                                    className="email_detail__field",
-                                    children=[
+                                                        Label(label_text="Unidade de Negócio"),
+                                                    
+                                                        dcc.Input(id='bu_name', value=business_unit, type='text', className="email_detail__input"),
+                                                    ],
+                                                ),
+                                                html.Div(
+                                                    className="email_detail__field",
+                                                    children=[
                                                         Label(label_text="Nome do Fornecedor"),
-                                                       
-                                                        dcc.Input(id='company_code', value=supplier_name, type='text', className="email_detail__input"),
-                                                         ],
-                                ),
-                html.Div(
-                    className="email_detail__field",
-                    children=[
-                                        Label(label_text="NIF do Fornecedor"),
-                                        
-                                        dcc.Input(id='supplier_vat', value='5100000809', type='number', className="email_detail__input"),
-                                         ],
-                ),
-                    html.Div(
-                                    className="email_detail__field",
-                                    children=[
+                                                    
+                                                        dcc.Input(id='supplier_name', value=supplier_name, type='text', className="email_detail__input"),
+                                                    ],
+                                                ),
+                                                html.Div(
+                                                    className="email_detail__field",
+                                                    children=[
+                                                        Label(label_text="NIF do Fornecedor"),
+                                                        
+                                                        dcc.Input(id='supplier_vat', value=supplier_vat, type='text', className="email_detail__input"),
+                                                    ],
+                                                ),
+                                                html.Div(
+                                                    className="email_detail__field",
+                                                    children=[
                                                         Label(label_text="Data da Fatura"),
-                                                              
-
-dcc.DatePickerSingle(
-    date=data_recepcao,
-)
-                                          # dcc.Dropdown(
-                                          #     options=[
-                                          #         {"label": "€", "value": "EUR"},
-                                          #         {"label": "$", "value": "USD"},
-                                          #     ],
-                                          #     value="EUR",
-                                          #     clearable=False,
-                                          # )
-                                                         ],
-                                ),
-                html.Div(
-                    className="email_detail__field",
-                    children=[
-                                        Label(label_text="Nota de Crédito"),
-                                        
-                                        Checkbox(label_text="Sim")
-                                         ]
+                                                        
+                                                        dcc.DatePickerSingle(
+                                                            id='issue_date',
+                                                            date=data_recepcao,
+                                                            className="email_detail__input"
+                                                        )
+                                                    ],
+                                                ),
+                                                html.Div(
+                                                    className="email_detail__field",
+                                                    children=[
+                                                        Label(label_text="Valor Total"),
+                                                        
+                                                        dcc.Input(id='total_amount', value=total_amount, type='number', className="email_detail__input"),
+                                                    ],
+                                                ),  
+                                                html.Div(
+                                                    className="email_detail__field",
+                                                    children=[
+                                                        Label(label_text="Valor do IVA"),
+                                                        
+                                                        dcc.Input(id='vat_amount', value=vat_amount, type='number', className="email_detail__input"),
+                                                    ],
+                                                ),   
+                                                html.Div(
+                                                    className="email_detail__field",
+                                                    children=[
+                                                        Label(label_text="Valor Base"),
+                                                        
+                                                        dcc.Input(id='base_amount', value=base_amount, type='number', className="email_detail__input"),
+                                                    ],
+                                                ),                                                                                                                                                 
+                                                html.Div(
+                                                    className="email_detail__field",
+                                                    children=[
+                                                        Label(label_text="Moeda"),
+                                                        
+                                                        dcc.Dropdown(
+                                                            id='currency',
+                                                            options=['EUR', 'USD', 'CVE'],
+                                                            value=currency,
+                                                            clearable=False,
+                                                            className="email_detail__input"
+                                                        )
+                                                    ],
+                                                ),
+                                                html.Div(
+                                                    className="email_detail__field",
+                                                    children=[
+                                                        Label(label_text="Nota de Crédito"),
+                                                        
+                                                        Checkbox(id='credit_note', label_text="Sim")
+                                                    ]
+                                                )
+                                            ]
                                         )
-                                      ]
-                                    )
-                                  ]
+                                    ]
                                 )
                               ]
                             ),
@@ -272,13 +272,90 @@ dcc.DatePickerSingle(
                     className="email_detail__bottom_section",
                     children=[
                         Button("Exportar", icon="lucide:file-down", variant="outline"),
-                        Button("Guardar", icon="lucide:circle-check", variant="outline"),
-                        Button("Enviar para SAP", icon="lucide:chevron-right")
+                        Button("Guardar", id="save-button", icon="lucide:circle-check", variant="outline"),
+                        Button("Enviar para SAP", id="send-sap-button", icon="lucide:chevron-right"),
+                        html.P(id="email-detail-update-status", className="body-sm email_detail__status"),
                     ]
                 )
             ]           
         )
     ]
 )
+
+
+@dash.callback(
+    Output("email-detail-update-status", "children"),
+    Input("save-button", "n_clicks"),
+    Input("send-sap-button", "n_clicks"),
+    State("document_id_store", "data"),
+    State("document_fields_store", "data"),
+    State("document_alerts_store", "data"),
+    State("bu_name", "value"),
+    State("supplier_name", "value"),
+    State("supplier_vat", "value"),
+    State("issue_date", "date"),
+    State("total_amount", "value"),
+    State("vat_amount", "value"),
+    State("base_amount", "value"),
+    State("currency", "value"),
+    State("credit_note", "value"),
+    prevent_initial_call=True,
+)
+def update_document_details(
+    save_clicks,
+    send_clicks,
+    document_id,
+    fields,
+    alerts,
+    bu_name,
+    supplier_name,
+    supplier_vat,
+    issue_date,
+    total_amount,
+    vat_amount,
+    base_amount,
+    currency,
+    credit_note,
+):
+    triggered = callback_context.triggered
+    if not triggered:
+        raise dash.exceptions.PreventUpdate
+
+    if not document_id:
+        return "Documento inválido"
+
+    updated_fields = fields.copy() if isinstance(fields, dict) else {}
+    def update_field(name: str, value: object) -> None:
+        existing = updated_fields.get(name)
+        updated_fields[name] = {**(existing or {}), "value": value}
+
+    if bu_name is not None:
+        update_field("bu_name", bu_name)
+    if supplier_name is not None:
+        update_field("supplier_name", supplier_name)
+    if supplier_vat is not None:
+        update_field("supplier_vat", supplier_vat)
+    if issue_date is not None:
+        update_field("issue_date", issue_date)
+    if total_amount is not None:
+        update_field("total_amount", total_amount)
+    if vat_amount is not None:
+        update_field("vat_amount", vat_amount)
+    if base_amount is not None:
+        update_field("base_amount", base_amount)
+    if currency is not None:
+        update_field("currency", currency)
+    if credit_note is not None:
+        update_field("credit_note", bool(credit_note))
+
+    try:
+        alter_document_details(document_id, alerts or [], updated_fields)
+    except Exception as exc:
+        return f"Erro ao guardar: {exc}"
+
+    button_id = triggered[0]["prop_id"].split(".")[0]
+    if button_id == "send-sap-button":
+        return "Documento enviado para SAP"
+    return "Documento guardado"
 
 

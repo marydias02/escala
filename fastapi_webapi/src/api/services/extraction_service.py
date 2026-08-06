@@ -17,13 +17,21 @@ class ExtractionService:
     async def list_all_documents(self, limit: int = 100) -> list[dict]:
         df = await self.documents.list_all_documents(limit=limit)
         return df.to_dicts()
+    
+    async def list_pending_documents(self, limit: int = 100) -> list[dict]:
+        df = await self.documents.list_pending_documents(limit=limit)
+        return df.to_dicts()
 
     async def get_document(self, document_id: str) -> dict:
         row = await self.documents.get_document(document_id)
         if not row:
             raise NotFoundError(f"Document with ID {document_id} not found")
 
-        content = json.loads(row["document_content"]) if row["document_content"] else {}
+        content_value = row["document_content"]
+        if isinstance(content_value, str):
+            content = json.loads(content_value) if content_value else {}
+        else:
+            content = content_value or {}
         po_list = content.pop("po_list", None) or []
 
         return {
@@ -38,6 +46,37 @@ class ExtractionService:
         if not row:
             raise NotFoundError(f"Document with ID {document_id} not found")
         return row
+    
+    async def alter_document_details(self, document_id: str, alerts_list: list[str], document_content: dict) -> dict:
+        row = await self.documents.get_document(document_id)
+        if not row:
+            raise NotFoundError(f"Document with ID {document_id} not found")
+
+        content = document_content
+        if not isinstance(content, str):
+            content = json.dumps(content)
+
+        data = {
+            "document_id": document_id,
+            "alerts_list": alerts_list,
+            "document_content": content,
+        }
+
+        updated_row = await self.documents.alter(data)
+        updated_content_value = updated_row.get("document_content")
+        if isinstance(updated_content_value, str):
+            updated_content = json.loads(updated_content_value) if updated_content_value else {}
+        else:
+            updated_content = updated_content_value or {}
+
+        po_list = updated_content.pop("po_list", None) or []
+
+        return {
+            "document_id": updated_row["document_id"],
+            "alerts": updated_row.get("alerts_list") or [],
+            "fields": updated_content,
+            "po_list": po_list,
+        }
 
     async def get_extraction_big_numbers(self) -> dict:
         pending_manual_validation, auto_ingested_by_week, returned_by_week = await asyncio.gather(

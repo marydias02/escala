@@ -1,82 +1,212 @@
 var dagcomponentfuncs = (window.dashAgGridComponentFunctions =
-    window.dashAgGridComponentFunctions || {})
-var dagfuncs = (window.dashAgGridFunctions = window.dashAgGridFunctions || {})
+  window.dashAgGridComponentFunctions || {});
+var dagfuncs = (window.dashAgGridFunctions = window.dashAgGridFunctions || {});
 
 dagcomponentfuncs.HeaderWithIcon = function (props) {
-    const { displayName, icon } = props
+  const { displayName, icon } = props;
 
-    let iconElement
-    if (icon) {
-        iconElement = React.createElement(window.dash_iconify.DashIconify, {
-            icon: icon,
-            style: { fontSize: '14px', marginRight: '4px' },
-            key: 'header-icon' + icon + displayName.trim(),
-        })
-    }
+  let iconElement;
+  if (icon) {
+    iconElement = React.createElement(window.dash_iconify.DashIconify, {
+      icon: icon,
+      style: { fontSize: "14px", marginRight: "4px" },
+      key: "header-icon" + icon + displayName.trim(),
+    });
+  }
 
-    return React.createElement(
-        'div',
-        {
-            style: {
-                display: 'flex',
-                alignItems: 'center',
-            },
-        },
-        [iconElement, displayName]
-    )
-}
+  return React.createElement(
+    "div",
+    {
+      style: {
+        display: "flex",
+        alignItems: "center",
+      },
+    },
+    [iconElement, displayName],
+  );
+};
 
 dagcomponentfuncs.Priority = function (props) {
-    const { value, setData } = props
+  const { value, setData } = props;
 
-    let bg = '#eee',
-        color = '#222'
+  let bg = "#eee",
+    color = "#222";
 
-    if (value === 'High') {
-        bg = 'rgba(245, 234, 235, 1)' // Negative colors
-        color = 'rgba(122, 31, 32, 1)'
-        border = 'rgba(239, 220, 220, 1)'
-    } else if (value === 'Medium') {
-        bg = 'rgba(241, 237, 218, 1)' // Warning colors
-        color = 'rgba(74, 65, 28, 1)'
-        border = 'rgba(238, 232, 211, 1)'
-    } else if (value === 'Low') {
-        bg = 'rgba(234, 245, 237, 1)' //Positive colors
-        color = 'rgba(28, 74, 40, 1)'
-        border = 'rgba(220, 239, 225, 1)'
-    }
+  if (value === "High") {
+    bg = "rgba(245, 234, 235, 1)"; // Negative colors
+    color = "rgba(122, 31, 32, 1)";
+    border = "rgba(239, 220, 220, 1)";
+  } else if (value === "Medium") {
+    bg = "rgba(241, 237, 218, 1)"; // Warning colors
+    color = "rgba(74, 65, 28, 1)";
+    border = "rgba(238, 232, 211, 1)";
+  } else if (value === "Low") {
+    bg = "rgba(234, 245, 237, 1)"; //Positive colors
+    color = "rgba(28, 74, 40, 1)";
+    border = "rgba(220, 239, 225, 1)";
+  }
 
-    function onClick() {
-        if (setData) setData()
-    }
+  function onClick() {
+    if (setData) setData();
+  }
 
-    return React.createElement(
-        'div',
-        {
-            onClick,
-            style: {
-                backgroundColor: bg,
-                color: color,
-                borderRadius: '4px',
-                padding: '2px 6px',
-                fontSize: '.8rem',
-                marginTop: '7px',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'flex-start',
-                boxSizing: 'border-box',
-                border: '1px solid transparent',
-                borderColor: border,
-                width: 'fit-content',
-                lineHeight: 1.5,
-            },
-        },
-        [value]
-    )
-}
+  return React.createElement(
+    "div",
+    {
+      onClick,
+      style: {
+        backgroundColor: bg,
+        color: color,
+        borderRadius: "4px",
+        padding: "2px 6px",
+        fontSize: ".8rem",
+        marginTop: "7px",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "flex-start",
+        boxSizing: "border-box",
+        border: "1px solid transparent",
+        borderColor: border,
+        width: "fit-content",
+        lineHeight: 1.5,
+      },
+    },
+    [value],
+  );
+};
 
 dagfuncs.priority_options = function () {
-    return {
-        values: ['High', 'Medium', 'Low'],
-    }
-}
+  return {
+    values: ["High", "Medium", "Low"],
+  };
+};
+
+dagcomponentfuncs.Action = function (props) {
+  const { value, setData } = props;
+
+  let bg = "#eee",
+    color = "#222",
+    icon = "lucide:arrow-right";
+
+  if (value === "Validate Manually") {
+    bg = "rgba(245, 234, 235, 1)"; // Negative colors
+    color = "rgba(122, 31, 32, 1)";
+    border = "rgba(239, 220, 220, 1)";
+    icon = "lucide:triangle-alert";
+  } else if (value === "Sent back to Supplier") {
+    bg = "rgba(241, 237, 218, 1)"; // Warning colors
+    color = "rgba(74, 65, 28, 1)";
+    border = "rgba(238, 232, 211, 1)";
+    icon = "lucide:arrow-right";
+  } else if (value === "Ingest in SAP") {
+    bg = "rgba(234, 245, 237, 1)"; //Positive colors
+    color = "rgba(28, 74, 40, 1)";
+    border = "rgba(220, 239, 225, 1)";
+    icon = "lucide:check";
+  }
+
+  function onClick() {
+    if (setData) setData();
+  }
+
+  const iconElement = React.createElement(window.dash_iconify.DashIconify, {
+    icon: icon,
+    width: 14,
+    height: 14,
+    style: {
+      marginRight: "2px",
+    },
+  });
+
+  return React.createElement(
+    "div",
+    {
+      onClick,
+      style: {
+        backgroundColor: bg,
+        color: color,
+        borderRadius: "4px",
+        padding: "2px 6px",
+        fontSize: ".8rem",
+        marginTop: "7px",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "flex-start",
+        boxSizing: "border-box",
+        borderColor: "1px solid transparent",
+        width: "fit-content",
+        lineHeight: 1.5,
+        fontWeight: 500,
+      },
+    },
+    [iconElement, React.createElement("span", null, value)],
+  );
+};
+
+dagfuncs.action_options = function () {
+  return {
+    values: ["Validate Manually", "Enviado ao Fornecedor", "Carregado em SAP"],
+  };
+};
+
+dagcomponentfuncs.Status = function (props) {
+  const { value, setData } = props;
+
+  let bg = "#eee",
+    color = "#222",
+    icon = "lucide:arrow-right";
+
+  if (value === "Failed") {
+    bg = "rgba(245, 234, 235, 1)"; // Negative colors
+    color = "rgba(122, 31, 32, 1)";
+    border = "rgba(239, 220, 220, 1)";
+    icon = "lucide:triangle-alert";
+  } else if (value === "Pending") {
+    bg = "rgba(241, 237, 218, 1)"; // Warning colors
+    color = "rgba(74, 65, 28, 1)";
+    border = "rgba(238, 232, 211, 1)";
+    icon = "lucide:clock";
+  } else if (value === "Ingested") {
+    bg = "rgba(234, 245, 237, 1)"; //Positive colors
+    color = "rgba(28, 74, 40, 1)";
+    border = "rgba(220, 239, 225, 1)";
+    icon = "lucide:check";
+  }
+
+  function onClick() {
+    if (setData) setData();
+  }
+
+  const iconElement = React.createElement(window.dash_iconify.DashIconify, {
+    icon: icon,
+    width: 14,
+    height: 14,
+    style: {
+      marginRight: "2px",
+    },
+  });
+
+  return React.createElement(
+    "div",
+    {
+      onClick,
+      style: {
+        backgroundColor: bg,
+        color: color,
+        borderRadius: "4px",
+        padding: "2px 6px",
+        fontSize: ".8rem",
+        marginTop: "7px",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "flex-start",
+        boxSizing: "border-box",
+        borderColor: "1px solid transparent",
+        width: "fit-content",
+        lineHeight: 1.5,
+        fontWeight: 500,
+      },
+    },
+    [iconElement, React.createElement("span", null, value)],
+  );
+};
