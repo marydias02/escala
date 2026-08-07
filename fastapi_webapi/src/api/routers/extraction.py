@@ -2,7 +2,14 @@ from fastapi import APIRouter, Depends
 
 from api.dependencies.security import verify_api_key
 from api.dependencies.services import ExtractionServiceDep
-from api.messages.store import DocumentDetailRead, DocumentEmailRead, DocumentRead, DocumentUpdate, ExtractionBigNumbersDict
+from api.messages.store import (
+    DocumentDetailRead,
+    DocumentEmailRead,
+    DocumentRead,
+    DocumentUpdate,
+    ExtractionBigNumbersDict,
+    NextPriorityDocumentRead,
+)
 
 router = APIRouter(prefix="/extraction", tags=["extraction"], dependencies=[Depends(verify_api_key)])
 
@@ -30,6 +37,20 @@ async def get_priority_documents(service: ExtractionServiceDep, limit: int = 100
     """
     rows = await service.list_priority_documents(limit=limit)
     return [DocumentRead.model_validate(r) for r in rows]
+
+
+@router.get(
+    "/next-priority-document/{document_id}",
+    summary="Get the next priority document",
+)
+async def get_next_priority_document(
+    service: ExtractionServiceDep, document_id: str
+) -> NextPriorityDocumentRead:
+    """Return whether the current document is eligible for manual validation and
+    the next document in the priority queue, if one exists.
+    """
+    result = await service.get_next_priority_document(document_id)
+    return NextPriorityDocumentRead.model_validate(result)
 
 
 @router.get("/documents", summary="Get all documents")

@@ -1,5 +1,6 @@
 import asyncio
 import json
+from typing import Optional
 
 from api.exceptions import NotFoundError
 from api.repositories.extraction_repository import DocumentsRepository, ExtractionBigNumbers
@@ -13,6 +14,12 @@ class ExtractionService:
     async def list_priority_documents(self, limit: int = 100) -> list[dict]:
         df = await self.documents.list_priority_documents(limit=limit)
         return df.to_dicts()
+
+    async def get_next_priority_document(self, document_id: str) -> dict:
+        result = await self.documents.get_next_priority_document(document_id)
+        if not result:
+            raise NotFoundError(f"Document with ID {document_id} not found")
+        return result
 
     async def list_all_documents(self, limit: int = 100) -> list[dict]:
         df = await self.documents.list_all_documents(limit=limit)

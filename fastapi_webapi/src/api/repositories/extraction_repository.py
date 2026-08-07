@@ -1,4 +1,4 @@
-from typing import Optional, Any
+from typing import Any, Optional
 
 import polars as pl
 
@@ -81,10 +81,38 @@ class DocumentsRepository(BaseRepository):
         FROM {self.table}
         WHERE action = $1 AND status = 'Pending'
             AND document_content <> '{{}}'::jsonb
-        ORDER BY created_at DESC
+        ORDER BY created_at DESC, document_id DESC
         LIMIT $2
         """
         return await self.query_df(query, parameters=[MANUAL, limit])
+
+    async def get_next_priority_document(self, document_id: str) -> Optional[dict]:
+        query = f"""
+        WITH current_document AS (
+            SELECT
+                created_at,
+                action = $2
+                    AND status = 'Pending'
+                    AND document_content <> '{{}}'::jsonb AS eligible
+            FROM {self.table}
+            WHERE document_id = $1
+        )
+        SELECT
+            current_document.eligible,
+            (
+                SELECT candidate.document_id
+                FROM {self.table} AS candidate
+                WHERE current_document.eligible
+                    AND candidate.action IN ('Validate Manually', 'Validação Manual')
+                    AND candidate.status IN ('Pending', 'Sob Revisão')
+                    AND (candidate.created_at, candidate.document_id)
+                        < (current_document.created_at, $1)
+                ORDER BY candidate.created_at DESC, candidate.document_id DESC
+                LIMIT 1
+            ) AS next_document_id
+        FROM current_document
+        """
+        return await self.query_dict(query, parameters=[document_id, MANUAL])
 
     async def list_all_documents(self, limit: int = 100) -> pl.DataFrame:
         query = f"""
@@ -109,7 +137,7 @@ class DocumentsRepository(BaseRepository):
 
     async def get_document(self, document_id: str) -> Optional[dict]:
         query = f"""
-        SELECT document_id, alerts_list, document_content
+        SELECT document_id, alerts_list, document_content, action, status
         FROM {self.table}
         WHERE document_id = $1
         """

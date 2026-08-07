@@ -236,7 +236,7 @@ def make_medium_tabs(priority_documents, all_documents, pending_documents):
                                             "flex": 0,
                                         },
                                     },
-                                    height={"mode": "px", "value": 250},
+                                    height={"mode": "px", "value": 350},
                                 ),
                             ),
                         ],

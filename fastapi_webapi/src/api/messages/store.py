@@ -1,5 +1,5 @@
 from datetime import date, datetime
-from typing import Optional, Any
+from typing import Any, Optional
 from uuid import UUID
 
 from pydantic import BaseModel
@@ -68,6 +68,11 @@ class DocumentRead(BaseModel):
     created_at: datetime
     action: Optional[str] = None
     status: Optional[str] = None
+
+
+class NextPriorityDocumentRead(BaseModel):
+    eligible: bool
+    next_document_id: Optional[UUID] = None
 
 
 class DocumentUpdate(BaseModel):

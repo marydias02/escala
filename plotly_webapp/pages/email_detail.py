@@ -1,7 +1,8 @@
 import dash
-from dash import html, dcc, Input, Output, State, callback_context
+from dash import html, dcc, Input, Output, State, callback_context, no_update
 from dash_iconify import DashIconify
 from dash.dcc import Tab
+import requests
 
 from components.page_header.page_header import PageHeader
 from components.banner.banner import TableBanner
@@ -26,7 +27,11 @@ from components.table.shared.action_bar import action_bar
 import pandas as pd
 from functools import partial
 
-from assets.api_calls.extraction_api import get_document_details, alter_document_details
+from assets.api_calls.extraction_api import (
+    alter_document_details,
+    get_document_details,
+    get_next_priority_document,
+)
 
 
 dash.register_page(
@@ -38,12 +43,16 @@ dash.register_page(
 
 
 def layout(ref_number=None, **kwargs):
-    
-    match = get_document_details(str(ref_number))
-    
+    try:
+        match = get_document_details(str(ref_number))
+    except requests.RequestException:
+        match = None
+
     if match:
         fields = match.get("fields", {})
         alerts = match.get("alerts", [])
+        action = match.get("action")
+        status = match.get("status")
 
         issue_date = fields.get("issue_date", {}).get("value")
         data_recepcao = (
@@ -66,6 +75,8 @@ def layout(ref_number=None, **kwargs):
     else:
         fields = {}
         alerts = []
+        action = None
+        status = None
         data_recepcao = None
         business_unit = None
         # bu_vat = None
@@ -73,13 +84,22 @@ def layout(ref_number=None, **kwargs):
         supplier_vat = None
         total_amount = None
         currency = None
-        
-    
+
     return html.Div(
     [  
         dcc.Store(id="document_id_store", data=str(ref_number)),
         dcc.Store(id="document_fields_store", data=fields),
         dcc.Store(id="document_alerts_store", data=alerts),
+        dcc.Store(
+            id="document_manual_validation_store",
+            data=action in {
+                "Validate Manually",
+                "Validar Manualmente",
+                "Validação Manual",
+                "Necessita de Validação",
+            }
+            and status == "Pending",
+        ),
         html.Div( 
             className="email_detail__container",
             children=[
@@ -115,6 +135,10 @@ def layout(ref_number=None, **kwargs):
                         html.Section(
                           className="email_detail__inside_content_section",
                           children=[
+                            html.Div(
+                                "Backend indisponível. Verifique o servidor em localhost:8000.",
+                                className="email_detail__backend_warning",
+                            ) if match is None else html.Span(),
                             html.Section(
                               className="email_detail__content_left_section",
                               children=[
@@ -273,14 +297,37 @@ def layout(ref_number=None, **kwargs):
                     children=[
                         Button("Exportar", icon="lucide:file-down", variant="outline"),
                         Button("Guardar", id="save-button", icon="lucide:circle-check", variant="outline"),
-                        Button("Enviar para SAP", id="send-sap-button", icon="lucide:chevron-right"),
+                        Button("Enviar para SAP", id="send-sap-button", icon="lucide:send"),
+                        dcc.Link(
+                            Button("Próxima Fatura", id="next-document-button", icon="lucide:arrow-right"),
+                            id="next-document-link",
+                            href="#",
+                            className="email_detail__next_link",
+                        ),
                         html.P(id="email-detail-update-status", className="body-sm email_detail__status"),
                     ]
-                )
+                ),
             ]           
         )
     ]
 )
+
+
+@dash.callback(
+    Output("next-document-link", "href"),
+    Output("next-document-link", "style"),
+    Input("document_id_store", "data"),
+)
+def configure_next_document_button(document_id):
+    if not document_id:
+        return "#", {"display": "none"}
+
+    result = get_next_priority_document(document_id)
+    next_document_id = result.get("next_document_id")
+    if not result.get("eligible") or not next_document_id:
+        return "#", {"display": "none"}
+
+    return f"/detalhe/{next_document_id}", {}
 
 
 @dash.callback(
@@ -322,9 +369,10 @@ def update_document_details(
         raise dash.exceptions.PreventUpdate
 
     if not document_id:
-        return "Documento inválido"
+        return "Documento invalido"
 
     updated_fields = fields.copy() if isinstance(fields, dict) else {}
+
     def update_field(name: str, value: object) -> None:
         existing = updated_fields.get(name)
         updated_fields[name] = {**(existing or {}), "value": value}
@@ -356,8 +404,8 @@ def update_document_details(
         action = "Ingerir em SAP"
         status = "Created"
     elif button_id == "save-button":
-        action = "Validação Manual"
-        status = "Sob Revisão"
+        action = "ValidaA\x15A\u015fo Manual"
+        status = "Sob RevisA\u015fo"
 
     try:
         alter_document_details(
@@ -374,5 +422,4 @@ def update_document_details(
     if button_id == "send-sap-button":
         return "Documento enviado para SAP"
     return "Documento guardado"
-
 

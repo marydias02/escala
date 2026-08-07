@@ -30,6 +30,16 @@ def get_priority_documents():
             row["created_at"] = created_at[:16].replace("T", " ")
 
     return rows
+
+
+def get_next_priority_document(document_id: str):
+    response = requests.get(
+        f"{BASE_URL}/extraction/next-priority-document/{document_id}",
+        headers=HEADERS,
+        timeout=10,
+    )
+    response.raise_for_status()
+    return response.json()
   
 def get_all_documents():
     response = requests.get(
