@@ -47,7 +47,15 @@ class ExtractionService:
             raise NotFoundError(f"Document with ID {document_id} not found")
         return row
     
-    async def alter_document_details(self, document_id: str, alerts_list: list[str], document_content: dict) -> dict:
+    async def alter_document_details(
+        self,
+        document_id: str,
+        alerts_list: list[str],
+        document_content: dict,
+        action: Optional[str] = None,
+        status: Optional[str] = None,
+        last_modified_by: Optional[str] = None,
+    ) -> dict:
         row = await self.documents.get_document(document_id)
         if not row:
             raise NotFoundError(f"Document with ID {document_id} not found")
@@ -56,10 +64,17 @@ class ExtractionService:
         if not isinstance(content, str):
             content = json.dumps(content)
 
+        action = action or row.get("action")
+        status = status or "Sob Revisão"
+        last_modified_by = last_modified_by
+
         data = {
             "document_id": document_id,
             "alerts_list": alerts_list,
             "document_content": content,
+            "action": action,
+            "status": status,
+            "last_modified_by": last_modified_by,
         }
 
         updated_row = await self.documents.alter(data)

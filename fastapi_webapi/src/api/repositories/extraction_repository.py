@@ -131,10 +131,10 @@ class DocumentsRepository(BaseRepository):
     async def alter(self, data: dict) -> dict[str, Any]:
         query = f"""
         UPDATE {self.table}
-        SET alerts_list = $2, document_content = $3
+        SET alerts_list = $2, document_content = $3, action = $4, status = $5, last_modified_by = $6, last_modified_at = now()
         WHERE document_id = $1
-        RETURNING document_id, alerts_list, document_content;
+        RETURNING document_id, alerts_list, document_content, action, status, last_modified_by, last_modified_at;
         """
-        params = [data["document_id"], data["alerts_list"], data["document_content"]]
+        params = [data["document_id"], data["alerts_list"], data["document_content"], data["action"], data["status"], data["last_modified_by"]]
 
         return await self.query_dict(query, parameters=params)

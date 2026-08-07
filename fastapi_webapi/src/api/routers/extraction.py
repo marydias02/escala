@@ -86,10 +86,16 @@ async def alter_document_details(
     - **document_id**: Document ID
     - **alerts_list**: List of alerts
     - **document_content**: Document content
+    - **action**: Optional action value
+    - **status**: Optional status value
+    - **last_modified_by**: Optional modifier name
     """
     result = await service.alter_document_details(
         payload.document_id,
         payload.alerts_list,
         payload.document_content,
+        action=payload.action,
+        status=payload.status,
+        last_modified_by=payload.last_modified_by,
     )
     return DocumentDetailRead.model_validate(result)

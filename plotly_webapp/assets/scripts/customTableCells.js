@@ -88,7 +88,7 @@ dagcomponentfuncs.Action = function (props) {
     color = "#222",
     icon = "lucide:arrow-right";
 
-  if (value === "Validate Manually") {
+  if (value === "Validate Manually" || value === "Validação Manual") {
     bg = "rgba(245, 234, 235, 1)"; // Negative colors
     color = "rgba(122, 31, 32, 1)";
     border = "rgba(239, 220, 220, 1)";
@@ -98,7 +98,7 @@ dagcomponentfuncs.Action = function (props) {
     color = "rgba(74, 65, 28, 1)";
     border = "rgba(238, 232, 211, 1)";
     icon = "lucide:arrow-right";
-  } else if (value === "Ingest in SAP") {
+  } else if (value === "Ingest in SAP" || value === "Ingerir em SAP") {
     bg = "rgba(234, 245, 237, 1)"; //Positive colors
     color = "rgba(28, 74, 40, 1)";
     border = "rgba(220, 239, 225, 1)";
@@ -161,12 +161,12 @@ dagcomponentfuncs.Status = function (props) {
     color = "rgba(122, 31, 32, 1)";
     border = "rgba(239, 220, 220, 1)";
     icon = "lucide:triangle-alert";
-  } else if (value === "Pending") {
+  } else if (value === "Pending" || value === "Sob Revisão") {
     bg = "rgba(241, 237, 218, 1)"; // Warning colors
     color = "rgba(74, 65, 28, 1)";
     border = "rgba(238, 232, 211, 1)";
     icon = "lucide:clock";
-  } else if (value === "Ingested") {
+  } else if (value === "Ingested" || value === "Created") {
     bg = "rgba(234, 245, 237, 1)"; //Positive colors
     color = "rgba(28, 74, 40, 1)";
     border = "rgba(220, 239, 225, 1)";

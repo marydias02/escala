@@ -74,6 +74,9 @@ class DocumentUpdate(BaseModel):
     document_id: UUID
     alerts_list: list[str]
     document_content: dict[str, Any]
+    action: Optional[str] = None
+    status: Optional[str] = None
+    last_modified_by: Optional[str] = None
 
 
 class ConfidentValue(BaseModel):

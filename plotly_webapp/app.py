@@ -28,8 +28,8 @@ app = Dash(
     __name__,
     use_pages=True,
     external_stylesheets=external_stylesheets,
-    title="Dash Template",
-    update_title="Dash Template - Updating ...",
+    title="ESCALA",
+    update_title="ESCALA - Updating ...",
 )
 
 app.layout = html.Div(
@@ -151,6 +151,8 @@ app.layout = html.Div(
 )
 def update_sidebar(toggle_clicks, menu_clicks, current_state):
     return update_sidebar_logic(toggle_clicks, menu_clicks, current_state)
+
+
 
 
 if __name__ == "__main__":

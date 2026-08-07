@@ -130,7 +130,7 @@ def layout(ref_number=None, **kwargs):
                                                         html.Div(
                                                             [
                                                                 html.H4(a.split(":", 1)[0].strip(), className="body-sm"),
-                                                                Label(a.split(":", 1)[1].strip()),
+                                                                Label(a.split(":", 1)[1].strip() if ":" in a else ""),
                                                             ],
                                                             className="email_detail__invoice_text",
                                                         ),
@@ -348,12 +348,29 @@ def update_document_details(
     if credit_note is not None:
         update_field("credit_note", bool(credit_note))
 
+    button_id = triggered[0]["prop_id"].split(".")[0]
+    action = None
+    status = None
+
+    if button_id == "send-sap-button":
+        action = "Ingerir em SAP"
+        status = "Created"
+    elif button_id == "save-button":
+        action = "Validação Manual"
+        status = "Sob Revisão"
+
     try:
-        alter_document_details(document_id, alerts or [], updated_fields)
+        alter_document_details(
+            document_id,
+            alerts or [],
+            updated_fields,
+            action=action,
+            status=status,
+            last_modified_by="Mariana Dias",
+        )
     except Exception as exc:
         return f"Erro ao guardar: {exc}"
 
-    button_id = triggered[0]["prop_id"].split(".")[0]
     if button_id == "send-sap-button":
         return "Documento enviado para SAP"
     return "Documento guardado"

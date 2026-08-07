@@ -73,15 +73,30 @@ def get_document_details(doc_id: str):
     return response.json()
 
 
-def alter_document_details(document_id: str, alerts_list: list[str], document_content: dict):
+def alter_document_details(
+    document_id: str,
+    alerts_list: list[str],
+    document_content: dict,
+    action: str | None = None,
+    status: str | None = None,
+    last_modified_by: str | None = None,
+):
+    payload = {
+        "document_id": document_id,
+        "alerts_list": alerts_list,
+        "document_content": document_content,
+    }
+    if action is not None:
+        payload["action"] = action
+    if status is not None:
+        payload["status"] = status
+    if last_modified_by is not None:
+        payload["last_modified_by"] = last_modified_by
+
     response = requests.patch(
         f"{BASE_URL}/extraction",
         headers=HEADERS,
-        json={
-            "document_id": document_id,
-            "alerts_list": alerts_list,
-            "document_content": document_content,
-        },
+        json=payload,
         timeout=10,
     )
     response.raise_for_status()

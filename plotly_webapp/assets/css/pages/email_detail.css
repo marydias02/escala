@@ -99,13 +99,13 @@
 
 .email_detail__invoice_item {
   height: 100%;
-  width: 100%;
+  width: 97%;
   display: flex;
   justify-content: space-between;
   align-items: center;
   background-color: var(--surface-lightest);
   border: var(--border-normal) solid var(--border-lightest);
-  padding: 5px;
+  padding: 4px;
 }
 
 .email_detail__invoice_errors > li:first-child .email_detail__invoice_item {
@@ -148,7 +148,7 @@
 }
 
 .email_detail__input {
-  width: 95%;
+  width: 97%;
   height: 28px;
 }
 
