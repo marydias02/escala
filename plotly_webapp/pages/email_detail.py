@@ -298,12 +298,6 @@ def layout(ref_number=None, **kwargs):
                         Button("Exportar", icon="lucide:file-down", variant="outline"),
                         Button("Guardar", id="save-button", icon="lucide:circle-check", variant="outline"),
                         Button("Enviar para SAP", id="send-sap-button", icon="lucide:send"),
-                        dcc.Link(
-                            Button("Próxima Fatura", id="next-document-button", icon="lucide:arrow-right"),
-                            id="next-document-link",
-                            href="#",
-                            className="email_detail__next_link",
-                        ),
                         html.P(id="email-detail-update-status", className="body-sm email_detail__status"),
                     ]
                 ),
@@ -314,24 +308,8 @@ def layout(ref_number=None, **kwargs):
 
 
 @dash.callback(
-    Output("next-document-link", "href"),
-    Output("next-document-link", "style"),
-    Input("document_id_store", "data"),
-)
-def configure_next_document_button(document_id):
-    if not document_id:
-        return "#", {"display": "none"}
-
-    result = get_next_priority_document(document_id)
-    next_document_id = result.get("next_document_id")
-    if not result.get("eligible") or not next_document_id:
-        return "#", {"display": "none"}
-
-    return f"/detalhe/{next_document_id}", {}
-
-
-@dash.callback(
     Output("email-detail-update-status", "children"),
+    Output("url", "pathname", allow_duplicate=True),
     Input("save-button", "n_clicks"),
     Input("send-sap-button", "n_clicks"),
     State("document_id_store", "data"),
@@ -364,12 +342,15 @@ def update_document_details(
     currency,
     credit_note,
 ):
+    if not (save_clicks or send_clicks):
+        raise dash.exceptions.PreventUpdate
+
     triggered = callback_context.triggered
     if not triggered:
         raise dash.exceptions.PreventUpdate
 
     if not document_id:
-        return "Documento invalido"
+        return "Documento invalido", no_update
 
     updated_fields = fields.copy() if isinstance(fields, dict) else {}
 
@@ -399,10 +380,13 @@ def update_document_details(
     button_id = triggered[0]["prop_id"].split(".")[0]
     action = None
     status = None
+    next_document_id = None
 
     if button_id == "send-sap-button":
         action = "Ingerir em SAP"
         status = "Created"
+        result = get_next_priority_document(document_id)
+        next_document_id = result.get("next_document_id")
     elif button_id == "save-button":
         action = "ValidaA\x15A\u015fo Manual"
         status = "Sob RevisA\u015fo"
@@ -417,9 +401,11 @@ def update_document_details(
             last_modified_by="Mariana Dias",
         )
     except Exception as exc:
-        return f"Erro ao guardar: {exc}"
+        return f"Erro ao guardar: {exc}", no_update
 
     if button_id == "send-sap-button":
-        return "Documento enviado para SAP"
-    return "Documento guardado"
+        if next_document_id:
+            return "Documento enviado para SAP", f"/detalhe/{next_document_id}"
+        return "Documento enviado para SAP", no_update
+    return "Documento guardado", no_update
 

@@ -81,7 +81,7 @@ class DocumentsRepository(BaseRepository):
         FROM {self.table}
         WHERE action = $1 AND status = 'Pending'
             AND document_content <> '{{}}'::jsonb
-        ORDER BY created_at DESC, document_id DESC
+        ORDER BY created_at ASC, document_id DESC
         LIMIT $2
         """
         return await self.query_df(query, parameters=[MANUAL, limit])
@@ -106,8 +106,8 @@ class DocumentsRepository(BaseRepository):
                     AND candidate.action IN ('Validate Manually', 'Validação Manual')
                     AND candidate.status IN ('Pending', 'Sob Revisão')
                     AND (candidate.created_at, candidate.document_id)
-                        < (current_document.created_at, $1)
-                ORDER BY candidate.created_at DESC, candidate.document_id DESC
+                        > (current_document.created_at, $1)
+                ORDER BY candidate.created_at ASC, candidate.document_id DESC
                 LIMIT 1
             ) AS next_document_id
         FROM current_document
