@@ -63,6 +63,8 @@ class DocumentRead(BaseModel):
     document_number: Optional[str] = None
     supplier_name: Optional[str] = None
     bu_name: Optional[str] = None
+    sender_email: Optional[str] = None
+    email_subject: Optional[str] = None
     total_amount: Optional[float] = None
     issue_date: Optional[date] = None
     created_at: datetime

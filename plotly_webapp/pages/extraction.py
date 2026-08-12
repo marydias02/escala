@@ -103,18 +103,28 @@ short_documents_col_def = [
     {
         "field": "created_at",
         "headerName": "Data de Processamento",
-        "width": 260,
+        "width": 200,
+    },
+    {
+        "field": "sender_email",
+        "headerName": "Email do Remetente",
+        "minWidth": 180,
+    },
+    {
+        "field": "email_subject",
+        "headerName": "Assunto do Email",
+        "minWidth": 180,
     },
     {
         "field": "action",
         "headerName": "Ação",
-        "width": 335,
+        "width": 200,
         "cellRenderer": "Action",
     },
     {
         "field": "status",
         "headerName": "Estado",
-        "width": 220,
+        "width": 140,
         "cellRenderer": "Status",
     },
 ]

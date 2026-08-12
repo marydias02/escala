@@ -126,14 +126,19 @@ class DocumentsRepository(BaseRepository):
         return await self.query_df(query, parameters=[limit])
     
     async def list_pending_documents(self, limit: int = 100) -> pl.DataFrame:
-            query = f"""
-            SELECT {_DOCUMENT_LIST_COLUMNS}
-            FROM {self.table}
-            WHERE status IN ('Ignored', 'Pending')
-                AND document_content = '{{}}'::jsonb
-            LIMIT $1
-            """
-            return await self.query_df(query, parameters=[limit])
+        query = f"""
+        SELECT
+            {_DOCUMENT_LIST_COLUMNS},
+            p.sender_email,
+            p.email_subject
+        FROM {self.table} d
+        LEFT JOIN fct_processes p ON p.process_id = d.process_id
+        WHERE d.status IN ('Ignored', 'Pending')
+            AND d.document_content = '{{}}'::jsonb
+        ORDER BY created_at DESC
+        LIMIT $1
+        """
+        return await self.query_df(query, parameters=[limit])
 
     async def get_document(self, document_id: str) -> Optional[dict]:
         query = f"""
