@@ -12,6 +12,7 @@ from components.section.section import Section
 from components.label.label import Label
 from components.checkbox.checkbox import Checkbox
 from components.cards.indicator_card.indicator_card import IndicatorCard
+from components.right_drawer.right_drawer import RightDrawer, register_right_drawer_callbacks
 from utils.base.grid_system.grid import Col, Container, Row
 
 from components.table.V1.table import Table as TableV1
@@ -38,6 +39,12 @@ dash.register_page(
     __name__,
     path_template="/detalhe/<ref_number>",
     title="Detalhe do Email",
+)
+
+register_right_drawer_callbacks(
+    "email-detail-drawer",
+    "email-detail-open-drawer",
+    "document_id_store",
 )
 
 
@@ -122,7 +129,7 @@ def layout(ref_number=None, **kwargs):
                       html.Section(
                         className="email_detail__top_right_section",
                             children = [
-                              Button("Detalhes do Email", icon="lucide:eye", variant="outline")
+                              Button("Detalhes do Email", id="email-detail-open-drawer", icon="lucide:eye", variant="outline")
                             ]
                       )
                     ],                  
@@ -300,6 +307,10 @@ def layout(ref_number=None, **kwargs):
                         Button("Enviar para SAP", id="send-sap-button", icon="lucide:send"),
                         html.P(id="email-detail-update-status", className="body-sm email_detail__status"),
                     ]
+                ),
+                RightDrawer(
+                    drawer_id="email-detail-drawer",
+                    title="Detalhes do Email",
                 ),
             ]           
         )

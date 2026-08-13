@@ -77,6 +77,16 @@ def get_document_details(doc_id: str):
     return response.json()
 
 
+def get_document_email(doc_id: str):
+    response = requests.get(
+        f"{BASE_URL}/extraction/documents/{doc_id}/email",
+        headers=HEADERS,
+        timeout=10,
+    )
+    response.raise_for_status()
+    return response.json()
+
+
 def alter_document_details(
     document_id: str,
     alerts_list: list[str],
