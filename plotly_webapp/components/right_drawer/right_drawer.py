@@ -110,6 +110,12 @@ def register_right_drawer_callbacks(
         subject = email.get("email_subject") or "N/D"
         content = email.get("email_content") or "N/D"
         received = email.get("reception_date") or "N/D"
+        
+        if "@" in sender:
+            name, domain = sender.split("@", 1)
+            sender_display = html.Span([f"{name}@", html.Br(), domain], className="right-sidebar__meta-value")
+        else:
+            sender_display = html.Span(sender, className="right-sidebar__meta-value")
 
         return html.Div(
             className="right-sidebar__content",
@@ -121,7 +127,7 @@ def register_right_drawer_callbacks(
                             className="right-sidebar__meta-item",
                             children=[
                                 html.Span("Remetente", className="right-sidebar__meta-label"),
-                                html.Span(sender, className="right-sidebar__meta-value"),
+                                sender_display
                             ],
                         ),
                         html.Div(className="right-sidebar__meta-divider"),

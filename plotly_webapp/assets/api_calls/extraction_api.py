@@ -1,3 +1,5 @@
+from urllib import response
+
 import requests
 
 BASE_URL = "http://localhost:8000"
@@ -84,7 +86,13 @@ def get_document_email(doc_id: str):
         timeout=10,
     )
     response.raise_for_status()
-    return response.json()
+    
+    data = response.json()
+    reception_date = data.get("reception_date")
+    if reception_date:
+        data["reception_date"] = reception_date[:16].replace("T", " ")
+
+    return data
 
 
 def alter_document_details(
