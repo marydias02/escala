@@ -35,6 +35,16 @@ from assets.api_calls.extraction_api import (
 )
 
 
+def _action_banner_props(action):
+    if action in {"Validate Manually", "Validação Manual"}:
+        return "negative", "lucide:triangle-alert"
+    if action in {"Sent back to Supplier"}:
+        return "warning", "lucide:arrow-right"
+    if action in {"Ingest in SAP", "Ingerir em SAP"}:
+        return "positive", "lucide:check"
+    return "neutral", None
+
+
 dash.register_page(
     __name__,
     path_template="/detalhe/<ref_number>",
@@ -59,7 +69,6 @@ def layout(ref_number=None, **kwargs):
         fields = match.get("fields", {})
         alerts = match.get("alerts", [])
         action = match.get("action")
-        status = match.get("status")
 
         issue_date = fields.get("issue_date", {}).get("value")
         data_recepcao = (
@@ -83,7 +92,6 @@ def layout(ref_number=None, **kwargs):
         fields = {}
         alerts = []
         action = None
-        status = None
         data_recepcao = None
         business_unit = None
         # bu_vat = None
@@ -97,16 +105,6 @@ def layout(ref_number=None, **kwargs):
         dcc.Store(id="document_id_store", data=str(ref_number)),
         dcc.Store(id="document_fields_store", data=fields),
         dcc.Store(id="document_alerts_store", data=alerts),
-        dcc.Store(
-            id="document_manual_validation_store",
-            data=action in {
-                "Validate Manually",
-                "Validar Manualmente",
-                "Validação Manual",
-                "Necessita de Validação",
-            }
-            and status == "Pending",
-        ),
         html.Div( 
             className="email_detail__container",
             children=[
@@ -121,8 +119,8 @@ def layout(ref_number=None, **kwargs):
                             ),
                             TableBanner(
                                 message=action,
-                                variant="negative" if str(action).strip().lower() == "validate manually" else "neutral",
-                                icon="lucide:triangle-alert" if str(action).strip().lower() == "validate manually" else None,
+                                variant=_action_banner_props(action)[0],
+                                icon=_action_banner_props(action)[1],
                             )
                         ]
                       ),
@@ -399,8 +397,8 @@ def update_document_details(
         result = get_next_priority_document(document_id)
         next_document_id = result.get("next_document_id")
     elif button_id == "save-button":
-        action = "ValidaA\x15A\u015fo Manual"
-        status = "Sob RevisA\u015fo"
+        action = "Validação Manual"
+        status = "Sob Revisão"
 
     try:
         alter_document_details(
