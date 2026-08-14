@@ -68,3 +68,68 @@
 .right-sidebar__close-icon {
   font-size: 1.4rem;
 }
+
+.right-sidebar__content {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-6);
+}
+
+.right-sidebar__email-section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-4);
+}
+
+.right-sidebar__meta-box {
+  display: flex;
+  align-items: stretch;
+  gap: 0;
+  padding: var(--spacing-4) var(--spacing-5);
+  border-radius: var(--border-radius-md);
+  background-color: var(--surface-lightest);
+  border: var(--border-normal) solid var(--border-lightest);
+}
+
+.right-sidebar__meta-item {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-1);
+  min-width: 0;
+  padding: var(--spacing-10) var(--spacing-10);
+}
+
+.right-sidebar__meta-divider {
+  width: 1px;
+  flex-shrink: 0;
+  margin: 0 var(--spacing-4);
+  background-color: var(--border-light);
+}
+
+.right-sidebar__meta-label {
+  font-size: var(--font-size-xs);
+  color: var(--text-icon-secondary);
+  margin-bottom: var(--spacing-4);
+}
+
+.right-sidebar__meta-value {
+  font-size: var(--font-size-sm);
+  color: var(--text-primary);
+  word-break: break-word;
+}
+
+.right-sidebar__email-subject {
+  font-size: var(--font-size-md);
+  font-weight: 600;
+  color: var(--text-primary);
+  line-height: 1.4;
+}
+
+.right-sidebar__email-body {
+  color: var(--text-primary);
+  font-size: var(--font-size-sm);
+  line-height: 1.6;
+  white-space: pre-wrap;
+  word-break: break-word;
+}

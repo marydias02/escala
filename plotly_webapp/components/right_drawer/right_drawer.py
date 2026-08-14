@@ -18,10 +18,12 @@ def RightDrawer(
         Section(
             title="Resumo da Interação",
             content=html.Div(id=f"{drawer_id}-interaction-content"),
+            open=True,
         ),
         Section(
             title="Conteúdo do Email",
             content=html.Div(id=f"{drawer_id}-email-content"),
+            open=True,
         ),
     ]
     base_style = {
@@ -106,12 +108,38 @@ def register_right_drawer_callbacks(
 
         sender = email.get("sender_email") or "N/D"
         subject = email.get("email_subject") or "N/D"
+        content = email.get("email_content") or "N/D"
         received = email.get("reception_date") or "N/D"
 
         return html.Div(
-            [
-                html.Div([html.Strong("Remetente: "), html.Span(sender)]),
-                html.Div([html.Strong("Assunto: "), html.Span(subject)]),
-                html.Div([html.Strong("Recebido em: "), html.Span(str(received))]),
-            ]
+            className="right-sidebar__content",
+            children=[
+                html.Div(
+                    className="right-sidebar__meta-box",
+                    children=[
+                        html.Div(
+                            className="right-sidebar__meta-item",
+                            children=[
+                                html.Span("Remetente", className="right-sidebar__meta-label"),
+                                html.Span(sender, className="right-sidebar__meta-value"),
+                            ],
+                        ),
+                        html.Div(className="right-sidebar__meta-divider"),
+                        html.Div(
+                            className="right-sidebar__meta-item",
+                            children=[
+                                html.Span("Data de Receção", className="right-sidebar__meta-label"),
+                                html.Span(str(received), className="right-sidebar__meta-value"),
+                            ],
+                        ),
+                    ],
+                ),
+                html.Div(
+                    className="right-sidebar__email-section",
+                    children=[
+                        html.Div(subject, className="right-sidebar__email-subject"),
+                        html.Div(content, className="right-sidebar__email-body"),
+                    ],
+                ),
+            ],
         )
