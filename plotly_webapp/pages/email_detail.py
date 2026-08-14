@@ -120,9 +120,9 @@ def layout(ref_number=None, **kwargs):
                                 title = f"Número de Referência: {ref_number}",  
                             ),
                             TableBanner(
-                                message="Carregada em SAP",
-                                variant = "positive",
-                                icon = "lucide:check"
+                                message=action,
+                                variant="negative" if str(action).strip().lower() == "validate manually" else "neutral",
+                                icon="lucide:triangle-alert" if str(action).strip().lower() == "validate manually" else None,
                             )
                         ]
                       ),

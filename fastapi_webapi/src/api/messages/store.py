@@ -96,6 +96,8 @@ class DocumentDetailRead(BaseModel):
     alerts: list[str]
     fields: dict[str, Optional[ConfidentValue]]
     po_list: list[ConfidentValue]
+    action: Optional[str] = None
+    status: Optional[str] = None
 
 
 class DocumentEmailRead(BaseModel):

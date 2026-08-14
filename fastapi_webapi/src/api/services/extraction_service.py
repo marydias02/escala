@@ -46,6 +46,8 @@ class ExtractionService:
             "alerts": row["alerts_list"] or [],
             "fields": content,
             "po_list": po_list,
+            "action": row.get("action"),
+            "status": row.get("status"),
         }
 
     async def get_document_email(self, document_id: str) -> dict:
@@ -98,6 +100,8 @@ class ExtractionService:
             "alerts": updated_row.get("alerts_list") or [],
             "fields": updated_content,
             "po_list": po_list,
+            "action": updated_row.get("action"),
+            "status": updated_row.get("status"),
         }
 
     async def get_extraction_big_numbers(self) -> dict:
