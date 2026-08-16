@@ -26,7 +26,7 @@ from functools import partial
 
 dash.register_page(
     __name__,
-    path="/",
+    path="/home",
     title="Home",
 )
 

@@ -16,7 +16,7 @@ layout = html.Div([
         html.Br(),
         Container([
             SidebarFooter(
-                username="Elisa Sampaio",
+                username="Carolina Melim",
                 avatar_size="s",
             ),
         ], fluid=True, style={'background': 'var(--accent-sidebar)'}),
@@ -28,11 +28,11 @@ layout = html.Div([
 from components.sidebar_footer.sidebar_footer import SidebarFooter
 
 SidebarFooter(
-    username="Elisa Sampaio",
+    username="Carolina Melim",
 )
 
 SidebarFooter(
-    username="Elisa Sampaio",
+    username="Carolina Melim",
     avatar_size="s",
     avatar_image="/assets/images/user-photo.jpg",
 )

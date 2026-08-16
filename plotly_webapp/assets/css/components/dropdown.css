@@ -1,4 +1,4 @@
-/* #dropdown .Select-control {
+#dropdown .Select-control {
   background-color: transparent !important;
   box-shadow: none;
   outline: none;
@@ -7,8 +7,8 @@
 }
 
 .Select-control span {
-  color: var(--white) !important;
+  /* color: var(--white) !important; */
   font-size: var(--font-size-sm);
   font-weight: var(--font-weight-base);
   line-height: var(--line-height-none);
-} */
+}

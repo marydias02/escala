@@ -28,13 +28,13 @@ app = Dash(
     __name__,
     use_pages=True,
     external_stylesheets=external_stylesheets,
-    title="Dash Template",
-    update_title="Dash Template - Updating ...",
+    title="ESCALA",
+    update_title="ESCALA - Updating ...",
 )
 
 app.layout = html.Div(
     [
-        dcc.Store(id="sidebar--state", data={"open": True}),
+        dcc.Store(id="sidebar--state", data={"open": False}),
         html.Aside(
             className="app__sidebar",
             id="app__sidebar",
@@ -57,51 +57,42 @@ app.layout = html.Div(
                     ],
                 ),
                 html.Div(
-                    className="sidebar__dropdown",
-                    children=[
-                        Select(select_options=['Workspace A', 'Workspace B', 'Workspace C'],
-                               placeholder="Select Workspace",
-                               select_color_mode="custom_light",
-                               select_background_color="var(--accent-sidebar)"
-                               )
-                    ],
-                ),
-                html.Div(
                     className="sidebar__menu",
                     children=[
-                        Menu(title="Homepage", href="/", icon="lucide:home"),
-                        Menu(title="Grid", href="/grid"),
-                        Menu(title="Segmented Control", href="/components/segmented-control"),
-                        Menu(title="Banner", href="/components/banner"),
-                        Menu(title="Tabs", href="/components/tabs"),
-                        Menu(title="Button", href="/components/button"),
-                        Menu(title="Table", href="/components/table"),
-                        Menu(title="Section", href="/components/section"),
-                        Menu(title="Tag", href="/components/tag"),
-                        Menu(title="Progress", href="/components/progress"),
-                        Menu(title="Label", href="/components/label"),
-                        Menu(title="Checkbox", href="/components/checkbox"),
-                        Menu(title="Indicator Card", href="/components/cards/indicator-card"),
-                        Menu(title="Page Card", href="/components/cards/page-card"),
-                        Menu(title="Tutorial Card", href="/components/cards/tutorial-card"),
-                        Menu(title="Workflow Card", href="/components/cards/workflow-card"),
-                        Menu(title="Menu", href="/components/menu", icon="lucide:square-asterisk"),
-                        Menu(
-                            title="Menu with subpages",
-                            children=[
-                                dcc.Link("Item", href="/components/menu"),
-                                dcc.Link("Extremely Long Item Here On the Nav", href="/components/menu"),
-                            ],
-                        ),
-                        Menu(title="Sidebar Footer", href="/components/sidebar-footer"),
-                        Menu(title="User Avatar", href="/components/avatar"),
+                        Menu(title="Extração", href="/", icon="lucide:scan-text"),
+                        # Menu(title="Template", href="/home", icon="lucide:file-text"),
+                        # Menu(title="Grid", href="/grid"),
+                        # Menu(title="Segmented Control", href="/components/segmented-control"),
+                        # Menu(title="Banner", href="/components/banner"),
+                        # Menu(title="Tabs", href="/components/tabs"),
+                        # Menu(title="Button", href="/components/button"),
+                        # Menu(title="Table", href="/components/table"),
+                        # Menu(title="Section", href="/components/section"),
+                        # Menu(title="Tag", href="/components/tag"),
+                        # Menu(title="Progress", href="/components/progress"),
+                        # Menu(title="Label", href="/components/label"),
+                        # Menu(title="Checkbox", href="/components/checkbox"),
+                        # Menu(title="Indicator Card", href="/components/cards/indicator-card"),
+                        # Menu(title="Page Card", href="/components/cards/page-card"),
+                        # Menu(title="Tutorial Card", href="/components/cards/tutorial-card"),
+                        # Menu(title="Workflow Card", href="/components/cards/workflow-card"),
+                        # Menu(title="Menu", href="/components/menu", icon="lucide:square-asterisk"),
+                        # # Menu(
+                        # #     title="Menu with subpages",
+                        # #     children=[
+                        # #         dcc.Link("Item", href="/components/menu"),
+                        # #         dcc.Link("Extremely Long Item Here On the Nav", href="/components/menu"),
+                        # #     ],
+                        # # ),
+                        # Menu(title="Sidebar Footer", href="/components/sidebar-footer"),
+                        # # Menu(title="User Avatar", href="/components/avatar"),
                     ],
                 ),
                 html.Div(
                     className="sidebar__footer-wrapper",
                     children=[
                         SidebarFooter(
-                            username="Elisa Sampaio",
+                            username="Carolina Melim",
                             avatar_size="s",
                         ),
                     ],
@@ -134,11 +125,11 @@ app.layout = html.Div(
                 html.Div(
                     className="app__main",
                     children=[
-                        dcc.Location(id="url", refresh=False),
+                        dcc.Location(id="url", refresh="callback-nav"),
                         page_container,
                     ],
                 ),
-                Footer(client_name="DesignSystem ® 2026")
+                Footer(client_name="Grupo Sousa ® 2026")
             ],
         ),
     ],
@@ -160,6 +151,8 @@ app.layout = html.Div(
 )
 def update_sidebar(toggle_clicks, menu_clicks, current_state):
     return update_sidebar_logic(toggle_clicks, menu_clicks, current_state)
+
+
 
 
 if __name__ == "__main__":

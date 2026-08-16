@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>PDF Viewer</title>
+    <style>
+      html,
+      body {
+        margin: 0;
+        padding: 0;
+        height: 100%;
+        background: #f5f5f5;
+        overflow: hidden;
+        font-family: Arial, sans-serif;
+      }
+
+      #viewer {
+        height: 100vh;
+        overflow: auto;
+        padding: 16px 0;
+        box-sizing: border-box;
+      }
+
+      .page {
+        width: fit-content;
+        margin: 0 auto 16px auto;
+        background: white;
+        box-shadow: 0 1px 6px rgba(0, 0, 0, 0.12);
+      }
+
+      canvas {
+        display: block;
+      }
+
+      .error {
+        padding: 24px;
+        color: #b00020;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="viewer"></div>
+
+    <script type="module" src="/assets/pdf-viewer.js"></script>
+  </body>
+</html>

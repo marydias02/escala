@@ -22,14 +22,14 @@ layout = html.Div([
         Row([
             Col([
                 Avatar(
-                    username="Elisa Sampaio",
+                    username="Carolina Melim",
                     size="m",
                     img_src="/assets/images/user-photo.jpg",
                 ),
             ], xs=12, md=2, lg=2),
             Col([
                 Avatar(
-                    username="Elisa Sampaio",
+                    username="Carolina Melim",
                     size="m",
                 ),
             ], xs=12, md=2, lg=2),
@@ -44,14 +44,14 @@ layout = html.Div([
         Row([
             Col([
                 Avatar(
-                    username="Elisa Sampaio",
+                    username="Carolina Melim",
                     size="s",
                     img_src="/assets/images/user-photo.jpg",
                 ),
             ], xs=12, md=2, lg=2),
             Col([
                 Avatar(
-                    username="Elisa Sampaio",
+                    username="Carolina Melim",
                     size="s",
                 ),
             ], xs=12, md=2, lg=2),
@@ -71,12 +71,12 @@ layout = html.Div([
 from components.avatar.avatar import Avatar
 
 Avatar(
-    username="Elisa Sampaio",
+    username="Carolina Melim",
     size="s",
 )
 
 Avatar(
-    username="Elisa Sampaio",
+    username="Carolina Melim",
     size="s",
     img_src="/assets/images/user-photo.jpg",
 ),

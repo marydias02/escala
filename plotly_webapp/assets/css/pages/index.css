@@ -29,6 +29,9 @@
 
 .homepage__top_section {
   width: 100%;
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
 }
 
 .homepage__top_section .actions-wrapper {
@@ -51,6 +54,15 @@
   flex-wrap: wrap;
 }
 
+.homepage__updated_section {
+  align-items: right;
+}
+
+.homepage__updated_section {
+  color: var(--text-icon-secondary);
+  font-weight: normal;
+}
+
 /* 3. INDICATORS SECTION */
 
 .homepage__indicator_section-wrapper {
@@ -66,7 +78,7 @@
 .homepage__indicator_section-wrapper .indicator-card,
 .homepage__indicator_section-wrapper .tutorial-card,
 .homepage__indicator_section-wrapper .page-card {
-  width: 25%;
+  width: 33.33%;
   padding-left: var(--spacing-16);
   border-left: var(--border-normal) solid var(--border-light);
 }
@@ -74,7 +86,7 @@
 .homepage__indicator_section-wrapper .indicator-card:first-child,
 .homepage__indicator_section-wrapper .tutorial-card:first-child,
 .homepage__indicator_section-wrapper .page-card:first-child {
-  width: 25%;
+  width: 33.33%;
   padding-left: var(--spacing-none);
   border-left: none;
 }
@@ -93,13 +105,8 @@
   border: var(--border-normal) solid var(--border-light);
 }
 
-/* !!! THIS CLASS SHOULD BE DELETED, 
-ONLY HERE FOR DEMONSTRATION PURPOSES , 
-HEIGHT WILL BE AUTOMATICALLY DEFINED BY THE CONTENT !!! */
-.table-section__graphic {
-  background-color: var(--surface-lightest);
-  color: var(--text-icon-tertiary);
-  min-height: 232px;
+.homepage__tab {
+  margin-bottom: 1rem;
 }
 
 /* 5. MEDIA QUERIES */

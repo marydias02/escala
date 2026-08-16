@@ -1,0 +1,246 @@
+/* --------------------------------------------- */
+/* HOME PAGE */
+/* --------------------------------------------- */
+
+/* ---------------- INDEX ----------------------------
+1. BASE STYLE
+2. HEADER SECTION
+3. INDICATORS SECTION
+4. TABLE SECTION
+5. MEDIA QUERIES
+----------------------------------------------------- */
+
+/* 1. BASE STYLE */
+
+.email_detail__container {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-40);
+  margin-bottom: var(--spacing-40);
+}
+
+.email_detail__content_section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-16);
+}
+
+/* 2. HEADER SECTION */
+
+.email_detail__top_section {
+  width: 100%;
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+}
+
+.email_detail__top_left_section {
+  width: 50%;
+}
+
+.email_detail__top_section .actions-wrapper {
+  border-bottom: var(--border-normal) solid var(--border-light);
+  display: flex;
+  justify-content: space-between;
+  gap: var(--spacing-10);
+}
+
+.email_detail__top_section .tabs-wrapper {
+  display: flex;
+  justify-content: flex-start;
+}
+
+.email_detail__top_section .button-wrapper {
+  display: flex;
+  gap: var(--spacing-6);
+  align-items: center;
+  justify-content: flex-start;
+  flex-wrap: wrap;
+}
+
+/* 3. CONTENT SECTION */
+
+.subtitle {
+  color: var(--text-icon-secondary);
+}
+
+.email_detail__content_section {
+  height: 700px;
+  /* border-radius: var(--border-radius-md);
+  border: var(--border-normal) solid var(--border-lightest); */
+}
+
+.email_detail__inside_content_section {
+  height: 100%;
+  width: 100%;
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+}
+
+.email_detail__content_left_section {
+  width: 40%;
+}
+
+.email_detail__content_right_section {
+  margin-left: 20px;
+  width: 60%;
+  height: 100%;
+  border-radius: var(--border-radius-md);
+  border: var(--border-normal) solid var(--border-lightest);
+}
+
+.email_detail__field_extraction_section {
+  padding: 10px;
+  margin-top: 20px;
+  border-radius: var(--border-radius-md);
+  border: var(--border-normal) solid var(--border-lightest);
+}
+
+.email_detail__invoice_item {
+  height: 100%;
+  width: 97%;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background-color: var(--surface-lightest);
+  border: var(--border-normal) solid var(--border-lightest);
+  padding: 4px;
+}
+
+.email_detail__invoice_errors > li:first-child .email_detail__invoice_item {
+  border-top-left-radius: var(--border-radius-md);
+  border-top-right-radius: var(--border-radius-md);
+}
+
+.email_detail__invoice_errors > li:last-child .email_detail__invoice_item {
+  border-bottom-left-radius: var(--border-radius-md);
+  border-bottom-right-radius: var(--border-radius-md);
+}
+
+.email_detail__invoice_text {
+  padding-top: 8px;
+  border-bottom: 1px;
+}
+
+.email_detail__invoice_button_icon {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-right: 20px;
+}
+
+.email_detail__field_grid {
+  margin-top: 10px;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 20px;
+  padding: 10px;
+  background-color: var(--surface-lightest);
+  border-radius: var(--border-radius-md);
+  border: var(--border-normal) solid var(--border-lightest);
+}
+
+.email_detail__field {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.email_detail__input {
+  width: 97%;
+  height: 28px;
+}
+
+.email_detail__indicator_section-wrapper {
+  display: flex;
+  gap: var(--spacing-16);
+
+  padding: var(--spacing-12);
+  background-color: var(--surface-lightest);
+  border-radius: var(--border-radius-md);
+  border: var(--border-normal) solid var(--border-lightest);
+}
+
+.email_detail__indicator_section-wrapper .indicator-card,
+.email_detail__indicator_section-wrapper .tutorial-card,
+.email_detail__indicator_section-wrapper .page-card {
+  width: 25%;
+  padding-left: var(--spacing-16);
+  border-left: var(--border-normal) solid var(--border-light);
+}
+
+.email_detail__indicator_section-wrapper .indicator-card:first-child,
+.email_detail__indicator_section-wrapper .tutorial-card:first-child,
+.email_detail__indicator_section-wrapper .page-card:first-child {
+  width: 25%;
+  padding-left: var(--spacing-none);
+  border-left: none;
+}
+
+/* 4. BOTTOM SECTION */
+
+.email_detail__bottom_section {
+  display: flex;
+  justify-content: flex-end;
+  align-items: flex-end;
+  gap: 8px;
+}
+
+.table-section__graphic-wrapper {
+  margin-top: var(--spacing-16);
+}
+
+.table-section__graphic {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--border-radius-sm);
+  border: var(--border-normal) solid var(--border-light);
+}
+
+/* !!! THIS CLASS SHOULD BE DELETED, 
+ONLY HERE FOR DEMONSTRATION PURPOSES , 
+HEIGHT WILL BE AUTOMATICALLY DEFINED BY THE CONTENT !!! */
+.table-section__graphic {
+  background-color: var(--surface-lightest);
+  color: var(--text-icon-tertiary);
+  min-height: 232px;
+}
+
+/* 5. MEDIA QUERIES */
+@media (max-width: 1024px) {
+  .email_detail__top_section .actions-wrapper {
+    border-bottom: var(--border-normal) solid var(--border-light);
+    display: flex;
+    flex-direction: column-reverse;
+    gap: var(--spacing-8);
+  }
+
+  .email_detail__indicator_section-wrapper,
+  .email_detail__workflow_section-wrapper {
+    flex-direction: column;
+  }
+
+  .email_detail__indicator_section-wrapper .indicator-card,
+  .email_detail__indicator_section-wrapper .tutorial-card,
+  .email_detail__indicator_section-wrapper .page-card,
+  .email_detail__workflow_section-wrapper .workflow-card {
+    width: 100%;
+    padding-top: var(--spacing-16);
+    border-top: var(--border-normal) solid var(--border-light);
+    padding-left: var(--spacing-none);
+    border-left: none;
+  }
+
+  .email_detail__indicator_section-wrapper .indicator-card:first-child,
+  .email_detail__indicator_section-wrapper .tutorial-card:first-child,
+  .email_detail__indicator_section-wrapper .page-card:first-child,
+  .email_detail__workflow_section-wrapper .workflow-card:first-child {
+    width: 100%;
+    padding-left: var(--spacing-none);
+    border-left: none;
+    padding-top: var(--spacing-none);
+    border-top: none;
+  }
+}

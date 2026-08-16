@@ -1,5 +1,5 @@
 from datetime import date, datetime
-from typing import Optional
+from typing import Any, Optional
 from uuid import UUID
 
 from pydantic import BaseModel
@@ -63,10 +63,27 @@ class DocumentRead(BaseModel):
     document_number: Optional[str] = None
     supplier_name: Optional[str] = None
     bu_name: Optional[str] = None
+    sender_email: Optional[str] = None
+    email_subject: Optional[str] = None
     total_amount: Optional[float] = None
     issue_date: Optional[date] = None
     created_at: datetime
     action: Optional[str] = None
+    status: Optional[str] = None
+
+
+class NextPriorityDocumentRead(BaseModel):
+    eligible: bool
+    next_document_id: Optional[UUID] = None
+
+
+class DocumentUpdate(BaseModel):
+    document_id: UUID
+    alerts_list: list[str]
+    document_content: dict[str, Any]
+    action: Optional[str] = None
+    status: Optional[str] = None
+    last_modified_by: Optional[str] = None
 
 
 class ConfidentValue(BaseModel):
@@ -79,6 +96,8 @@ class DocumentDetailRead(BaseModel):
     alerts: list[str]
     fields: dict[str, Optional[ConfidentValue]]
     po_list: list[ConfidentValue]
+    action: Optional[str] = None
+    status: Optional[str] = None
 
 
 class DocumentEmailRead(BaseModel):
