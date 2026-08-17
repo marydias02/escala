@@ -33,6 +33,12 @@ class Settings(BaseSettings):
     AZURE_CLIENT_ID: Optional[str] = None
     AZURE_CLIENT_SECRET: Optional[str] = None
 
+    # Authentication - Microsoft Graph (public client app registration, delegated
+    # permissions, device-code sign-in — separate app registration from the
+    # AZURE_* one above, which is app-only/client-credentials for Lakehouse & SQL)
+    GRAPH_TENANT_ID: Optional[str] = None
+    GRAPH_CLIENT_ID: Optional[str] = None
+
     # LLM license credentials
     OPENAI_API_KEY: Optional[str] = None
     OPENAI_API_BASE: Optional[str] = None
