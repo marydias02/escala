@@ -106,3 +106,9 @@ async def select(query: str, params: Optional[Iterable[Any]] = None) -> list[dic
     pool = await get_pool()
     records = await pool.fetch(query, *(params or []))
     return [dict(record) for record in records]
+
+
+async def update_column(table: str, id_column: str, row_id: Any, column: str, value: Any) -> None:
+    """Set one column on one row, matched by its id. `UPDATE table SET column = value WHERE id_column = row_id`."""
+    pool = await get_pool()
+    await pool.execute(f"UPDATE {table} SET {column} = $1 WHERE {id_column} = $2", value, row_id)

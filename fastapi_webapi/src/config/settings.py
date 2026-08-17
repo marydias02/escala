@@ -55,6 +55,9 @@ class Settings(BaseSettings):
     # unknown .env keys, so an undeclared one would break app startup.
     MLFLOW_TRACKING_URI: Optional[str] = None
 
+    # Notifications
+    TREASURY_EMAIL: Optional[str] = None
+
     class Config:
         env_file = str(Path(__file__).parent.parent.parent / ".env")
         case_sensitive = False
