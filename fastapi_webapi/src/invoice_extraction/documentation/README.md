@@ -26,6 +26,12 @@ It is organized as two pipelines composed by one orchestrator:
   each PDF the email produced → make one email-level routing decision
   (`decisions.py`) → persist `fct_processes` / `fct_documents` rows to Postgres.
 
+- **SAP booking** (`sap_pipeline.py`) — a separate, standalone pipeline: bulk-books every
+  `fct_documents` row at `action = "Ingerir em SAP", status = "Criado"`, regardless of which
+  email wrote it. Deliberately decoupled from `email_pipeline` because a document can only reach
+  that state well after its email was processed — e.g. a `Validação Manual` document cleared by a
+  human reviewer — so booking cannot be an inline step of the email run.
+
 Business routing rules live entirely in `decisions.py`, kept deliberately separate from the
 pipelines so they can be read and changed without touching extraction logic. Two action
 vocabularies: each **document** gets exactly one `DocumentAction` (Ingest in SAP / Sent back to
@@ -42,7 +48,9 @@ matrix.
 
 - True email ingestion - connect to outlook inbox instead of reading from folder
 - Saving intermediate emails after ingestion in client folder
-- Sending information to SAP - end process
+- Sending information to SAP - `sap_pipeline.py` still calls the `book_in_sap` stub; needs a real
+  SAP integration, plus something to trigger the pipeline on a schedule (no cron/scheduler exists
+  in this repo yet)
 - Connect with webapp
 
 ## Repository structure
@@ -52,6 +60,7 @@ invoice_extraction/
 ├── config.py                  # Tunable constants: paths, limits, MIN_CONFIDENCE, parser kwargs
 ├── decisions.py                # Routing rules — the business logic, THE place to change them
 ├── email_pipeline.py           # Orchestrator: ingest + extract + decide + persist, per email
+├── sap_pipeline.py             # Standalone: bulk-book every action=Ingerir em SAP, status=Criado row
 ├── ingestion_pipeline.py       # Phase 1: LOAD -> SEGMENT -> SPLIT -> PERSIST
 ├── extraction_pipeline.py      # Phase 2: CLASSIFY -> EXTRACT -> VALIDATE
 ├── tracing.py                  # MLflow tracing setup (dev instrumentation, no-op if unset)

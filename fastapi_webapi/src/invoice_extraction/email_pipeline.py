@@ -16,6 +16,12 @@ Postgres — one `fct_processes` row per email, one `fct_documents` row per PDF.
 The DB is async (asyncpg), so this module is async and is driven by
 `asyncio.run(main())`; the sync ingestion/extraction `.run()` calls happen inside
 the async flow. Writes go through the generic helpers in `utils.utils_db`.
+
+Booking documents to SAP is NOT part of this pipeline — see `sap_pipeline`,
+which runs separately, in bulk, over every `fct_documents` row at
+`action = "Ingerir em SAP", status = "Criado"` regardless of which email wrote
+it. A document can reach that state well after its email was processed (e.g.
+after manual review), so SAP booking cannot be an inline step here.
 """
 
 import asyncio
@@ -45,7 +51,6 @@ from invoice_extraction.decisions import (
     EMAIL_TREASURY,
     IGNORE,
     INBOX,
-    INGEST,
     MANUAL,
     REPLY,
     TREASURY,
@@ -71,7 +76,6 @@ from invoice_extraction.ingestion_pipeline import (
 )
 from invoice_extraction.invoice_utils.email_sender import send_email
 from invoice_extraction.invoice_utils.reporting import print_pipeline_result
-from invoice_extraction.invoice_utils.sap_sender import book_in_sap
 from invoice_extraction.loading import load_msg
 from invoice_extraction.models import DocumentClassification, EmailIntent, ValidationReport
 from invoice_extraction.nodes import classify_email_intent
@@ -172,11 +176,12 @@ def derive_status(result: PipelineResult, action: DocumentAction) -> str:
     """Map a document's outcome to a Status. Refine as the lifecycle grows.
 
     Most routed documents start life as "Criado": `EmailPipeline._send_followups`
-    then carries out the document's action (SAP booking, supplier reply,
-    treasury forward) inline and overrides this with the outcome — "Ingerido" /
-    "Comunicado" on success, left at "Criado" on failure. MANUAL has no
-    follow-up either, so it also stays at "Criado" — a human has not looked at
-    it yet.
+    then carries out the document's email-level action (supplier reply, treasury
+    forward) inline and overrides this with the outcome — "Comunicado" on
+    success, left at "Criado" on failure. INGEST has no inline follow-up — SAP
+    booking is `sap_pipeline`'s job, run separately in bulk — so it also stays
+    at "Criado", same as MANUAL, which has no follow-up because a human has not
+    looked at it yet.
 
     IGNORE and INBOX have no follow-up AND nothing pending: there is no action
     left to carry out (a duplicate whose original is already in the email;
@@ -331,7 +336,7 @@ class EmailPipeline:
             return None
 
     async def _send_followups(self, result: EmailProcessingResult) -> dict[str, str]:
-        """Carry out each document's action (send/book) and return {filename: status}.
+        """Carry out each document's email-level action (send) and return {filename: status}.
 
         Called from `_persist` AFTER every document row already exists at its
         day-one status ("Criado", see `derive_status`) — "Criado" is a real,
@@ -348,10 +353,16 @@ class EmailPipeline:
         — there is simply nothing in the returned dict to apply that status to
         there, since no document row exists.
 
-        Failures (only possible once these stubs are replaced with real
-        integrations) leave the returned status at "Criado" — building
-        failure-visibility now would be speculative against calls that cannot
-        actually fail yet.
+        INGEST documents are deliberately left at "Criado" here: booking to
+        SAP is not an email-level action and can happen well after this email
+        was processed (e.g. once a MANUAL document clears human review), so it
+        is `sap_pipeline`'s job, run separately, in bulk, over every row at
+        `action = INGEST, status = "Criado"` regardless of which email wrote it.
+
+        Failures (only possible once the reply/treasury stubs are replaced
+        with real integrations) leave the returned status at "Criado" —
+        building failure-visibility now would be speculative against calls
+        that cannot actually fail yet.
         """
         manifest = _load_manifest(result.ingestion.folder)
         decisions_by_file = {d.filename: d for d in result.decision.documents}
@@ -379,24 +390,6 @@ class EmailPipeline:
                 if decision.action == TREASURY:
                     statuses[filename] = outcome
 
-        for extraction in result.extractions:
-            decision = decisions_by_file.get(extraction.filename)
-            if decision is None or decision.action != INGEST:
-                continue
-            document_number = (
-                extraction.validation.document_number.value
-                if extraction.validation and extraction.validation.document_number
-                else None
-            )
-            book_result = await book_in_sap(
-                document_number=document_number,
-                document_type=document_type_label(extraction.classification),
-                document_content=build_document_content(extraction.validation),
-            )
-            statuses[extraction.filename] = (
-                "Ingerido" if book_result.status == "booked" else "Criado"
-            )
-
         return statuses
 
     async def _persist(self, result: EmailProcessingResult) -> None:
@@ -405,10 +398,12 @@ class EmailPipeline:
         Every document is inserted first at its day-one status (`derive_status`
         — "Criado", or "Failed" if the pipeline broke on it): a real row, not
         just an in-memory value. `_send_followups` then carries out each
-        document's action and UPDATEs the rows it advances (INGEST ->
-        "Ingerido", REPLY/TREASURY -> "Comunicado"). Two real writes per
-        advanced document, deliberately — "Criado" stays an observable state,
-        not a value overwritten before ever reaching the database.
+        document's email-level action and UPDATEs the rows it advances
+        (REPLY/TREASURY -> "Comunicado"). INGEST rows stay at "Criado" here —
+        SAP booking is `sap_pipeline`'s job, run separately in bulk. Two real
+        writes per advanced document, deliberately — "Criado" stays an
+        observable state, not a value overwritten before ever reaching the
+        database.
 
         Each row's `document_id` is generated here (rather than left to the
         column's DB-side default) so the whole batch can still go through one
