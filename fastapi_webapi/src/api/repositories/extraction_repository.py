@@ -34,6 +34,22 @@ class ExtractionBigNumbers(BaseRepository):
         """
         return await self.query_scalar(query, parameters=[MANUAL])
 
+    async def count_first_manual_by_week(self) -> dict[str, tuple[int, int]]:
+        """Documents FIRST routed to manual validation, by the week they first
+        landed there — from fct_document_first_action, which manual review
+        never overwrites (unlike fct_documents.action).
+        """
+        query = """
+        SELECT
+            date_trunc('week', created_at) AS week,
+            COUNT(*) FILTER (WHERE first_action = $1) AS matched,
+            COUNT(*) AS total
+        FROM fct_document_first_action
+        WHERE date_trunc('week', created_at) IN (date_trunc('week', now()), date_trunc('week', now()) - interval '1 week')
+        GROUP BY week
+        """
+        return await self._matched_and_total_by_week(query, parameters=[MANUAL])
+
     async def count_auto_ingested_by_week(self) -> dict[str, tuple[int, int]]:
         query = f"""
         SELECT

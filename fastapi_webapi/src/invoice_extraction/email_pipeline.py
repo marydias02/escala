@@ -94,6 +94,7 @@ from utils.utils_db import get_pool, insert_row, insert_rows, select, update_col
 
 PROCESSES_TABLE = "fct_processes"
 DOCUMENTS_TABLE = "fct_documents"
+DOCUMENT_FIRST_ACTION_TABLE = "fct_document_first_action"
 
 # The value-bearing ValidationReport fields (each a Checked[T] or None). `notes`
 # and `po_list` are handled separately in build_document_content.
@@ -393,7 +394,8 @@ class EmailPipeline:
         return statuses
 
     async def _persist(self, result: EmailProcessingResult) -> None:
-        """Write one fct_processes row and its fct_documents rows.
+        """Write one fct_processes row, its fct_documents rows, and their
+        fct_document_first_action rows.
 
         Every document is inserted first at its day-one status (`derive_status`
         — "Criado", or "Failed" if the pipeline broke on it): a real row, not
@@ -404,6 +406,11 @@ class EmailPipeline:
         writes per advanced document, deliberately — "Criado" stays an
         observable state, not a value overwritten before ever reaching the
         database.
+
+        `fct_document_first_action` is written once, immediately after
+        `fct_documents`, from the same `action` values — before any follow-up
+        or later manual review can change them — so it always reflects the
+        document's ORIGINAL routing, unlike `fct_documents.action`.
 
         Each row's `document_id` is generated here (rather than left to the
         column's DB-side default) so the whole batch can still go through one
@@ -452,6 +459,19 @@ class EmailPipeline:
         # is supplied explicitly (see docstring) rather than left to the
         # column's own gen_random_uuid() default.
         await insert_rows(DOCUMENTS_TABLE, rows, jsonb_columns=["document_content"])
+
+        # One immutable row per document, capturing the action it was FIRST
+        # routed to. Written here, once, from the same `rows` — never touched
+        # again, unlike `fct_documents.action`, which manual review overwrites.
+        first_action_rows = [
+            {
+                "document_id": row["document_id"],
+                "process_id": row["process_id"],
+                "first_action": row["action"],
+            }
+            for row in rows
+        ]
+        await insert_rows(DOCUMENT_FIRST_ACTION_TABLE, first_action_rows)
 
         # SEND/BOOK, then UPDATE the rows whose action actually resolved.
         followup_statuses = await self._send_followups(result)

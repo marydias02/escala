@@ -105,14 +105,23 @@ class ExtractionService:
         }
 
     async def get_extraction_big_numbers(self) -> dict:
-        pending_manual_validation, auto_ingested_by_week, returned_by_week = await asyncio.gather(
+        (
+            pending_manual_validation,
+            first_manual_by_week,
+            auto_ingested_by_week,
+            returned_by_week,
+        ) = await asyncio.gather(
             self.big_numbers.count_pending_manual_validation(),
+            self.big_numbers.count_first_manual_by_week(),
             self.big_numbers.count_auto_ingested_by_week(),
             self.big_numbers.count_returned_to_supplier_by_week(),
         )
 
         return {
-            "pending_manual_validation": pending_manual_validation,
+            "pending_manual_validation": {
+                "value": pending_manual_validation,
+                "delta_pp": _count_wow_delta(first_manual_by_week),
+            },
             "auto_ingested": _pct_with_wow_delta(auto_ingested_by_week),
             "returned_to_supplier": _pct_with_wow_delta(returned_by_week),
         }
@@ -129,3 +138,17 @@ def _pct_with_wow_delta(by_week: dict[str, tuple[int, int]]) -> dict:
         "pct": current_pct,
         "delta_pp": round(current_pct - previous_pct, 2),
     }
+
+
+def _count_wow_delta(by_week: dict[str, tuple[int, int]]) -> float:
+    """Percent change in the MATCHED count, current week vs previous week.
+
+    `by_week` values are (matched, total); only `matched` (documents whose
+    first_action was MANUAL) matters here — there is no ratio to take, unlike
+    `_pct_with_wow_delta`.
+    """
+    current_count, _ = by_week["current"]
+    previous_count, _ = by_week["previous"]
+    if not previous_count:
+        return 0.0
+    return round((current_count - previous_count) / previous_count * 100, 2)
