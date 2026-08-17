@@ -43,10 +43,13 @@ from invoice_extraction.decisions import (
     EMAIL_INBOX,
     EMAIL_REPLY,
     EMAIL_TREASURY,
+    IGNORE,
+    INBOX,
     INGEST,
     MANUAL,
     REPLY,
     TREASURY,
+    DocumentAction,
     EmailDecision,
     build_alerts_list,
     decide_email,
@@ -165,21 +168,29 @@ def document_type_label(classification: Optional[DocumentClassification]) -> str
     return f"{type_label} ({state_label})"
 
 
-def derive_status(result: PipelineResult) -> str:
+def derive_status(result: PipelineResult, action: DocumentAction) -> str:
     """Map a document's outcome to a Status. Refine as the lifecycle grows.
 
-    Every routed document starts life as "Criado". `EmailPipeline._send_followups`
+    Most routed documents start life as "Criado": `EmailPipeline._send_followups`
     then carries out the document's action (SAP booking, supplier reply,
     treasury forward) inline and overrides this with the outcome — "Ingerido" /
-    "Comunicado" on success, left at "Criado" on failure (or when the action has
-    no follow-up, e.g. MANUAL/INBOX/IGNORE). This function only supplies that
-    DAY-ONE fallback, not the eventual status.
+    "Comunicado" on success, left at "Criado" on failure. MANUAL has no
+    follow-up either, so it also stays at "Criado" — a human has not looked at
+    it yet.
+
+    IGNORE and INBOX have no follow-up AND nothing pending: there is no action
+    left to carry out (a duplicate whose original is already in the email;
+    a cancelled or unprocessed document type), so the row is terminal from the
+    moment it is written. Those go straight to "Ignorado" rather than sitting
+    in "Criado" indistinguishable from documents still awaiting one.
 
     Only a document that actually broke (a stage raised, so no classification) is
     "Failed" — the pipeline did not manage to route it at all.
     """
     if result.status == "failed":
         return "Failed"
+    if action in (IGNORE, INBOX):
+        return "Ignorado"
     return "Criado"
 
 
@@ -427,19 +438,21 @@ class EmailPipeline:
 
         document_ids = {extraction.filename: str(uuid.uuid4()) for extraction in result.extractions}
 
-        rows = [
-            {
-                "document_id": document_ids[extraction.filename],
-                "process_id": process_id,
-                "document_type": document_type_label(extraction.classification),
-                "action": actions.get(extraction.filename, MANUAL),
-                "status": derive_status(extraction),
-                "document_content": build_document_content(extraction.validation),
-                "alerts_list": build_alerts_list(extraction),
-                "created_by": "pipeline",
-            }
-            for extraction in result.extractions
-        ]
+        rows = []
+        for extraction in result.extractions:
+            action = actions.get(extraction.filename, MANUAL)
+            rows.append(
+                {
+                    "document_id": document_ids[extraction.filename],
+                    "process_id": process_id,
+                    "document_type": document_type_label(extraction.classification),
+                    "action": action,
+                    "status": derive_status(extraction, action),
+                    "document_content": build_document_content(extraction.validation),
+                    "alerts_list": build_alerts_list(extraction),
+                    "created_by": "pipeline",
+                }
+            )
         # version, created_at/last_modified_at fall to DB defaults. document_id
         # is supplied explicitly (see docstring) rather than left to the
         # column's own gen_random_uuid() default.
