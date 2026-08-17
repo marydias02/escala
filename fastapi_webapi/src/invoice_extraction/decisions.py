@@ -9,7 +9,7 @@ Two layers, deliberately separated:
 
 The suppression in step 2 is why step 1's answers are not final: a duplicate
 invoice asks for a reply on its own, but if the same email also carried the
-original there is nothing to ask for. Any document reaching "Ingest in SAP"
+original there is nothing to ask for. Any document reaching "Ingerir em SAP"
 cancels every reply in that email.
 
 The full case matrix lives in `DOCUMENT_RULES` and `decide_email` below so the
@@ -41,14 +41,14 @@ from invoice_extraction.tools.po_confirmation import po_exists, supplier_require
 # from those constants — so the names and the type cannot drift apart. `Final` is
 # what makes a constant usable inside `Literal[...]`; a plain assignment is not.
 
-INGEST: Final = "Ingest in SAP"
-REPLY: Final = "Sent back to Supplier"
-TREASURY: Final = "Forward to Treasury"
-INBOX: Final = "Keep in Inbox"
-MANUAL: Final = "Validate Manually"
+INGEST: Final = "Ingerir em SAP" #Ingest in SAP
+REPLY: Final = "Retornado ao Fornecedor" #Sent back to Supplier
+TREASURY: Final = "Encaminhar para Tesouraria" #Forward to Treasury
+INBOX: Final = "Manter na Caixa de Entrada" #Keep in Inbox
+MANUAL: Final = "Validação Manual" #Manual Validation
 # A duplicate whose original is in the same email: not booked, not chased, but
 # still recorded, so the audit trail shows the copy arrived.
-IGNORE: Final = "Ignore (has original)"
+IGNORE: Final = "Ignorar (tem original)" #Ignore (original exists)
 
 # What reaches `fct_documents.action`.
 DocumentAction = Literal[
@@ -60,10 +60,10 @@ DocumentAction = Literal[
     IGNORE,
 ]
 
-EMAIL_ARCHIVE: Final = "Archive"
-EMAIL_INBOX: Final = "Keep in Inbox"
-EMAIL_REPLY: Final = "Reply to supplier"
-EMAIL_TREASURY: Final = "Forward to treasury"
+EMAIL_ARCHIVE: Final = "Arquivar" #Archive
+EMAIL_INBOX: Final = "Manter na Caixa de Entrada" #Keep in Inbox
+EMAIL_REPLY: Final = "Responder ao fornecedor" #Reply to Supplier
+EMAIL_TREASURY: Final = "Encaminhar para tesouraria" #Forward to Treasury
 
 EmailAction = Literal[
     EMAIL_ARCHIVE,
@@ -96,6 +96,10 @@ REPLY_TEXT_NO_PO = (
     "Documento sem nota de encomenda, por favor enviar o documento com a "
     "nota de encomenda"
 )
+
+# TREASURY's equivalent of REPLY_TEXT_*: the one reason a document reaches
+# TREASURY (C4, an ordinary receipt), so there is only one line.
+REPLY_TEXT_TREASURY = "Recibo encaminhado para tesouraria"
 
 # Document types routed by the B-cases below. Kept in sync with
 # `extraction_pipeline.EXTRACTABLE_TYPES` by intent, not by import, because this
@@ -279,6 +283,7 @@ class EmailDecision:
     reason: str
     documents: list[DocumentDecision] = field(default_factory=list)
     reply_lines: list[str] = field(default_factory=list)
+    treasury_lines: list[str] = field(default_factory=list)
     intent: Optional[EmailIntent] = None
 
     @property
@@ -289,6 +294,15 @@ class EmailDecision:
     def reply_body(self) -> str:
         """The single reply sent to the supplier, one line per problem document."""
         return "\n".join(self.reply_lines)
+
+    @property
+    def should_forward_to_treasury(self) -> bool:
+        return EMAIL_TREASURY in self.actions
+
+    @property
+    def treasury_body(self) -> str:
+        """The single email sent to treasury, one line per forwarded document."""
+        return "\n".join(self.treasury_lines)
 
 
 # --------------------------------------------------------------------------- #
@@ -509,6 +523,7 @@ def decide_document(
             filename=result.filename,
             action=TREASURY,
             reason="receipt with no exception",
+            reply_text=REPLY_TEXT_TREASURY,
         )
 
     # --- C5: 'other' — shipping docs, POs, bank statements, ... -----------
@@ -524,15 +539,19 @@ def decide_document(
 # --------------------------------------------------------------------------- #
 
 
-def _dedupe_reply_lines(decisions: list[DocumentDecision]) -> list[str]:
-    """One line per distinct reason, naming the files it applies to.
+def _dedupe_lines_for(decisions: list[DocumentDecision], action: DocumentAction) -> list[str]:
+    """One line per distinct reply_text among documents with the given action,
+    naming the files each line applies to.
 
-    Two proformas in one email produce a single line listing both filenames,
-    rather than the same sentence twice.
+    Shared by REPLY (-> reply_lines, to the supplier) and TREASURY
+    (-> treasury_lines, to treasury): both are "one message per email, one line
+    per distinct reason". Two proformas in one email produce a single reply
+    line listing both filenames, rather than the same sentence twice; likewise
+    two ordinary receipts produce one treasury line listing both.
     """
     by_text: dict[str, list[str]] = {}
     for decision in decisions:
-        if decision.action == REPLY and decision.reply_text:
+        if decision.action == action and decision.reply_text:
             by_text.setdefault(decision.reply_text, []).append(decision.filename)
 
     return [f"{', '.join(files)}: {text}" for text, files in by_text.items()]
@@ -677,5 +696,6 @@ def decide_email(
         actions=roll_up_actions(decisions),
         reason=_email_reason(decisions),
         documents=decisions,
-        reply_lines=_dedupe_reply_lines(decisions),
+        reply_lines=_dedupe_lines_for(decisions, REPLY),
+        treasury_lines=_dedupe_lines_for(decisions, TREASURY),
     )
