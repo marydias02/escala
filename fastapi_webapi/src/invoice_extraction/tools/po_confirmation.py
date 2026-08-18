@@ -1,6 +1,6 @@
 from langchain_core.tools import tool
 
-# Simulated registries. Hoisted to module level so swapping in a real database
+# Simulated registries. Swapping in a real database
 # later is a single-file change — the tool signatures stay the same.
 NO_PO_NEEDED_SUPPLIERS = [
     "PT501925350",
