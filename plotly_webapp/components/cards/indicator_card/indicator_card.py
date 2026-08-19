@@ -1,29 +1,51 @@
-import dash
+from typing import Literal, Optional, Sequence, Tuple, Union
+
 from dash import html
 from dash_iconify import DashIconify
-
-from typing import Optional, Union, Sequence , Tuple, Literal
 
 from components.badge.badge import Badge
 
 Delta = Literal["increase", "decrease"]
+BadgeUnit = Literal["%", "pp"]
+BadgeValue = Union[str, float]
+
+
+def _format_badge_value(value: BadgeValue, unit: BadgeUnit) -> str:
+    """Add the selected unit, replacing a unit already present in the value."""
+    text = str(value).strip()
+
+    if text.endswith("pp"):
+        text = text[:-2].rstrip()
+    elif text.endswith("%"):
+        text = text[:-1].rstrip()
+
+    separator = " " if unit == "pp" else ""
+    return f"{text}{separator}{unit}"
+
 
 def IndicatorCard(
     *,
     label_text: Optional[str] = None,
     label_tooltip: Optional[str] = None,
-    rows: Sequence[Tuple[Union[str, float], Optional[str], Optional[str], Optional[Delta]]],
+    rows: Sequence[Tuple[Union[str, float], Optional[str], Optional[BadgeValue], Optional[Delta]]],
+    badge_unit: BadgeUnit = "%",
 ) -> html.Div:
     """
     rows:
       - "value"         -> Card Value
       - "caption"       -> Card Description
-      - "badge value"   -> optional badge component: value
+      - "badge value"   -> optional badge component: value (without a unit)
       - "badge delta"   -> optional badge component: delta string "increase" or "decrease"
+
+    badge_unit controls whether badge values are displayed as percentages ("%")
+    or percentage points ("pp").
     """
     
     if not rows:
         raise ValueError("IndicatorCard requires at least one row in `rows`.")
+
+    if badge_unit not in ("%", "pp"):
+        raise ValueError("IndicatorCard `badge_unit` must be either '%' or 'pp'.")
     
     root_class = "indicator-card"
 
@@ -63,7 +85,7 @@ def IndicatorCard(
         footer_children = []
 
         if badge_value is not None and badge_delta is not None:
-            footer_children.append(Badge(badge_value, badge_delta))
+            footer_children.append(Badge(_format_badge_value(badge_value, badge_unit), badge_delta))
 
         if caption is not None:
             footer_children.append(

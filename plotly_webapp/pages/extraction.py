@@ -45,10 +45,6 @@ def trend(delta):
 def fmt_pct(value):
     return f"{value:g}%"
 
-def fmt_delta(value):
-    return f"{abs(value):g}%"
-
-
 # df = load_group_table_data()
 # brand_cols, year_cols = get_brand_and_year_columns(list(df.columns))
 # simple_table_column_defs = create_simple_table_column_defs(brand_cols, year_cols)
@@ -89,7 +85,6 @@ documents_col_def = [
         "field": "action",
         "headerName": "Ação",
         "width": 180,
-        "cellRenderer": "Action",
     },
     {
         "field": "status",
@@ -119,7 +114,6 @@ short_documents_col_def = [
         "field": "action",
         "headerName": "Ação",
         "width": 200,
-        "cellRenderer": "Action",
     },
     {
         "field": "status",
@@ -317,23 +311,31 @@ def load_extraction_content(_pathname):
                         IndicatorCard(
                             label_text="Faturas para Validação",
                             label_tooltip="faturas pendentes de validação",
-                            rows=[(kpis["pending_manual_validation"],"última semana", "50%", "decrease")]
+                            rows=[(kpis["pending_manual_validation"]["value"],
+                                   "última semana",
+                                   abs(kpis["pending_manual_validation"]["delta_pp"]),
+                                   trend(kpis["pending_manual_validation"]["delta_pp"])
+                                )
+                            ],
+                            badge_unit="%",
                         ),
                         IndicatorCard(
                             label_text="Faturas Ingeridas Automaticamente",
                             label_tooltip="extra info",
                             rows=[(fmt_pct(kpis["auto_ingested"]["pct"]),
                                 "última semana",
-                                fmt_delta(kpis["auto_ingested"]["delta_pp"]),
-                                trend(kpis["auto_ingested"]["delta_pp"]))]
+                                abs(kpis["auto_ingested"]["delta_pp"]),
+                                trend(kpis["auto_ingested"]["delta_pp"]))],
+                            badge_unit="pp",
                         ),
                         IndicatorCard(
                             label_text="Faturas Devolvidas ao Fornecedor",
                             label_tooltip="extra info",
                             rows=[(fmt_pct(kpis["returned_to_supplier"]["pct"]),
                                 "última semana",
-                                fmt_delta(kpis["returned_to_supplier"]["delta_pp"]),
-                                trend(kpis["returned_to_supplier"]["delta_pp"]))]
+                                abs(kpis["returned_to_supplier"]["delta_pp"]),
+                                trend(kpis["returned_to_supplier"]["delta_pp"]))],
+                            badge_unit="pp",
                         ),
                     ]
                 ),
