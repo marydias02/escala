@@ -30,7 +30,12 @@ MANIFEST_NAME = "email_content.json"
 # no LLM calls.
 FORCE_REINGEST = True
 
-# Only ingest the first N emails (None = all). Useful for a cheap smoke test.
+# How many messages fetch_inbox_emails pulls from Graph per run (the `$top` on
+# the message list request).
+DEFAULT_FETCH_LIMIT = 1
+
+# Of the emails fetched, only run the first N through the pipeline (None = all
+# of them). A testing knob, independent of DEFAULT_FETCH_LIMIT
 INGEST_LIMIT: int | None = 1
 
 # Persist results to Postgres. Off lets the pipeline be exercised (and traced)
