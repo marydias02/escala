@@ -19,7 +19,8 @@ async def get_extraction_big_numbers(service: ExtractionServiceDep) -> Extractio
     """
     Top indicator tiles for the extraction dashboard.
 
-    - **pending_manual_validation**: documents currently awaiting manual validation
+    - **pending_manual_validation**: documents currently awaiting manual validation,
+      with the week-over-week % change in documents first sent to manual validation
     - **auto_ingested**: % of this week's documents auto-ingested into SAP, with the
       week-over-week change in percentage points
     - **returned_to_supplier**: % of this week's documents sent back to the supplier,

@@ -30,16 +30,32 @@ class ExtractionBigNumbers(BaseRepository):
     async def count_pending_manual_validation(self) -> int:
         query = f"""
         SELECT COUNT(*) FROM {self.table}
-        WHERE action = $1 AND status = 'Pending'
+        WHERE action = $1 AND status = 'Criado'
         """
         return await self.query_scalar(query, parameters=[MANUAL])
+
+    async def count_first_manual_by_week(self) -> dict[str, tuple[int, int]]:
+        """Documents FIRST routed to manual validation, by the week they first
+        landed there — from fct_document_first_action, which manual review
+        never overwrites (unlike fct_documents.action).
+        """
+        query = """
+        SELECT
+            date_trunc('week', created_at) AS week,
+            COUNT(*) FILTER (WHERE first_action = $1) AS matched,
+            COUNT(*) AS total
+        FROM fct_document_first_action
+        WHERE date_trunc('week', created_at) IN (date_trunc('week', now()), date_trunc('week', now()) - interval '1 week')
+        GROUP BY week
+        """
+        return await self._matched_and_total_by_week(query, parameters=[MANUAL])
 
     async def count_auto_ingested_by_week(self) -> dict[str, tuple[int, int]]:
         query = f"""
         SELECT
             date_trunc('week', created_at) AS week,
             COUNT(*) FILTER (
-                WHERE action = $1 AND status = 'Ingested' AND last_modified_by IS NULL
+                WHERE action = $1 AND status = 'Ingerido' AND last_modified_by IS NULL
             ) AS matched,
             COUNT(*) AS total
         FROM {self.table}
@@ -79,7 +95,7 @@ class DocumentsRepository(BaseRepository):
         query = f"""
         SELECT {_DOCUMENT_LIST_COLUMNS}
         FROM {self.table}
-        WHERE action = $1 AND status = 'Pending'
+        WHERE action = $1 AND status IN ('Criado', 'Sob Revisão') 
             AND document_content <> '{{}}'::jsonb
         ORDER BY created_at ASC, document_id DESC
         LIMIT $2
@@ -92,7 +108,7 @@ class DocumentsRepository(BaseRepository):
             SELECT
                 created_at,
                 action = $2
-                    AND status = 'Pending'
+                    AND status IN ('Criado', 'Sob Revisão') 
                     AND document_content <> '{{}}'::jsonb AS eligible
             FROM {self.table}
             WHERE document_id = $1
@@ -103,8 +119,8 @@ class DocumentsRepository(BaseRepository):
                 SELECT candidate.document_id
                 FROM {self.table} AS candidate
                 WHERE current_document.eligible
-                    AND candidate.action IN ('Validate Manually', 'Validação Manual')
-                    AND candidate.status IN ('Pending', 'Sob Revisão')
+                    AND candidate.action = $2
+                    AND candidate.status = 'Criado'
                     AND (candidate.created_at, candidate.document_id)
                         > (current_document.created_at, $1)
                 ORDER BY candidate.created_at ASC, candidate.document_id DESC
@@ -118,13 +134,13 @@ class DocumentsRepository(BaseRepository):
         query = f"""
         SELECT {_DOCUMENT_LIST_COLUMNS}
         FROM {self.table}
-        WHERE status <> 'Ignored'
+        WHERE status <> 'Ignorado'
             AND document_content <> '{{}}'::jsonb
         ORDER BY created_at DESC
         LIMIT $1
         """
         return await self.query_df(query, parameters=[limit])
-    
+
     async def list_pending_documents(self, limit: int = 100) -> pl.DataFrame:
         query = f"""
         SELECT
@@ -133,7 +149,7 @@ class DocumentsRepository(BaseRepository):
             p.email_subject
         FROM {self.table} d
         LEFT JOIN fct_processes p ON p.process_id = d.process_id
-        WHERE d.status IN ('Ignored', 'Pending')
+        WHERE d.status IN ('Ignorado', 'Criado')
             AND d.document_content = '{{}}'::jsonb
         ORDER BY created_at DESC
         LIMIT $1

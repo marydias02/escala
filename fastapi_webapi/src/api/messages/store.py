@@ -52,8 +52,13 @@ class PercentageWithDeltaDict(TypedDict):
     delta_pp: float
 
 
+class ValueWithDeltaDict(TypedDict):
+    value: int
+    delta_pp: float
+
+
 class ExtractionBigNumbersDict(TypedDict):
-    pending_manual_validation: int
+    pending_manual_validation: ValueWithDeltaDict
     auto_ingested: PercentageWithDeltaDict
     returned_to_supplier: PercentageWithDeltaDict
 

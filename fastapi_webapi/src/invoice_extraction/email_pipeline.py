@@ -16,11 +16,18 @@ Postgres — one `fct_processes` row per email, one `fct_documents` row per PDF.
 The DB is async (asyncpg), so this module is async and is driven by
 `asyncio.run(main())`; the sync ingestion/extraction `.run()` calls happen inside
 the async flow. Writes go through the generic helpers in `utils.utils_db`.
+
+Booking documents to SAP is NOT part of this pipeline — see `sap_pipeline`,
+which runs separately, in bulk, over every `fct_documents` row at
+`action = "Ingerir em SAP", status = "Criado"` regardless of which email wrote
+it. A document can reach that state well after its email was processed (e.g.
+after manual review), so SAP booking cannot be an inline step here.
 """
 
 import asyncio
 import json
 import time
+import uuid
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
@@ -43,8 +50,11 @@ from invoice_extraction.decisions import (
     EMAIL_REPLY,
     EMAIL_TREASURY,
     IGNORE,
-    INGEST,
+    INBOX,
     MANUAL,
+    REPLY,
+    TREASURY,
+    DocumentAction,
     EmailDecision,
     build_alerts_list,
     decide_email,
@@ -64,6 +74,7 @@ from invoice_extraction.ingestion_pipeline import (
 from invoice_extraction.ingestion_pipeline import (
     create_pipeline as create_ingestion_pipeline,
 )
+from invoice_extraction.invoice_utils.email_sender import send_email
 from invoice_extraction.invoice_utils.reporting import print_pipeline_result
 from invoice_extraction.loading import load_msg
 from invoice_extraction.models import DocumentClassification, EmailIntent, ValidationReport
@@ -79,10 +90,11 @@ from invoice_extraction.tracing import (
     flush as flush_traces,
 )
 from utils.llm_factory import LLMFactory
-from utils.utils_db import get_pool, insert_row, insert_rows, select
+from utils.utils_db import get_pool, insert_row, insert_rows, select, update_column
 
 PROCESSES_TABLE = "fct_processes"
 DOCUMENTS_TABLE = "fct_documents"
+DOCUMENT_FIRST_ACTION_TABLE = "fct_document_first_action"
 
 # The value-bearing ValidationReport fields (each a Checked[T] or None). `notes`
 # and `po_list` are handled separately in build_document_content.
@@ -161,28 +173,31 @@ def document_type_label(classification: Optional[DocumentClassification]) -> str
     return f"{type_label} ({state_label})"
 
 
-def derive_status(result: PipelineResult, action: str) -> str:
+def derive_status(result: PipelineResult, action: DocumentAction) -> str:
     """Map a document's outcome to a Status. Refine as the lifecycle grows.
 
-    Driven by the DECIDED ACTION rather than the raw pipeline status, because the
-    two disagree in the ordinary case: a receipt bound for treasury and a proforma
-    bound back to the supplier both leave the pipeline as "skipped", yet neither
-    is a failure — the pipeline did its job and routed them.
+    Most routed documents start life as "Criado": `EmailPipeline._send_followups`
+    then carries out the document's email-level action (supplier reply, treasury
+    forward) inline and overrides this with the outcome — "Comunicado" on
+    success, left at "Criado" on failure. INGEST has no inline follow-up — SAP
+    booking is `sap_pipeline`'s job, run separately in bulk — so it also stays
+    at "Criado", same as MANUAL, which has no follow-up because a human has not
+    looked at it yet.
+
+    IGNORE and INBOX have no follow-up AND nothing pending: there is no action
+    left to carry out (a duplicate whose original is already in the email;
+    a cancelled or unprocessed document type), so the row is terminal from the
+    moment it is written. Those go straight to "Ignorado" rather than sitting
+    in "Criado" indistinguishable from documents still awaiting one.
 
     Only a document that actually broke (a stage raised, so no classification) is
-    "Failed"; everything routed somewhere is "Pending" until that action happens.
-
-    An IGNORE document is the exception to that last part: nothing is ever going
-    to happen to a duplicate whose original we already hold, so calling it
-    "Pending" would leave a row that never resolves.
+    "Failed" — the pipeline did not manage to route it at all.
     """
-    if action == INGEST:
-        return "Ingested"
-    if action == IGNORE:
-        return "Ignored"
     if result.status == "failed":
         return "Failed"
-    return "Pending"
+    if action in (IGNORE, INBOX):
+        return "Ignorado"
+    return "Criado"
 
 
 # NOTE: the per-document action is no longer derived here. It comes from
@@ -321,8 +336,87 @@ class EmailPipeline:
             print(f"  ⚠️  Email intent classification failed: {type(exc).__name__}: {exc}")
             return None
 
+    async def _send_followups(self, result: EmailProcessingResult) -> dict[str, str]:
+        """Carry out each document's email-level action (send) and return {filename: status}.
+
+        Called from `_persist` AFTER every document row already exists at its
+        day-one status ("Criado", see `derive_status`) — "Criado" is a real,
+        queryable row, not a value only ever held in memory before being
+        overwritten. This just decides which rows to UPDATE, and to what. A
+        filename absent from the returned dict is left exactly as inserted.
+
+        The supplier reply and the treasury forward are each sent ONCE per
+        email — `decision.reply_body`/`decision.treasury_body` are already
+        deduped/joined across every REPLY/TREASURY document by `decisions.py`
+        — not once per document. The reply is gated on `decision.should_reply`
+        rather than on `decision.documents`, so it also fires for the
+        no-usable-PDF case (an email-level REPLY with zero fct_documents rows)
+        — there is simply nothing in the returned dict to apply that status to
+        there, since no document row exists.
+
+        INGEST documents are deliberately left at "Criado" here: booking to
+        SAP is not an email-level action and can happen well after this email
+        was processed (e.g. once a MANUAL document clears human review), so it
+        is `sap_pipeline`'s job, run separately, in bulk, over every row at
+        `action = INGEST, status = "Criado"` regardless of which email wrote it.
+
+        Failures (only possible once the reply/treasury stubs are replaced
+        with real integrations) leave the returned status at "Criado" —
+        building failure-visibility now would be speculative against calls
+        that cannot actually fail yet.
+        """
+        manifest = _load_manifest(result.ingestion.folder)
+        decisions_by_file = {d.filename: d for d in result.decision.documents}
+        statuses: dict[str, str] = {}
+
+        if result.decision.should_reply and result.decision.reply_body:
+            send_result = await send_email(
+                to=manifest.get("sender_email", ""),
+                subject=f"Re: {manifest.get('email_subject', '')}",
+                body=result.decision.reply_body,
+            )
+            outcome = "Comunicado" if send_result.status == "sent" else "Criado"
+            for filename, decision in decisions_by_file.items():
+                if decision.action == REPLY:
+                    statuses[filename] = outcome
+
+        if result.decision.should_forward_to_treasury and result.decision.treasury_body:
+            send_result = await send_email(
+                to=settings.TREASURY_EMAIL or "",
+                subject=f"Documentos para tesouraria - {manifest.get('email_subject', '')}",
+                body=result.decision.treasury_body,
+            )
+            outcome = "Comunicado" if send_result.status == "sent" else "Criado"
+            for filename, decision in decisions_by_file.items():
+                if decision.action == TREASURY:
+                    statuses[filename] = outcome
+
+        return statuses
+
     async def _persist(self, result: EmailProcessingResult) -> None:
-        """Write one fct_processes row and its fct_documents rows."""
+        """Write one fct_processes row, its fct_documents rows, and their
+        fct_document_first_action rows.
+
+        Every document is inserted first at its day-one status (`derive_status`
+        — "Criado", or "Failed" if the pipeline broke on it): a real row, not
+        just an in-memory value. `_send_followups` then carries out each
+        document's email-level action and UPDATEs the rows it advances
+        (REPLY/TREASURY -> "Comunicado"). INGEST rows stay at "Criado" here —
+        SAP booking is `sap_pipeline`'s job, run separately in bulk. Two real
+        writes per advanced document, deliberately — "Criado" stays an
+        observable state, not a value overwritten before ever reaching the
+        database.
+
+        `fct_document_first_action` is written once, immediately after
+        `fct_documents`, from the same `action` values — before any follow-up
+        or later manual review can change them — so it always reflects the
+        document's ORIGINAL routing, unlike `fct_documents.action`.
+
+        Each row's `document_id` is generated here (rather than left to the
+        column's DB-side default) so the whole batch can still go through one
+        `insert_rows` call, yet every id is already known for the follow-up
+        UPDATE — no per-row INSERT round-trip needed just to read one back.
+        """
         ingestion = result.ingestion
         manifest = _load_manifest(ingestion.folder)
 
@@ -344,20 +438,47 @@ class EmailPipeline:
         # Paired by filename rather than by position so the two lists cannot drift.
         actions = {d.filename: d.action for d in result.decision.documents}
 
-        rows = [
-            {
-                "process_id": process_id,
-                "document_type": document_type_label(extraction.classification),
-                "action": actions.get(extraction.filename, MANUAL),
-                "status": derive_status(extraction, actions.get(extraction.filename, MANUAL)),
-                "document_content": build_document_content(extraction.validation),
-                "alerts_list": build_alerts_list(extraction),
-                "created_by": "pipeline",
-            }
-            for extraction in result.extractions
-        ]
-        # document_id, version, created_at/last_modified_at fall to DB defaults.
+        document_ids = {extraction.filename: str(uuid.uuid4()) for extraction in result.extractions}
+
+        rows = []
+        for extraction in result.extractions:
+            action = actions.get(extraction.filename, MANUAL)
+            rows.append(
+                {
+                    "document_id": document_ids[extraction.filename],
+                    "process_id": process_id,
+                    "document_type": document_type_label(extraction.classification),
+                    "action": action,
+                    "status": derive_status(extraction, action),
+                    "document_content": build_document_content(extraction.validation),
+                    "alerts_list": build_alerts_list(extraction),
+                    "created_by": "pipeline",
+                }
+            )
+        # version, created_at/last_modified_at fall to DB defaults. document_id
+        # is supplied explicitly (see docstring) rather than left to the
+        # column's own gen_random_uuid() default.
         await insert_rows(DOCUMENTS_TABLE, rows, jsonb_columns=["document_content"])
+
+        # One immutable row per document, capturing the action it was FIRST
+        # routed to. Written here, once, from the same `rows` — never touched
+        # again, unlike `fct_documents.action`, which manual review overwrites.
+        first_action_rows = [
+            {
+                "document_id": row["document_id"],
+                "process_id": row["process_id"],
+                "first_action": row["action"],
+            }
+            for row in rows
+        ]
+        await insert_rows(DOCUMENT_FIRST_ACTION_TABLE, first_action_rows)
+
+        # SEND/BOOK, then UPDATE the rows whose action actually resolved.
+        followup_statuses = await self._send_followups(result)
+        for filename, status in followup_statuses.items():
+            document_id = document_ids.get(filename)
+            if document_id is not None:
+                await update_column(DOCUMENTS_TABLE, "document_id", document_id, "status", status)
 
     async def run(
         self,
@@ -551,8 +672,11 @@ def print_email_summary(results: list[EmailProcessingResult]) -> None:
             )
         print(f"  {marker}  {result.source} — {decision.reason}")
 
-        # The reply that would go out, and each document's own action.
+        # The reply and/or treasury forward that would go out, and each
+        # document's own action.
         for line in decision.reply_lines:
+            print(f"            ↳ {line}")
+        for line in decision.treasury_lines:
             print(f"            ↳ {line}")
         for document in decision.documents:
             print(f"            · {document.filename}: {document.action} ({document.reason})")

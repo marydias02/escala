@@ -76,6 +76,12 @@ Examples:
 
 Do not normalize evidence.
 
+KNOWN EDGE CASES
+
+If the email comes from COMPLEXO DE CARGA DO Aeroporto Humberto Delgado, the issue date is the first date, 
+that appears after "EMITIDO EM:" in the pdf. 
+The second date, which appears after "DATA DE EMISSÃO:", relates to the goods and should be ignored.
+
 FINAL RULE
 
 Accuracy is more important than completeness.
