@@ -27,13 +27,13 @@ from invoice_extraction.config import (
     MAX_FOLDER_NAME,
     PROCESSED_EMAILS_DIR,
 )
+from invoice_extraction.invoice_utils.outlook_loader import fetch_inbox_emails
 from invoice_extraction.invoice_utils.pdf_splitter import (
     count_pages,
     ensure_readable,
     split_pdf,
     validate_segmentation,
 )
-from invoice_extraction.loading import fetch_inbox_emails
 from invoice_extraction.models import EmailAttachment, EmailContent, LoadedEmail
 from invoice_extraction.nodes import segment_document
 from invoice_extraction.tracing import span

@@ -25,11 +25,11 @@ MANIFEST_NAME = "email_content.json"
 
 # How many messages fetch_inbox_emails pulls from Graph per run (the `$top` on
 # the message list request).
-DEFAULT_FETCH_LIMIT = 1
+DEFAULT_FETCH_LIMIT = 2
 
 # Of the emails fetched, only run the first N through the pipeline (None = all
 # of them). A testing knob, independent of DEFAULT_FETCH_LIMIT
-INGEST_LIMIT: int | None = 1
+INGEST_LIMIT: int | None = 2
 
 # Persist results to Postgres. Off lets the pipeline be exercised (and traced)
 # with no database running, and keeps test runs out of fct_processes.

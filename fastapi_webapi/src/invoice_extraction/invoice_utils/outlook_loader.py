@@ -10,8 +10,8 @@ is read straight into memory and handed off; dedup is by `message_id` against
 `fct_processes`, not by anything written to disk.
 
 Auth (delegated device-code, or app-only client-credentials) is via
-`invoice_extraction.loading.graph_auth`; `graph_user_path()` there resolves
-whether requests target `/me/` or `/users/{mailbox}/`.
+`utils.graph_auth`; `graph_user_path()` there resolves whether requests target
+`/me/` or `/users/{mailbox}/`.
 """
 
 from datetime import datetime
@@ -19,12 +19,11 @@ from email.utils import parseaddr
 from pathlib import Path
 
 import httpx
+from loguru import logger
 
-from invoice_extraction.loading.attachments import _expand_zip
-from invoice_extraction.loading.graph_auth import get_graph_token, graph_user_path
+from invoice_extraction.invoice_utils.attachments import _expand_zip
 from invoice_extraction.models import EmailAttachment, LoadedEmail
-
-GRAPH_BASE = "https://graph.microsoft.com/v1.0"
+from utils.graph_auth import GRAPH_BASE, get_graph_token, graph_user_path
 
 _MESSAGE_SELECT = ",".join(
     [
@@ -156,12 +155,14 @@ async def fetch_inbox_emails(
     headers = {"Authorization": f"Bearer {token}", "Accept": "application/json"}
 
     loaded_emails: list[LoadedEmail] = []
+    skipped = 0
     async with httpx.AsyncClient(timeout=60) as client:
         messages = await _list_messages(client, headers, top=limit)
 
         for message in messages:
             message_id = message["id"]
             if message_id in skip_message_ids:
+                skipped += 1
                 continue
 
             attachments: list[EmailAttachment] = []
@@ -180,4 +181,8 @@ async def fetch_inbox_emails(
                 )
             )
 
+    logger.info(
+        f"Fetched {len(messages)} message(s): {skipped} skipped (already processed), "
+        f"{len(loaded_emails)} new"
+    )
     return loaded_emails

@@ -13,7 +13,7 @@ import asyncio
 
 from loguru import logger
 
-from invoice_extraction.loading import fetch_inbox_emails
+from invoice_extraction.invoice_utils.outlook_loader import fetch_inbox_emails
 
 FETCH_LIMIT = 1
 

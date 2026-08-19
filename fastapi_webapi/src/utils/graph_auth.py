@@ -30,6 +30,7 @@ from azure.identity import ClientSecretCredential, DeviceCodeCredential
 from config.settings import settings
 
 GRAPH_SCOPE = "https://graph.microsoft.com/.default"
+GRAPH_BASE = "https://graph.microsoft.com/v1.0"
 
 _delegated_credential: DeviceCodeCredential | None = None
 _app_only_credential: ClientSecretCredential | None = None

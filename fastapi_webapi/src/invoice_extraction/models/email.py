@@ -19,8 +19,9 @@ class EmailAttachment:
 class LoadedEmail:
     """A parsed email, before anything has been written to disk.
 
-    Produced by the loaders in `invoice_extraction.loading`; consumed by the
-    ingestion pipeline, which is what decides where the bytes land.
+    Produced by the loaders in `invoice_extraction.invoice_utils.outlook_loader`;
+    consumed by the ingestion pipeline, which is what decides where the bytes
+    land.
     """
 
     sender_email: str

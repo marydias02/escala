@@ -73,9 +73,9 @@ from invoice_extraction.ingestion_pipeline import (
 from invoice_extraction.ingestion_pipeline import (
     create_pipeline as create_ingestion_pipeline,
 )
-from invoice_extraction.invoice_utils.email_sender import send_email
+from invoice_extraction.invoice_utils.email_sender import forward_to_treasury, reply_to_supplier
+from invoice_extraction.invoice_utils.outlook_loader import fetch_inbox_emails
 from invoice_extraction.invoice_utils.reporting import print_pipeline_result
-from invoice_extraction.loading import fetch_inbox_emails
 from invoice_extraction.models import DocumentClassification, EmailIntent, LoadedEmail, ValidationReport
 from invoice_extraction.nodes import classify_email_intent
 from invoice_extraction.tracing import (
@@ -326,13 +326,14 @@ class EmailPipeline:
         filename absent from the returned dict is left exactly as inserted.
 
         The supplier reply and the treasury forward are each sent ONCE per
-        email — `decision.reply_body`/`decision.treasury_body` are already
-        deduped/joined across every REPLY/TREASURY document by `decisions.py`
-        — not once per document. The reply is gated on `decision.should_reply`
-        rather than on `decision.documents`, so it also fires for the
-        no-usable-PDF case (an email-level REPLY with zero fct_documents rows)
-        — there is simply nothing in the returned dict to apply that status to
-        there, since no document row exists.
+        email, as a Graph reply/forward on the original message (`message_id`
+        from the manifest) — `decision.reply_body`/`decision.treasury_body`
+        are already deduped/joined across every REPLY/TREASURY document by
+        `decisions.py` — not once per document. The reply is gated on
+        `decision.should_reply` rather than on `decision.documents`, so it
+        also fires for the no-usable-PDF case (an email-level REPLY with zero
+        fct_documents rows) — there is simply nothing in the returned dict to
+        apply that status to there, since no document row exists.
 
         INGEST documents are deliberately left at "Criado" here: booking to
         SAP is not an email-level action and can happen well after this email
@@ -340,31 +341,43 @@ class EmailPipeline:
         is `sap_pipeline`'s job, run separately, in bulk, over every row at
         `action = INGEST, status = "Criado"` regardless of which email wrote it.
 
-        Failures (only possible once the reply/treasury stubs are replaced
-        with real integrations) leave the returned status at "Criado" —
-        building failure-visibility now would be speculative against calls
-        that cannot actually fail yet.
+        Failures (Mail.Send is not yet a granted Graph permission — see
+        `invoice_utils.email_sender`) leave the returned status at "Criado",
+        so an email whose reply/forward could not be sent stays visible as
+        outstanding rather than being marked done.
         """
         manifest = _load_manifest(result.ingestion.folder)
         decisions_by_file = {d.filename: d for d in result.decision.documents}
         statuses: dict[str, str] = {}
+        message_id = manifest.get("message_id", "")
 
         if result.decision.should_reply and result.decision.reply_body:
-            send_result = await send_email(
-                to=manifest.get("sender_email", ""),
-                subject=f"Re: {manifest.get('email_subject', '')}",
-                body=result.decision.reply_body,
+            sender_email = manifest.get("sender_email", "")
+            reply_subject = f"Re: {manifest.get('email_subject', '')}"
+            send_result = await reply_to_supplier(
+                message_id=message_id,
+                subject=reply_subject,
+                comment=result.decision.reply_body,
             )
+            if send_result.status == "sent":
+                print(f"  📧 Reply sent to supplier {sender_email!r} — subject={reply_subject!r}")
+            else:
+                print(
+                    f"  ⚠️  Reply to supplier {sender_email!r} FAILED "
+                    f"({send_result.error}) — subject={reply_subject!r}"
+                )
+            print(f"            body={result.decision.reply_body!r}")
             outcome = "Comunicado" if send_result.status == "sent" else "Criado"
             for filename, decision in decisions_by_file.items():
                 if decision.action == REPLY:
                     statuses[filename] = outcome
 
         if result.decision.should_forward_to_treasury and result.decision.treasury_body:
-            send_result = await send_email(
+            send_result = await forward_to_treasury(
+                message_id=message_id,
                 to=settings.TREASURY_EMAIL or "",
                 subject=f"Documentos para tesouraria - {manifest.get('email_subject', '')}",
-                body=result.decision.treasury_body,
+                comment=result.decision.treasury_body,
             )
             outcome = "Comunicado" if send_result.status == "sent" else "Criado"
             for filename, decision in decisions_by_file.items():
