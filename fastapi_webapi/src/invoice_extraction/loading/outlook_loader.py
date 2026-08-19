@@ -1,25 +1,27 @@
 """Fetch emails from a live Outlook inbox via Microsoft Graph.
 
-Live counterpart to `msg_loader.py`: instead of parsing `.msg` files already on
-disk, this hits Microsoft Graph directly and produces the same `LoadedEmail`
-shape, so the rest of the pipeline (ingestion, extraction) doesn't care which
-loader an email came from.
+Live counterpart to `msg_loader.py` (deleted — see the ingestion wiring plan):
+hits Microsoft Graph directly and produces the same `LoadedEmail` shape, so the
+rest of the pipeline (ingestion, extraction) doesn't care which loader an email
+came from.
 
-Auth is delegated (device-code sign-in as the calling user), scoped to
-`Mail.Read`, via `invoice_extraction.loading.graph_auth`. This only ever reads
-`/me/messages` — the signed-in user's own mailbox — which is the trial scope.
-Reading another mailbox (e.g. a shared Grupo Sousa inbox) needs application
-permissions and client-credentials auth instead; that's a later phase.
+Nothing is persisted here — the inbox itself is the durable copy. Each message
+is read straight into memory and handed off; dedup is by `message_id` against
+`fct_processes`, not by anything written to disk.
+
+Auth (delegated device-code, or app-only client-credentials) is via
+`invoice_extraction.loading.graph_auth`; `graph_user_path()` there resolves
+whether requests target `/me/` or `/users/{mailbox}/`.
 """
 
-import json
-from datetime import datetime, timezone
+from datetime import datetime
 from email.utils import parseaddr
 from pathlib import Path
 
 import httpx
 
-from invoice_extraction.loading.graph_auth import get_graph_token
+from invoice_extraction.loading.attachments import _expand_zip
+from invoice_extraction.loading.graph_auth import get_graph_token, graph_user_path
 from invoice_extraction.models import EmailAttachment, LoadedEmail
 
 GRAPH_BASE = "https://graph.microsoft.com/v1.0"
@@ -62,63 +64,94 @@ def _received_date_iso(message: dict) -> str:
         return raw
 
 
+async def _graph_get_paged(
+    client: httpx.AsyncClient, headers: dict, url: str, params: dict | None = None
+) -> list[dict]:
+    """GET `url`, following `@odata.nextLink` until exhausted.
+
+    `params` is only sent on the first request — `nextLink` is an absolute URL
+    that already carries its own query string, so later requests pass none.
+    """
+    out: list[dict] = []
+    next_url: str | None = url
+    while next_url:
+        response = await client.get(next_url, headers=headers, params=params)
+        response.raise_for_status()
+        data = response.json()
+        out.extend(data.get("value", []))
+        next_url = data.get("@odata.nextLink")
+        params = None
+    return out
+
+
 async def _list_messages(client: httpx.AsyncClient, headers: dict, top: int) -> list[dict]:
     params = {"$top": str(top), "$select": _MESSAGE_SELECT, "$orderby": "receivedDateTime DESC"}
-    response = await client.get(f"{GRAPH_BASE}/me/messages", headers=headers, params=params)
+    list_headers = {**headers, "Prefer": 'outlook.body-content-type="text"'}
+    response = await client.get(
+        f"{GRAPH_BASE}/{graph_user_path()}/mailFolders/inbox/messages",
+        headers=list_headers,
+        params=params,
+    )
     response.raise_for_status()
     return response.json().get("value", [])
 
 
-async def _list_attachments(client: httpx.AsyncClient, headers: dict, message_id: str) -> list[EmailAttachment]:
-    params = {"$select": "id,name,contentType,isInline"}
+async def _fetch_attachment_bytes(client: httpx.AsyncClient, headers: dict, message_id: str, attachment_id: str) -> bytes:
     response = await client.get(
-        f"{GRAPH_BASE}/me/messages/{message_id}/attachments", headers=headers, params=params
+        f"{GRAPH_BASE}/{graph_user_path()}/messages/{message_id}/attachments/{attachment_id}/$value",
+        headers=headers,
     )
     response.raise_for_status()
+    return response.content
+
+
+async def _list_attachments(client: httpx.AsyncClient, headers: dict, message_id: str) -> list[EmailAttachment]:
+    """Real annexes only, with zips expanded in place.
+
+    Attachments with no filename or no extension are dropped, mirroring
+    `msg_loader._collect_attachments`: without a name there is no reliable way
+    to tell a document from body decoration.
+    """
+    params = {"$select": "id,name,contentType,isInline"}
+    items = await _graph_get_paged(
+        client, headers, f"{GRAPH_BASE}/{graph_user_path()}/messages/{message_id}/attachments", params
+    )
 
     attachments: list[EmailAttachment] = []
-    for item in response.json().get("value", []):
+    for item in items:
         if item.get("isInline"):
             continue
-        odata_type = item.get("@odata.type", "")
-        if odata_type != "#microsoft.graph.fileAttachment":
-            # Item/reference attachments have no downloadable bytes in this call.
+        if item.get("@odata.type") != "#microsoft.graph.fileAttachment":
+            # Item/reference attachments have no downloadable bytes.
             continue
 
-        detail = await client.get(
-            f"{GRAPH_BASE}/me/messages/{message_id}/attachments/{item['id']}",
-            headers=headers,
-        )
-        detail.raise_for_status()
-        content_bytes = detail.json().get("contentBytes")
-        if not content_bytes:
+        filename = (item.get("name") or "").strip()
+        if not filename or not Path(filename).suffix:
             continue
 
-        import base64
+        data = await _fetch_attachment_bytes(client, headers, message_id, item["id"])
+        if not data:
+            continue
 
-        filename = item.get("name") or "attachment"
-        attachments.append(EmailAttachment(filename=filename, data=base64.b64decode(content_bytes)))
+        if filename.lower().endswith(".zip"):
+            attachments.extend(_expand_zip(filename, data))
+        else:
+            attachments.append(EmailAttachment(filename=filename, data=data))
 
     return attachments
 
 
-def _save_raw_message(message: dict, out_dir: Path) -> Path:
-    """Persist the raw Graph payload, matching the "as if a fetch step had just
-    deposited them" role that `.msg` files play for `msg_loader.py`.
+async def fetch_inbox_emails(
+    limit: int, skip_message_ids: set[str] | None = None
+) -> list[LoadedEmail]:
+    """Fetch the most recent `limit` messages from the inbox, newest first.
+
+    Messages whose id is in `skip_message_ids` are skipped before their
+    attachments are downloaded — that's the expensive part this avoids for
+    already-processed mail. Nothing is written to disk; each `LoadedEmail`
+    lives only in memory until the caller (ingestion) writes its output.
     """
-    out_dir.mkdir(parents=True, exist_ok=True)
-    timestamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S")
-    out_path = out_dir / f"{timestamp}_{message['id'][:16]}.json"
-    out_path.write_text(json.dumps(message, indent=2, ensure_ascii=False), encoding="utf-8")
-    return out_path
-
-
-async def fetch_inbox_emails(out_dir: Path, limit: int = 5) -> list[LoadedEmail]:
-    """Fetch the most recent `limit` messages from the signed-in user's own inbox.
-
-    Each raw Graph message is saved to `out_dir` (mirroring `ORIGINAL_EMAILS_DIR`'s
-    role for `.msg` files) and parsed into a `LoadedEmail` for the pipeline.
-    """
+    skip_message_ids = skip_message_ids or set()
     token = await get_graph_token()
     headers = {"Authorization": f"Bearer {token}", "Accept": "application/json"}
 
@@ -127,11 +160,13 @@ async def fetch_inbox_emails(out_dir: Path, limit: int = 5) -> list[LoadedEmail]
         messages = await _list_messages(client, headers, top=limit)
 
         for message in messages:
-            _save_raw_message(message, out_dir)
+            message_id = message["id"]
+            if message_id in skip_message_ids:
+                continue
 
             attachments: list[EmailAttachment] = []
             if message.get("hasAttachments"):
-                attachments = await _list_attachments(client, headers, message["id"])
+                attachments = await _list_attachments(client, headers, message_id)
 
             body = (message.get("body") or {}).get("content") or ""
             loaded_emails.append(
@@ -141,6 +176,7 @@ async def fetch_inbox_emails(out_dir: Path, limit: int = 5) -> list[LoadedEmail]
                     body=body,
                     reception_date=_received_date_iso(message),
                     attachments=attachments,
+                    message_id=message_id,
                 )
             )
 
