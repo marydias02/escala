@@ -145,7 +145,14 @@ dagcomponentfuncs.Action = function (props) {
 
 dagfuncs.action_options = function () {
   return {
-    values: ["Validate Manually", "Enviado ao Fornecedor", "Carregado em SAP"],
+    values: [
+      "Ingerir em SAP",
+      "Retornado ao Fornecedor",
+      "Encaminhar para Tesouraria",
+      "Manter na Caixa de Entrada",
+      "Validação Manual",
+      "Ignorar (tem original)",
+    ],
   };
 };
 
@@ -156,17 +163,17 @@ dagcomponentfuncs.Status = function (props) {
     color = "#222",
     icon = "lucide:arrow-right";
 
-  if (value === "Failed") {
+  if (value === "Erro") {
     bg = "rgba(245, 234, 235, 1)"; // Negative colors
     color = "rgba(122, 31, 32, 1)";
     border = "rgba(239, 220, 220, 1)";
     icon = "lucide:triangle-alert";
-  } else if (value === "Pending" || value === "Sob Revisão") {
+  } else if (value === "Comunicado" || value === "Sob Revisão") {
     bg = "rgba(241, 237, 218, 1)"; // Warning colors
     color = "rgba(74, 65, 28, 1)";
     border = "rgba(238, 232, 211, 1)";
     icon = "lucide:clock";
-  } else if (value === "Ingested" || value === "Created") {
+  } else if (value === "Ingerido") {
     bg = "rgba(234, 245, 237, 1)"; //Positive colors
     color = "rgba(28, 74, 40, 1)";
     border = "rgba(220, 239, 225, 1)";

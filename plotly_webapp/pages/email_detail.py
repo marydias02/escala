@@ -36,11 +36,11 @@ from assets.api_calls.extraction_api import (
 
 
 def _action_banner_props(action):
-    if action in {"Validate Manually", "Validação Manual"}:
+    if action in {"Validação Manual"}:
         return "negative", "lucide:triangle-alert"
-    if action in {"Sent back to Supplier"}:
+    if action in {"Retornado ao Fornecedor", "Encaminhar para Tesouraria"}:
         return "warning", "lucide:arrow-right"
-    if action in {"Ingest in SAP", "Ingerir em SAP"}:
+    if action in {"Ingerir em SAP"}:
         return "positive", "lucide:check"
     return "neutral", None
 
@@ -393,7 +393,7 @@ def update_document_details(
 
     if button_id == "send-sap-button":
         action = "Ingerir em SAP"
-        status = "Created"
+        status = "Criado"
         result = get_next_priority_document(document_id)
         next_document_id = result.get("next_document_id")
     elif button_id == "save-button":
