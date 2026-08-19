@@ -13,9 +13,6 @@ BASE_DIR = Path(__file__).parent
 
 DOCS_DIR = BASE_DIR / "docs"
 
-# Phase 1 input: raw emails, as if a fetch step had just deposited them.
-ORIGINAL_EMAILS_DIR = DOCS_DIR / "original_emails"
-
 # Phase 1 output / Phase 2 input: one folder per email, holding
 # `email_content.json` plus one PDF per accounting document.
 PROCESSED_EMAILS_DIR = DOCS_DIR / "processed_emails"
@@ -26,10 +23,6 @@ PROCESSED_EMAILS_DIR = DOCS_DIR / "processed_emails"
 # was fully processed.
 MANIFEST_NAME = "email_content.json"
 
-# Re-ingest emails whose manifest already exists. Off by default so re-runs cost
-# no LLM calls.
-FORCE_REINGEST = True
-
 # How many messages fetch_inbox_emails pulls from Graph per run (the `$top` on
 # the message list request).
 DEFAULT_FETCH_LIMIT = 1
@@ -39,9 +32,7 @@ DEFAULT_FETCH_LIMIT = 1
 INGEST_LIMIT: int | None = 1
 
 # Persist results to Postgres. Off lets the pipeline be exercised (and traced)
-# with no database running, and keeps test runs out of fct_processes — note that
-# FORCE_REINGEST bypasses the DB dedup check, so with both on, every re-run would
-# otherwise insert another process row for the same email.
+# with no database running, and keeps test runs out of fct_processes.
 WRITE_TO_DB = True
 
 # Windows caps a full path at 260 characters by default. Email subjects in the

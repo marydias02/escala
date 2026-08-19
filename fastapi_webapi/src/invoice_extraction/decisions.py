@@ -250,6 +250,9 @@ def build_alerts_list(result: PipelineResult) -> list[str]:
     elif pos:
         alerts.extend(f"Nota de encomenda não encontrada: {po}" for po in pos)
 
+    #TODO: add alerts for client NIF not in client BU list or supplier NIF not in supplier list
+    #Expand alerts
+
     return alerts
 
 
