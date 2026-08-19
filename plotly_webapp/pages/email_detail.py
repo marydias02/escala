@@ -59,7 +59,30 @@ register_right_drawer_callbacks(
 
 
 
-def layout(ref_number=None, **kwargs):
+def layout(ref_number=None, **_kwargs):
+    """Render the route immediately; document data is populated by a callback."""
+    return html.Div(
+        [
+            dcc.Store(id="email-detail-ref-number", data=str(ref_number)),
+            dcc.Loading(
+                id="email-detail-loading",
+                type="default",
+                color="var(--primary-color-13)",
+                children=html.Div(id="email-detail-content"),
+            ),
+        ]
+    )
+
+
+@dash.callback(
+    Output("email-detail-content", "children"),
+    Input("email-detail-ref-number", "data"),
+)
+def load_email_detail(ref_number):
+    return _build_email_detail(ref_number)
+
+
+def _build_email_detail(ref_number):
     try:
         match = get_document_details(str(ref_number))
     except requests.RequestException:

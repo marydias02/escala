@@ -95,9 +95,15 @@ def register_right_drawer_callbacks(
 
     @dash.callback(
         Output(f"{drawer_id}-email-content", "children"),
-        Input(document_id_store_id, "data"),
+        Input(toggle_button_id, "n_clicks"),
+        State(drawer_id, "className"),
+        State(document_id_store_id, "data"),
+        prevent_initial_call=True,
     )
-    def load_email_content(document_id):
+    def load_email_content(toggle_clicks, drawer_class_name, document_id):
+        if not drawer_class_name or "sidebar--collapsed" not in drawer_class_name:
+            return dash.no_update
+
         if not document_id:
             return "Sem documento selecionado."
 

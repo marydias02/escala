@@ -26,7 +26,7 @@ from components.table.shared.action_bar import action_bar
 import pandas as pd
 from functools import partial
 
-from assets.api_calls.extraction_api import get_big_numbers, get_priority_documents, get_all_documents, get_pending_documents
+from assets.api_calls.extraction_api import get_extraction_dashboard
 
 
 dash.register_page(
@@ -295,11 +295,12 @@ def layout():
     prevent_initial_call=False,
 )
 def load_extraction_content(_pathname):
-    # Fetch data when the page is rendered (runs asynchronously relative to initial layout)
-    kpis = get_big_numbers()
-    priority_documents = get_priority_documents()
-    all_documents = get_all_documents()
-    pending_documents = get_pending_documents()
+    # The page shell renders first; the API client loads these independent resources concurrently.
+    dashboard = get_extraction_dashboard()
+    kpis = dashboard["kpis"]
+    priority_documents = dashboard["priority_documents"]
+    all_documents = dashboard["all_documents"]
+    pending_documents = dashboard["pending_documents"]
 
     content_children = [
         Section(

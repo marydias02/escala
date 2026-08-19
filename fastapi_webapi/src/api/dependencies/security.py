@@ -1,14 +1,15 @@
 from functools import lru_cache
+from threading import Lock
 from urllib.parse import urlparse
 
 import httpx
 from argon2 import PasswordHasher
 from argon2.exceptions import VerifyMismatchError
-from loguru import logger
 from fastapi import Depends, HTTPException, Request
 from fastapi.security import APIKeyHeader, OAuth2AuthorizationCodeBearer
 from jose import ExpiredSignatureError, JWTError, jwt
 from jose.exceptions import JWTClaimsError
+from loguru import logger
 from typing_extensions import Annotated, Any
 
 import api.properties as props
@@ -19,13 +20,23 @@ from api.properties import AUDIENCE
 ph = PasswordHasher()
 
 api_key_header = APIKeyHeader(name="X-API-KEY", auto_error=True)
+_api_key_verification_lock = Lock()
+
+
+@lru_cache(maxsize=8)
+def _verify_api_key_hash(hashed_api_key: str, api_key: str) -> bool:
+    """Cache successful checks; invalid-key exceptions are never cached."""
+    return ph.verify(hashed_api_key, api_key)
 
 
 def verify_api_key(api_key: str = Depends(api_key_header)):
     try:
         if not api_key:
             raise HTTPException(status_code=401, detail="Not Authenticated")
-        ph.verify(props.HASHED_API_KEY, api_key)
+        # Prevent identical first requests from repeating the expensive Argon2
+        # calculation before the cache has been populated in this worker.
+        with _api_key_verification_lock:
+            _verify_api_key_hash(props.HASHED_API_KEY, api_key)
         return True
     except VerifyMismatchError:
         raise HTTPException(status_code=401, detail="Invalid API Key")
@@ -84,7 +95,9 @@ class OpenIdConnectAuthorizationCodeBearer(OAuth2AuthorizationCodeBearer):
             token_url = discovery["token_endpoint"]
             discovered_scopes = scopes or {k: "" for k in discovery["scopes_supported"]}
         except Exception as exc:  # noqa: BLE001 - startup must not depend on OIDC reachability
-            logger.warning(f"OIDC discovery unavailable ({self.metadata_url!r}): {exc}. OIDC routes will fail until reachable.")
+            logger.warning(
+                f"OIDC discovery unavailable ({self.metadata_url!r}): {exc}. OIDC routes will fail until reachable."
+            )
             authorization_url = ""
             token_url = ""
             discovered_scopes = scopes or {}
