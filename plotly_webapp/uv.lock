@@ -145,6 +145,7 @@ dependencies = [
     { name = "gunicorn" },
     { name = "pandas" },
     { name = "plotly" },
+    { name = "requests" },
     { name = "ruff" },
 ]
 
@@ -156,6 +157,7 @@ requires-dist = [
     { name = "gunicorn", specifier = ">=23.0.0" },
     { name = "pandas", specifier = ">=2.2.3" },
     { name = "plotly" },
+    { name = "requests", specifier = ">=2.32.3" },
     { name = "ruff", specifier = ">=0.12.1" },
 ]
 

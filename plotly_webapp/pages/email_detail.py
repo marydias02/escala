@@ -307,7 +307,8 @@ def _build_email_detail(ref_number):
                               className="email_detail__content_right_section",
                               children=[
                                 html.Iframe(
-                                    src="/assets/pdf-viewer.html?file=/assets/invoices/Fatura-Exemplo-pdf.pdf",
+                                    id="document-pdf-viewer",
+                                    src=f"/assets/pdf-viewer.html?file=/pdf/{ref_number}",
                                     style={
                                         "width": "100%",
                                         "height":"100%",

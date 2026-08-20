@@ -11,6 +11,10 @@ from components.sidebar_footer.sidebar_footer import SidebarFooter
 from components.footer.footer import Footer
 from components.select.select import Select
 
+import requests
+from flask import Response
+from assets.api_calls.extraction_api import BASE_URL, HEADERS
+
 
 AG_GRID_THEME_STYLESHEETS = [
     "https://unpkg.com/ag-grid-community@31.3.1/styles/ag-grid.css",
@@ -31,6 +35,7 @@ app = Dash(
     title="ESCALA",
     update_title="ESCALA - Updating ...",
 )
+
 
 app.layout = html.Div(
     [
@@ -151,6 +156,19 @@ app.layout = html.Div(
 )
 def update_sidebar(toggle_clicks, menu_clicks, current_state):
     return update_sidebar_logic(toggle_clicks, menu_clicks, current_state)
+
+
+@app.server.route("/pdf/<document_id>")
+def proxy_document_pdf(document_id):
+    """Fetch a document's PDF from the FastAPI backend and stream it back.
+    Kept server-side rather than pointed at directly: the backend requires an
+    X-API-KEY header, which a browser <iframe src> request can't attach.
+    """
+    resp = requests.get(f"{BASE_URL}/extraction/documents/{document_id}/pdf", headers=HEADERS, timeout=10)
+    if resp.status_code == 404:
+        return Response(status=404)
+    resp.raise_for_status()
+    return Response(resp.content, mimetype="application/pdf")
 
 
 
