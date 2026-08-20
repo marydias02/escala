@@ -176,6 +176,10 @@ class DocumentsRepository(BaseRepository):
     async def get_process_id(self, document_id: str) -> Optional[str]:
         query = f"SELECT process_id FROM {self.table} WHERE document_id = $1"
         return await self.query_scalar(query, parameters=[document_id])
+
+    async def get_file_path(self, document_id: str) -> Optional[str]:
+        query = f"SELECT file_path FROM {self.table} WHERE document_id = $1"
+        return await self.query_scalar(query, parameters=[document_id])
     
     async def alter(self, data: dict) -> dict[str, Any]:
         query = f"""

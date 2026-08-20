@@ -447,6 +447,7 @@ class EmailPipeline:
                     "document_content": build_document_content(extraction.validation),
                     "alerts_list": build_alerts_list(extraction),
                     "created_by": "pipeline",
+                    "file_path": f"{ingestion.folder.name}/{extraction.filename}" if ingestion.folder else None,
                 }
             )
         # version, created_at/last_modified_at fall to DB defaults. document_id
