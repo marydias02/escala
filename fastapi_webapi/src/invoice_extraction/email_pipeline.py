@@ -35,12 +35,11 @@ from typing import Optional
 
 from config.settings import settings
 from invoice_extraction.config import (
+    DEFAULT_FETCH_LIMIT,
     ENABLE_TRACING,
-    FORCE_REINGEST,
     INGEST_LIMIT,
     MANIFEST_NAME,
     MLFLOW_EXPERIMENT,
-    ORIGINAL_EMAILS_DIR,
     PROCESSED_EMAILS_DIR,
     WRITE_TO_DB,
 )
@@ -74,10 +73,10 @@ from invoice_extraction.ingestion_pipeline import (
 from invoice_extraction.ingestion_pipeline import (
     create_pipeline as create_ingestion_pipeline,
 )
-from invoice_extraction.invoice_utils.email_sender import send_email
+from invoice_extraction.invoice_utils.email_sender import forward_to_treasury, reply_to_supplier
+from invoice_extraction.invoice_utils.outlook_loader import fetch_inbox_emails
 from invoice_extraction.invoice_utils.reporting import print_pipeline_result
-from invoice_extraction.loading import load_msg
-from invoice_extraction.models import DocumentClassification, EmailIntent, ValidationReport
+from invoice_extraction.models import DocumentClassification, EmailIntent, LoadedEmail, ValidationReport
 from invoice_extraction.nodes import classify_email_intent
 from invoice_extraction.tracing import (
     STAGE_DECISION,
@@ -118,9 +117,6 @@ _CONTENT_FIELDS = [
 class EmailProcessingResult:
     """Outcome of running one email end to end.
 
-    already_processed marks an email skipped because its process was already in
-    the database, or skipped by ingestion's on-disk manifest marker.
-
     `decision` carries the email-level action, the reply text (if any) and the
     final per-document actions. See `invoice_extraction.decisions`.
     """
@@ -130,7 +126,6 @@ class EmailProcessingResult:
     decision: EmailDecision
     extractions: list[PipelineResult] = field(default_factory=list)
     process_id: Optional[str] = None
-    already_processed: bool = False
 
 
 # --------------------------------------------------------------------------- #
@@ -274,23 +269,15 @@ def _load_manifest(folder: Optional[Path]) -> dict:
         return {}
 
 
-async def _process_exists(sender_email: str, email_subject: str, reception_date: Optional[datetime]) -> bool:
-    """Is an email with this natural identity already recorded in fct_processes?
+async def _processed_message_ids() -> set[str]:
+    """Every `message_id` already recorded in fct_processes.
 
-    process_id is DB-generated, so identity is (sender, subject, reception_date).
-    A NULL reception_date is matched with IS NOT DISTINCT FROM so it compares equal.
+    Fetched once per run and passed to `fetch_inbox_emails`, so the loader can
+    skip attachment downloads entirely for known messages — cheaper than one
+    query per email, and the DB is the only dedup authority now.
     """
-    rows = await select(
-        f"""
-        SELECT 1 FROM {PROCESSES_TABLE}
-        WHERE sender_email = $1
-          AND email_subject IS NOT DISTINCT FROM $2
-          AND reception_date IS NOT DISTINCT FROM $3
-        LIMIT 1
-        """,
-        [sender_email, email_subject, reception_date],
-    )
-    return len(rows) > 0
+    rows = await select(f"SELECT message_id FROM {PROCESSES_TABLE} WHERE message_id IS NOT NULL")
+    return {row["message_id"] for row in rows}
 
 
 # --------------------------------------------------------------------------- #
@@ -306,14 +293,12 @@ class EmailPipeline:
         self.extraction = extraction
 
     def _classify_body(
-        self, msg_path: Path, ingestion: EmailIngestionResult
+        self, email: LoadedEmail, ingestion: EmailIngestionResult
     ) -> Optional[EmailIntent]:
         """Classify the email body, for the cases where no usable PDF came out.
 
-        Prefers the manifest ingestion just wrote; falls back to re-parsing the
-        `.msg` when there is no folder (an email with no attachments may not get
-        one). Returns None if neither source yields a body — `decide_email` then
-        leaves the email in the inbox rather than guessing.
+        Prefers the manifest ingestion just wrote; falls back to the
+        `LoadedEmail` itself when there is no folder (ingestion failed).
 
         Best-effort: a classifier failure must not lose the whole email, so it
         degrades to None.
@@ -323,12 +308,7 @@ class EmailPipeline:
         body = manifest.get("email_content")
 
         if subject is None and body is None:
-            try:
-                email = load_msg(msg_path)
-                subject, body = email.subject, email.body
-            except Exception as exc:  # noqa: BLE001 - fall back to "unknown intent"
-                print(f"  ⚠️  Could not read body for intent: {type(exc).__name__}: {exc}")
-                return None
+            subject, body = email.subject, email.body
 
         try:
             return classify_email_intent(self.extraction.llm, subject or "", body or "")
@@ -346,13 +326,14 @@ class EmailPipeline:
         filename absent from the returned dict is left exactly as inserted.
 
         The supplier reply and the treasury forward are each sent ONCE per
-        email — `decision.reply_body`/`decision.treasury_body` are already
-        deduped/joined across every REPLY/TREASURY document by `decisions.py`
-        — not once per document. The reply is gated on `decision.should_reply`
-        rather than on `decision.documents`, so it also fires for the
-        no-usable-PDF case (an email-level REPLY with zero fct_documents rows)
-        — there is simply nothing in the returned dict to apply that status to
-        there, since no document row exists.
+        email, as a Graph reply/forward on the original message (`message_id`
+        from the manifest) — `decision.reply_body`/`decision.treasury_body`
+        are already deduped/joined across every REPLY/TREASURY document by
+        `decisions.py` — not once per document. The reply is gated on
+        `decision.should_reply` rather than on `decision.documents`, so it
+        also fires for the no-usable-PDF case (an email-level REPLY with zero
+        fct_documents rows) — there is simply nothing in the returned dict to
+        apply that status to there, since no document row exists.
 
         INGEST documents are deliberately left at "Criado" here: booking to
         SAP is not an email-level action and can happen well after this email
@@ -360,31 +341,43 @@ class EmailPipeline:
         is `sap_pipeline`'s job, run separately, in bulk, over every row at
         `action = INGEST, status = "Criado"` regardless of which email wrote it.
 
-        Failures (only possible once the reply/treasury stubs are replaced
-        with real integrations) leave the returned status at "Criado" —
-        building failure-visibility now would be speculative against calls
-        that cannot actually fail yet.
+        Failures (Mail.Send is not yet a granted Graph permission — see
+        `invoice_utils.email_sender`) leave the returned status at "Criado",
+        so an email whose reply/forward could not be sent stays visible as
+        outstanding rather than being marked done.
         """
         manifest = _load_manifest(result.ingestion.folder)
         decisions_by_file = {d.filename: d for d in result.decision.documents}
         statuses: dict[str, str] = {}
+        message_id = manifest.get("message_id", "")
 
         if result.decision.should_reply and result.decision.reply_body:
-            send_result = await send_email(
-                to=manifest.get("sender_email", ""),
-                subject=f"Re: {manifest.get('email_subject', '')}",
-                body=result.decision.reply_body,
+            sender_email = manifest.get("sender_email", "")
+            reply_subject = f"Re: {manifest.get('email_subject', '')}"
+            send_result = await reply_to_supplier(
+                message_id=message_id,
+                subject=reply_subject,
+                comment=result.decision.reply_body,
             )
+            if send_result.status == "sent":
+                print(f"  📧 Reply sent to supplier {sender_email!r} — subject={reply_subject!r}")
+            else:
+                print(
+                    f"  ⚠️  Reply to supplier {sender_email!r} FAILED "
+                    f"({send_result.error}) — subject={reply_subject!r}"
+                )
+            print(f"            body={result.decision.reply_body!r}")
             outcome = "Comunicado" if send_result.status == "sent" else "Criado"
             for filename, decision in decisions_by_file.items():
                 if decision.action == REPLY:
                     statuses[filename] = outcome
 
         if result.decision.should_forward_to_treasury and result.decision.treasury_body:
-            send_result = await send_email(
+            send_result = await forward_to_treasury(
+                message_id=message_id,
                 to=settings.TREASURY_EMAIL or "",
                 subject=f"Documentos para tesouraria - {manifest.get('email_subject', '')}",
-                body=result.decision.treasury_body,
+                comment=result.decision.treasury_body,
             )
             outcome = "Comunicado" if send_result.status == "sent" else "Criado"
             for filename, decision in decisions_by_file.items():
@@ -429,6 +422,7 @@ class EmailPipeline:
                 "email_subject": manifest.get("email_subject"),
                 "email_content": manifest.get("email_content"),
                 "reception_date": parse_reception_date(manifest.get("reception_date")),
+                "message_id": manifest.get("message_id"),
             },
             returning="process_id",
         )
@@ -453,6 +447,7 @@ class EmailPipeline:
                     "document_content": build_document_content(extraction.validation),
                     "alerts_list": build_alerts_list(extraction),
                     "created_by": "pipeline",
+                    "file_path": f"{ingestion.folder.name}/{extraction.filename}" if ingestion.folder else None,
                 }
             )
         # version, created_at/last_modified_at fall to DB defaults. document_id
@@ -482,56 +477,30 @@ class EmailPipeline:
 
     async def run(
         self,
-        msg_path: Path,
+        email: LoadedEmail,
         output_root: Path = PROCESSED_EMAILS_DIR,
-        force: bool = FORCE_REINGEST,
     ) -> EmailProcessingResult:
         """Ingest one email, extract its PDFs, decide, and persist to Postgres.
+
+        No dedup gate here: `main()` fetches only messages whose `message_id`
+        is not already in the database, so every email reaching this method is
+        ingested unconditionally.
 
         The whole email is one trace: every ingestion, extraction and decision
         span below nests under this one, so a single trace answers "what happened
         to this email, and why".
         """
-        msg_path = Path(msg_path)
-        source = msg_path.name
+        source = email.message_id or email.subject
 
         with span(f"email:{source}", "CHAIN") as email_span:
-            email_span.set_inputs({"source": source, "force": force})
+            email_span.set_inputs({"source": source})
             set_trace_tags(email=source)
 
-            # --- DEDUP (DB): parse the email's identity cheaply (no LLM) and skip
-            # if it is already recorded. `.msg` parsing is cheap; the extra parse
-            # keeps the existing ingestion pipeline untouched.
-            if not force:
-                try:
-                    email = load_msg(msg_path)
-                    if await _process_exists(
-                        email.sender_email, email.subject, parse_reception_date(email.reception_date)
-                    ):
-                        skipped = EmailIngestionResult(
-                            source=source, status="skipped", message="already in database"
-                        )
-                        decision = decide_email(skipped, [])
-                        set_trace_tags(action=", ".join(decision.actions), outcome="already_processed")
-                        email_span.set_outputs(
-                            {"already_processed": True, "decision": decision_summary(decision)}
-                        )
-                        return EmailProcessingResult(
-                            source=source,
-                            ingestion=skipped,
-                            decision=decision,
-                            already_processed=True,
-                        )
-                except Exception:  # noqa: BLE001 - dedup is best-effort; fall through to ingest
-                    pass
-
             # --- INGEST ---------------------------------------------------------
-            ingestion = self.ingestion.run(msg_path, output_root, force=force)
+            ingestion = self.ingestion.run(email, output_root)
 
-            # An already-ingested (manifest-skip) or failed email yields no fresh
-            # PDFs. Bundle and decide, but write nothing. No body classification
-            # here: a skip is already-decided work and a failure means nothing
-            # could be read.
+            # A failed email yields no fresh PDFs. Bundle and decide, but write
+            # nothing — no body classification either, since nothing could be read.
             if ingestion.status != "ingested":
                 decision = decide_email(ingestion, [])
                 set_trace_tags(action=", ".join(decision.actions), outcome=ingestion.status)
@@ -542,7 +511,6 @@ class EmailPipeline:
                     source=source,
                     ingestion=ingestion,
                     decision=decision,
-                    already_processed=(ingestion.status == "skipped"),
                 )
 
             # --- EXTRACT (this email's own PDFs only) ---------------------------
@@ -552,7 +520,7 @@ class EmailPipeline:
             # --- DECIDE ---------------------------------------------------------
             # No usable PDF (A1/A2) is the only case the body can change, so the
             # extra LLM call is confined to it.
-            intent = self._classify_body(msg_path, ingestion) if not extractions else None
+            intent = self._classify_body(email, ingestion) if not extractions else None
 
             # A span of its own even though it is pure, LLM-free business logic:
             # the routing rules are the part most likely to be questioned, and
@@ -600,36 +568,31 @@ class EmailPipeline:
 
     async def run_batch(
         self,
-        msg_paths: list[Path],
+        emails: list[LoadedEmail],
         output_root: Path = PROCESSED_EMAILS_DIR,
-        force: bool = FORCE_REINGEST,
     ) -> list[EmailProcessingResult]:
         """Run several emails, isolating failures so one bad email cannot kill the run."""
         results: list[EmailProcessingResult] = []
 
-        for msg_path in msg_paths:
-            msg_path = Path(msg_path)
-            print(f"\n{'=' * 70}\n📧 {msg_path.name}\n{'=' * 70}")
+        for email in emails:
+            source = email.message_id or email.subject
+            print(f"\n{'=' * 70}\n📧 {email.subject}\n{'=' * 70}")
             started = time.perf_counter()
             try:
-                result = await self.run(msg_path, output_root, force=force)
+                result = await self.run(email, output_root)
             except Exception as exc:  # noqa: BLE001 - keep the batch alive, inspect after
                 message = f"{type(exc).__name__}: {exc}"
                 print(f"  ❌ Failed: {message}")
-                failed = EmailIngestionResult(
-                    source=msg_path.name, status="failed", message=message
-                )
+                failed = EmailIngestionResult(source=source, status="failed", message=message)
                 results.append(
                     EmailProcessingResult(
-                        source=msg_path.name,
+                        source=source,
                         ingestion=failed,
                         decision=decide_email(failed, []),
                     )
                 )
                 continue
 
-            if result.already_processed:
-                print("  ⏭️  already processed")
             print(f"  ⏱️  {time.perf_counter() - started:.1f}s")
             results.append(result)
 
@@ -664,12 +627,7 @@ def print_email_summary(results: list[EmailProcessingResult]) -> None:
     print("=" * 70)
     for result in results:
         decision = result.decision
-        if result.already_processed and not result.extractions:
-            marker = "⏭️  skip "
-        else:
-            marker = " + ".join(
-                _ACTION_MARKERS.get(action, action) for action in decision.actions
-            )
+        marker = " + ".join(_ACTION_MARKERS.get(action, action) for action in decision.actions)
         print(f"  {marker}  {result.source} — {decision.reason}")
 
         # The reply and/or treasury forward that would go out, and each
@@ -683,13 +641,6 @@ def print_email_summary(results: list[EmailProcessingResult]) -> None:
 
 
 async def main() -> None:
-    msg_paths = sorted(ORIGINAL_EMAILS_DIR.glob("*.msg"))
-    if INGEST_LIMIT is not None:
-        msg_paths = msg_paths[:INGEST_LIMIT]
-
-    print(f"Processing {len(msg_paths)} email(s) from {ORIGINAL_EMAILS_DIR}")
-    print(f"Output root: {PROCESSED_EMAILS_DIR}")
-
     if ENABLE_TRACING:
         setup_tracing(experiment_name=MLFLOW_EXPERIMENT)
     else:
@@ -699,8 +650,18 @@ async def main() -> None:
     # WRITE_TO_DB=False is being able to run (and trace) with no database up.
     pool = await get_pool() if WRITE_TO_DB else None
     try:
+        # Dedup happens once, here, before fetch — an empty skip set with
+        # WRITE_TO_DB off keeps that mode able to run with no database up.
+        processed = await _processed_message_ids() if WRITE_TO_DB else set()
+        emails = await fetch_inbox_emails(limit=DEFAULT_FETCH_LIMIT, skip_message_ids=processed)
+        if INGEST_LIMIT is not None:
+            emails = emails[:INGEST_LIMIT]
+
+        print(f"Processing {len(emails)} email(s) from the inbox")
+        print(f"Output root: {PROCESSED_EMAILS_DIR}")
+
         pipeline = create_pipeline()
-        results = await pipeline.run_batch(msg_paths, PROCESSED_EMAILS_DIR, force=FORCE_REINGEST)
+        results = await pipeline.run_batch(emails, PROCESSED_EMAILS_DIR)
 
         # Per-document detail (reused reporter).
         for result in results:

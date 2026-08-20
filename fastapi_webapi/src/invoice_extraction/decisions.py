@@ -88,18 +88,34 @@ EMAIL_ACTION_RULES: Final = (
 _ARCHIVABLE: Final = (INGEST, IGNORE)
 
 # Reply wording, in Portuguese, per reason. Only reasons that can produce a
-# REPLY appear here.
-REPLY_TEXT_NO_PDF = "Por favor enviar o documento em formato pdf"
-REPLY_TEXT_PROFORMA = "Documento proforma, por favor enviar o original"
-REPLY_TEXT_COPY = "Documento duplicado, por favor enviar o original"
-REPLY_TEXT_NO_PO = (
-    "Documento sem nota de encomenda, por favor enviar o documento com a "
-    "nota de encomenda"
-)
+# REPLY appear here. Each is the "Motivo" clause slotted into REPLY_LETTER_TEMPLATE
+# below — a fragment, not a standalone sentence, so it must read naturally after
+# "pelo facto de".
+REPLY_TEXT_NO_PDF = "o formato do ficheiro enviado não é aceite"
+REPLY_TEXT_PROFORMA = "o documento enviado é proforma"
+REPLY_TEXT_COPY = "o documento enviado é duplicado"
+REPLY_TEXT_NO_PO = "o documento não ter nota de encomenda"
 
 # TREASURY's equivalent of REPLY_TEXT_*: the one reason a document reaches
 # TREASURY (C4, an ordinary receipt), so there is only one line.
 REPLY_TEXT_TREASURY = "Recibo encaminhado para tesouraria"
+
+# Full supplier-facing letter. One "Motivo" line per distinct reason (see
+# `_dedupe_lines_for`), so a single email can list several problems without
+# repeating the greeting/sign-off for each.
+REPLY_LETTER_TEMPLATE = """Exmos. Senhores,
+
+O documento enviado não pode ser aceite pelo facto de {reasons}.
+
+Ficamos a aguardar o envio do documento original em formato PDF, com os dados da empresa corretos.
+Obrigado"""
+
+# Full treasury-facing letter. Reasons are always the same (C4 is the only
+# document action that reaches TREASURY), so there is nothing to slot in.
+TREASURY_LETTER = """Exmos. Senhores,
+
+Seguem em anexo recibos para processamento.
+Obrigado"""
 
 # Document types routed by the B-cases below. Kept in sync with
 # `extraction_pipeline.EXTRACTABLE_TYPES` by intent, not by import, because this
@@ -250,6 +266,9 @@ def build_alerts_list(result: PipelineResult) -> list[str]:
     elif pos:
         alerts.extend(f"Nota de encomenda não encontrada: {po}" for po in pos)
 
+    #TODO: add alerts for client NIF not in client BU list or supplier NIF not in supplier list
+    #Expand alerts
+
     return alerts
 
 
@@ -292,8 +311,11 @@ class EmailDecision:
 
     @property
     def reply_body(self) -> str:
-        """The single reply sent to the supplier, one line per problem document."""
-        return "\n".join(self.reply_lines)
+        """The single reply sent to the supplier: REPLY_LETTER_TEMPLATE with one
+        "Motivo" clause per distinct reason, joined so the sentence still reads
+        naturally whether there is one problem or several.
+        """
+        return REPLY_LETTER_TEMPLATE.format(reasons="; ".join(self.reply_lines))
 
     @property
     def should_forward_to_treasury(self) -> bool:
@@ -301,8 +323,11 @@ class EmailDecision:
 
     @property
     def treasury_body(self) -> str:
-        """The single email sent to treasury, one line per forwarded document."""
-        return "\n".join(self.treasury_lines)
+        """The single email sent to treasury. Fixed wording — C4 (ordinary
+        receipt) is the only action that reaches TREASURY, so there is only one
+        reason and nothing to slot in.
+        """
+        return TREASURY_LETTER
 
 
 # --------------------------------------------------------------------------- #
@@ -540,21 +565,15 @@ def decide_document(
 
 
 def _dedupe_lines_for(decisions: list[DocumentDecision], action: DocumentAction) -> list[str]:
-    """One line per distinct reply_text among documents with the given action,
-    naming the files each line applies to.
-
-    Shared by REPLY (-> reply_lines, to the supplier) and TREASURY
-    (-> treasury_lines, to treasury): both are "one message per email, one line
-    per distinct reason". Two proformas in one email produce a single reply
-    line listing both filenames, rather than the same sentence twice; likewise
-    two ordinary receipts produce one treasury line listing both.
+    """Distinct reply_text values among documents with the given action, in
+    first-seen order. Two proformas in one email still yield one reason, not
+    the same sentence twice.
     """
-    by_text: dict[str, list[str]] = {}
+    lines: list[str] = []
     for decision in decisions:
-        if decision.action == action and decision.reply_text:
-            by_text.setdefault(decision.reply_text, []).append(decision.filename)
-
-    return [f"{', '.join(files)}: {text}" for text, files in by_text.items()]
+        if decision.action == action and decision.reply_text and decision.reply_text not in lines:
+            lines.append(decision.reply_text)
+    return lines
 
 
 def roll_up_actions(decisions: list[DocumentDecision]) -> list[EmailAction]:

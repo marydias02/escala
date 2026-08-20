@@ -1,9 +1,11 @@
 import asyncio
 import json
+from pathlib import Path
 from typing import Optional
 
 from api.exceptions import NotFoundError
 from api.repositories.extraction_repository import DocumentsRepository, ExtractionBigNumbers
+from invoice_extraction.config import PROCESSED_EMAILS_DIR #temporary, while there is no access to blob storage
 
 
 class ExtractionService:
@@ -49,6 +51,26 @@ class ExtractionService:
             "action": row.get("action"),
             "status": row.get("status"),
         }
+#TODO: This method is temporary, while there is no access to blob storage.
+# When blob storage is available, it only needs to retrun the path (no need for Processed Emails dir) and the PDF will be retrieved from blob storage.
+#
+# async def get_document_pdf_stream(self, document_id: str):
+#     blob_key = await self.documents.get_file_path(document_id)
+#     if not blob_key:
+#         raise NotFoundError(f"No PDF available for document {document_id}")
+#     try:
+#         return await blob_client.download_blob(blob_key)  # returns bytes or an async iterator
+#     except BlobNotFoundError:
+#         raise NotFoundError(f"PDF file missing in blob storage for document {document_id}")
+
+    async def get_document_pdf_path(self, document_id: str) -> Path:
+        relative_path = await self.documents.get_file_path(document_id)
+        if not relative_path:
+            raise NotFoundError(f"No PDF available for document {document_id}")
+        full_path = PROCESSED_EMAILS_DIR / relative_path
+        if not full_path.is_file():
+            raise NotFoundError(f"PDF file missing on disk for document {document_id}")
+        return full_path
 
     async def get_document_email(self, document_id: str) -> dict:
         row = await self.documents.get_document_email(document_id)
