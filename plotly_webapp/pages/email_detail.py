@@ -36,11 +36,11 @@ from assets.api_calls.extraction_api import (
 
 
 def _action_banner_props(action):
-    if action in {"Validate Manually", "Validação Manual"}:
+    if action in {"Validação Manual"}:
         return "negative", "lucide:triangle-alert"
-    if action in {"Sent back to Supplier"}:
+    if action in {"Retornado ao Fornecedor", "Encaminhar para Tesouraria"}:
         return "warning", "lucide:arrow-right"
-    if action in {"Ingest in SAP", "Ingerir em SAP"}:
+    if action in {"Ingerir em SAP"}:
         return "positive", "lucide:check"
     return "neutral", None
 
@@ -59,7 +59,30 @@ register_right_drawer_callbacks(
 
 
 
-def layout(ref_number=None, **kwargs):
+def layout(ref_number=None, **_kwargs):
+    """Render the route immediately; document data is populated by a callback."""
+    return html.Div(
+        [
+            dcc.Store(id="email-detail-ref-number", data=str(ref_number)),
+            dcc.Loading(
+                id="email-detail-loading",
+                type="default",
+                color="var(--primary-color-13)",
+                children=html.Div(id="email-detail-content"),
+            ),
+        ]
+    )
+
+
+@dash.callback(
+    Output("email-detail-content", "children"),
+    Input("email-detail-ref-number", "data"),
+)
+def load_email_detail(ref_number):
+    return _build_email_detail(ref_number)
+
+
+def _build_email_detail(ref_number):
     try:
         match = get_document_details(str(ref_number))
     except requests.RequestException:
@@ -284,7 +307,8 @@ def layout(ref_number=None, **kwargs):
                               className="email_detail__content_right_section",
                               children=[
                                 html.Iframe(
-                                    src="/assets/pdf-viewer.html?file=/assets/invoices/Fatura-Exemplo-pdf.pdf",
+                                    id="document-pdf-viewer",
+                                    src=f"/assets/pdf-viewer.html?file=/pdf/{ref_number}",
                                     style={
                                         "width": "100%",
                                         "height":"100%",
@@ -393,7 +417,7 @@ def update_document_details(
 
     if button_id == "send-sap-button":
         action = "Ingerir em SAP"
-        status = "Created"
+        status = "Criado"
         result = get_next_priority_document(document_id)
         next_document_id = result.get("next_document_id")
     elif button_id == "save-button":

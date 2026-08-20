@@ -26,7 +26,7 @@ from components.table.shared.action_bar import action_bar
 import pandas as pd
 from functools import partial
 
-from assets.api_calls.extraction_api import get_big_numbers, get_priority_documents, get_all_documents, get_pending_documents
+from assets.api_calls.extraction_api import get_extraction_dashboard
 
 
 dash.register_page(
@@ -44,10 +44,6 @@ def trend(delta):
 
 def fmt_pct(value):
     return f"{value:g}%"
-
-def fmt_delta(value):
-    return f"{abs(value):g}%"
-
 
 # df = load_group_table_data()
 # brand_cols, year_cols = get_brand_and_year_columns(list(df.columns))
@@ -89,7 +85,6 @@ documents_col_def = [
         "field": "action",
         "headerName": "Ação",
         "width": 180,
-        "cellRenderer": "Action",
     },
     {
         "field": "status",
@@ -119,7 +114,6 @@ short_documents_col_def = [
         "field": "action",
         "headerName": "Ação",
         "width": 200,
-        "cellRenderer": "Action",
     },
     {
         "field": "status",
@@ -301,11 +295,12 @@ def layout():
     prevent_initial_call=False,
 )
 def load_extraction_content(_pathname):
-    # Fetch data when the page is rendered (runs asynchronously relative to initial layout)
-    kpis = get_big_numbers()
-    priority_documents = get_priority_documents()
-    all_documents = get_all_documents()
-    pending_documents = get_pending_documents()
+    # The page shell renders first; the API client loads these independent resources concurrently.
+    dashboard = get_extraction_dashboard()
+    kpis = dashboard["kpis"]
+    priority_documents = dashboard["priority_documents"]
+    all_documents = dashboard["all_documents"]
+    pending_documents = dashboard["pending_documents"]
 
     content_children = [
         Section(
@@ -317,23 +312,31 @@ def load_extraction_content(_pathname):
                         IndicatorCard(
                             label_text="Faturas para Validação",
                             label_tooltip="faturas pendentes de validação",
-                            rows=[(kpis["pending_manual_validation"],"última semana", "50%", "decrease")]
+                            rows=[(kpis["pending_manual_validation"]["value"],
+                                   "última semana",
+                                   abs(kpis["pending_manual_validation"]["delta_pp"]),
+                                   trend(kpis["pending_manual_validation"]["delta_pp"])
+                                )
+                            ],
+                            badge_unit="%",
                         ),
                         IndicatorCard(
                             label_text="Faturas Ingeridas Automaticamente",
                             label_tooltip="extra info",
                             rows=[(fmt_pct(kpis["auto_ingested"]["pct"]),
                                 "última semana",
-                                fmt_delta(kpis["auto_ingested"]["delta_pp"]),
-                                trend(kpis["auto_ingested"]["delta_pp"]))]
+                                abs(kpis["auto_ingested"]["delta_pp"]),
+                                trend(kpis["auto_ingested"]["delta_pp"]))],
+                            badge_unit="pp",
                         ),
                         IndicatorCard(
                             label_text="Faturas Devolvidas ao Fornecedor",
                             label_tooltip="extra info",
                             rows=[(fmt_pct(kpis["returned_to_supplier"]["pct"]),
                                 "última semana",
-                                fmt_delta(kpis["returned_to_supplier"]["delta_pp"]),
-                                trend(kpis["returned_to_supplier"]["delta_pp"]))]
+                                abs(kpis["returned_to_supplier"]["delta_pp"]),
+                                trend(kpis["returned_to_supplier"]["delta_pp"]))],
+                            badge_unit="pp",
                         ),
                     ]
                 ),

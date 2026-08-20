@@ -25,6 +25,22 @@
   gap: var(--spacing-16);
 }
 
+/*
+ * The extraction page content is rendered asynchronously inside this wrapper,
+ * so its Sections are not direct children of .homepage__content_section.
+ */
+#extraction-content,
+#extraction-content .tab-content {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-16);
+}
+
+/* Separate the selected tab's first Section from the tab controls. */
+#extraction-content .tab-content {
+  padding-top: var(--spacing-16);
+}
+
 /* 2. HEADER SECTION */
 
 .homepage__top_section {
