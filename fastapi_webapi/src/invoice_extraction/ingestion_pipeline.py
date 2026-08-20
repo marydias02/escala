@@ -9,6 +9,7 @@ where one document ends and the next begins — and even that is checked
 deterministically before the result is trusted.
 """
 
+import asyncio
 import base64
 import re
 import unicodedata
@@ -20,20 +21,19 @@ from langchain_core.language_models import BaseChatModel
 
 from config.settings import settings
 from invoice_extraction.config import (
-    FORCE_REINGEST,
+    DEFAULT_FETCH_LIMIT,
     INGEST_LIMIT,
     MANIFEST_NAME,
     MAX_FOLDER_NAME,
-    ORIGINAL_EMAILS_DIR,
     PROCESSED_EMAILS_DIR,
 )
+from invoice_extraction.invoice_utils.outlook_loader import fetch_inbox_emails
 from invoice_extraction.invoice_utils.pdf_splitter import (
     count_pages,
     ensure_readable,
     split_pdf,
     validate_segmentation,
 )
-from invoice_extraction.loading import load_msg
 from invoice_extraction.models import EmailAttachment, EmailContent, LoadedEmail
 from invoice_extraction.nodes import segment_document
 from invoice_extraction.tracing import span
@@ -61,7 +61,6 @@ class EmailIngestionResult:
 
     status:
         ingested — parsed, attachments split, manifest written
-        skipped  — already processed (manifest present) and re-ingest not forced
         failed   — the email could not be processed; `message` carries the error
     """
 
@@ -213,67 +212,57 @@ class IngestionPipeline:
             reception_date=email.reception_date,
             number_annexes=len(email.attachments),
             number_chunked_pdfs=result.number_chunked_pdfs,
+            message_id=email.message_id,
         )
 
-        # Written last, on purpose: this file is the "done" marker that `run` checks,
-        # so a crash part-way through leaves the email unmarked and it retries cleanly.
+        # Written last: a crash part-way through leaves this file missing, so
+        # the folder is visibly incomplete rather than looking finished.
         (folder / MANIFEST_NAME).write_text(content.model_dump_json(indent=2), encoding="utf-8")
 
         return result
 
     def run(
         self,
-        msg_path: Path,
+        email: LoadedEmail,
         output_root: Path = PROCESSED_EMAILS_DIR,
-        force: bool = FORCE_REINGEST,
     ) -> EmailIngestionResult:
-        """Ingest one `.msg` file into `output_root/<sanitised subject>/`."""
-        msg_path = Path(msg_path)
+        """Ingest one email into `output_root/<sanitised subject>/`.
+
+        Always ingests — no skip check. Dedup happens once, upstream, in
+        `email_pipeline.main()`, keyed on `message_id`. `_unique_folder`
+        suffixes `_2`/`_3` on a subject collision, which now fires routinely:
+        subjects collide more than filenames did, and every manual reprocess
+        collides by definition.
+        """
         output_root = Path(output_root)
 
-        # Resolve the target folder from the filename before parsing, so the skip
-        # check costs nothing when the email was already processed.
-        folder_name = sanitize_folder_name(msg_path.stem)
-        existing = output_root / folder_name
+        folder_name = sanitize_folder_name(email.subject)
+        folder = _unique_folder(output_root, folder_name)
+        source = email.message_id or email.subject
 
-        if not force and (existing / MANIFEST_NAME).exists():
-            return EmailIngestionResult(
-                source=msg_path.name,
-                status="skipped",
-                folder=existing,
-                message="already ingested",
-            )
-
-        email = load_msg(msg_path)
-        folder = existing if existing.exists() else _unique_folder(output_root, folder_name)
-
-        return self.ingest_email(email, folder, source=msg_path.name)
+        return self.ingest_email(email, folder, source=source)
 
     def run_batch(
         self,
-        msg_paths: list[Path],
+        emails: list[LoadedEmail],
         output_root: Path = PROCESSED_EMAILS_DIR,
-        force: bool = FORCE_REINGEST,
     ) -> list[EmailIngestionResult]:
-        """Ingest several emails, isolating failures so one bad file cannot kill the batch."""
+        """Ingest several emails, isolating failures so one bad email cannot kill the batch."""
         results: list[EmailIngestionResult] = []
 
-        for msg_path in msg_paths:
-            msg_path = Path(msg_path)
-            print(f"\n📧 {msg_path.name}")
+        for email in emails:
+            print(f"\n📧 {email.subject}")
             try:
-                result = self.run(msg_path, output_root, force=force)
+                result = self.run(email, output_root)
             except Exception as exc:  # noqa: BLE001 - keep the batch alive, inspect after
                 message = f"{type(exc).__name__}: {exc}"
                 print(f"  ❌ Failed: {message}")
-                results.append(EmailIngestionResult(source=msg_path.name, status="failed", message=message))
+                source = email.message_id or email.subject
+                results.append(EmailIngestionResult(source=source, status="failed", message=message))
                 continue
 
-            if result.status == "skipped":
-                print("  ⏭️  already ingested")
-            else:
-                for attachment in result.attachments:
-                    print(f"  • {attachment.filename} — {attachment.message}")
+            for attachment in result.attachments:
+                print(f"  • {attachment.filename} — {attachment.message}")
 
             results.append(result)
 
@@ -315,16 +304,26 @@ def print_summary(results: list[EmailIngestionResult]) -> None:
         print("\n  ✅ No segmentation coverage problems.")
 
 
-def main() -> None:
-    msg_paths = sorted(ORIGINAL_EMAILS_DIR.glob("*.msg"))
+async def _fetch_and_run() -> list[EmailIngestionResult]:
+    """Smoke-test entry point: no database access, so it cannot build a
+    `skip_message_ids` set and re-downloads/re-splits everything every run.
+    That's fine for its role here — a cheap standalone check of the loader and
+    the ingestion step — but this is NOT the production entry point; that's
+    `email_pipeline.main()`, which dedups on `message_id` before fetching.
+    """
+    emails = await fetch_inbox_emails(limit=DEFAULT_FETCH_LIMIT)
     if INGEST_LIMIT is not None:
-        msg_paths = msg_paths[:INGEST_LIMIT]
+        emails = emails[:INGEST_LIMIT]
 
-    print(f"Ingesting {len(msg_paths)} email(s) from {ORIGINAL_EMAILS_DIR}")
+    print(f"Ingesting {len(emails)} email(s) from the inbox")
     print(f"Output root: {PROCESSED_EMAILS_DIR}")
 
     pipeline = create_pipeline()
-    results = pipeline.run_batch(msg_paths, PROCESSED_EMAILS_DIR, force=FORCE_REINGEST)
+    return pipeline.run_batch(emails, PROCESSED_EMAILS_DIR)
+
+
+def main() -> None:
+    results = asyncio.run(_fetch_and_run())
     print_summary(results)
 
 
