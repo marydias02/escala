@@ -138,7 +138,7 @@ def _build_email_detail(ref_number):
                         className="email_detail__top_left_section",
                         children = [
                             PageHeader(
-                                title = f"Número de Referência: {ref_number}",  
+                                title = f"Detalhe da fatura do fornecedor: {supplier_name}",  
                             ),
                             TableBanner(
                                 message=action,
@@ -189,22 +189,23 @@ def _build_email_detail(ref_number):
                                                         html.Div(
                                                             [
                                                                 Button(
-                                                                    "Correção",
+                                                                    "Ok",
                                                                     id={
                                                                         "type": "email-detail-correction-button",
                                                                         "alert": a,
                                                                     },
-                                                                    icon="lucide:chevron-right",
+                                                                    icon="lucide:check",
                                                                     variant="outline",
+                                                                ) if a.split(":", 1)[0].strip() in {
+                                                                    "Confiança baixa",
+                                                                    "Nota de encomenda não encontrada",
+                                                                    "NIF do fornecedor não encontrado",
+                                                                } else None,
+                                                                html.Div(
+                                                                    DashIconify(icon="lucide:triangle-alert", className="email_detail__invoice_button_icon"),
                                                                 ),
                                                             ],
-                                                        ) if a.split(":", 1)[0].strip() in {
-                                                            "Confiança baixa",
-                                                            "Nota de encomenda não encontrada",
-                                                            "NIF do fornecedor não encontrado",
-                                                        } else None,
-                                                        html.Div( 
-                                                            DashIconify(icon="lucide:triangle-alert", className="email_detail__invoice_button_icon")
+                                                            className="email_detail__invoice_actions",
                                                         ),
                                                       ],
                                                     className="email_detail__invoice_item",
