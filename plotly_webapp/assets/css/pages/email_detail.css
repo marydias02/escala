@@ -99,13 +99,20 @@
 
 .email_detail__invoice_item {
   height: 100%;
-  width: 97%;
+  width: calc(100% - 22px);
   display: flex;
-  justify-content: space-between;
   align-items: center;
   background-color: var(--surface-lightest);
   border: var(--border-normal) solid var(--border-lightest);
-  padding: 4px;
+  padding: var(--spacing-8);
+  padding-right: var(--spacing-12);
+}
+
+.email_detail__invoice_actions {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-16);
 }
 
 .email_detail__invoice_errors > li:first-child .email_detail__invoice_item {
@@ -126,8 +133,6 @@
 .email_detail__invoice_button_icon {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding-right: 20px;
 }
 
 .email_detail__field_grid {

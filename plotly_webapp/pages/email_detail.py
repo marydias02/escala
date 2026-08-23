@@ -1,5 +1,5 @@
 import dash
-from dash import html, dcc, Input, Output, State, callback_context, no_update
+from dash import html, dcc, Input, Output, State, callback_context, no_update, ALL
 from dash_iconify import DashIconify
 from dash.dcc import Tab
 import requests
@@ -138,7 +138,7 @@ def _build_email_detail(ref_number):
                         className="email_detail__top_left_section",
                         children = [
                             PageHeader(
-                                title = f"Número de Referência: {ref_number}",  
+                                title = f"Detalhe da fatura do fornecedor: {supplier_name}",  
                             ),
                             TableBanner(
                                 message=action,
@@ -187,16 +187,25 @@ def _build_email_detail(ref_number):
                                                             className="email_detail__invoice_text",
                                                         ),
                                                         html.Div(
-                                                        #     [
-                                                        #         Button("Correção", icon="lucide:chevron-right", variant="outline"),
-                                                        #         TableBanner(
-                                                        #             message="",
-                                                        #             variant="positive",
-                                                        #             icon="lucide:check",
-                                                        #         ),
-                                                        #     ],
-                                                        #     className="email_detail__invoice_button_icon",
-                                                            DashIconify(icon="lucide:triangle-alert", className="email_detail__invoice_button_icon")
+                                                            [
+                                                                Button(
+                                                                    "Ok",
+                                                                    id={
+                                                                        "type": "email-detail-correction-button",
+                                                                        "alert": a,
+                                                                    },
+                                                                    icon="lucide:check",
+                                                                    variant="outline",
+                                                                ) if a.split(":", 1)[0].strip() in {
+                                                                    "Confiança baixa",
+                                                                    "Nota de encomenda não encontrada",
+                                                                    "NIF do fornecedor não encontrado",
+                                                                } else None,
+                                                                html.Div(
+                                                                    DashIconify(icon="lucide:triangle-alert", className="email_detail__invoice_button_icon"),
+                                                                ),
+                                                            ],
+                                                            className="email_detail__invoice_actions",
                                                         ),
                                                       ],
                                                     className="email_detail__invoice_item",
@@ -341,7 +350,8 @@ def _build_email_detail(ref_number):
 
 
 @dash.callback(
-    Output("email-detail-update-status", "children"),
+    Output("email-detail-update-status", "children", allow_duplicate=True),
+    Output("email-detail-content", "children", allow_duplicate=True),
     Output("url", "pathname", allow_duplicate=True),
     Input("save-button", "n_clicks"),
     Input("send-sap-button", "n_clicks"),
@@ -385,6 +395,7 @@ def update_document_details(
     if not document_id:
         return "Documento invalido", no_update
 
+    button_id = triggered[0]["prop_id"].split(".")[0]
     updated_fields = fields.copy() if isinstance(fields, dict) else {}
 
     def update_field(name: str, value: object) -> None:
@@ -410,7 +421,47 @@ def update_document_details(
     if credit_note is not None:
         update_field("credit_note", bool(credit_note))
 
-    button_id = triggered[0]["prop_id"].split(".")[0]
+    missing_field_alert_map = {
+        "Unidade de Negócio": bu_name,
+        "Nome do Fornecedor": supplier_name,
+        "NIF do Fornecedor": supplier_vat,
+        "Data da Fatura": issue_date,
+        "Valor Total": total_amount,
+        "Valor do IVA": vat_amount,
+        "Valor Base": base_amount,
+        "Moeda": currency,
+        "Nota de Crédito": credit_note,
+    }
+
+    def _is_filled(value: object) -> bool:
+        if value is None:
+            return False
+        if isinstance(value, bool):
+            return value
+        if isinstance(value, str):
+            return bool(value.strip())
+        return True
+
+    normalized_missing_field_alert_map = {
+        key.strip().casefold(): value
+        for key, value in missing_field_alert_map.items()
+    }
+
+    updated_alerts = list(alerts or [])
+    if button_id in {"save-button", "send-sap-button"}:
+        updated_alerts = [
+            alert
+            for alert in updated_alerts
+            if not (
+                alert.split(":", 1)[0].strip() == "Campo em falta"
+                and _is_filled(
+                    normalized_missing_field_alert_map.get(
+                        alert.split(":", 1)[1].strip().casefold(),
+                    )
+                )
+            )
+        ]
+
     action = None
     status = None
     next_document_id = None
@@ -427,7 +478,7 @@ def update_document_details(
     try:
         alter_document_details(
             document_id,
-            alerts or [],
+            updated_alerts,
             updated_fields,
             action=action,
             status=status,
@@ -438,7 +489,55 @@ def update_document_details(
 
     if button_id == "send-sap-button":
         if next_document_id:
-            return "Documento enviado para SAP", f"/detalhe/{next_document_id}"
-        return "Documento enviado para SAP", no_update
-    return "Documento guardado", no_update
+            return "Documento enviado para SAP", _build_email_detail(next_document_id), f"/detalhe/{next_document_id}"
+        return "Documento enviado para SAP", _build_email_detail(document_id), no_update
+    return "Documento guardado", _build_email_detail(document_id), no_update
+
+
+@dash.callback(
+    Output("document_alerts_store", "data"),
+    Output("email-detail-content", "children", allow_duplicate=True),
+    Output("email-detail-update-status", "children"),
+    Input({"type": "email-detail-correction-button", "alert": ALL}, "n_clicks"),
+    State("document_id_store", "data"),
+    State("document_alerts_store", "data"),
+    State("document_fields_store", "data"),
+    prevent_initial_call=True,
+)
+def remove_alert_from_document(_clicks, document_id, alerts, fields):
+    triggered = callback_context.triggered
+    if not triggered or triggered[0]["prop_id"] == ".":
+        raise dash.exceptions.PreventUpdate
+
+    if not document_id:
+        return no_update, no_update, "Documento invalido"
+
+    triggered_id = callback_context.triggered_id
+    if not isinstance(triggered_id, dict):
+        raise dash.exceptions.PreventUpdate
+
+    if not any(click_count for click_count in (_clicks or [])):
+        raise dash.exceptions.PreventUpdate
+
+    alert_to_remove = triggered_id.get("alert")
+    if not alert_to_remove:
+        raise dash.exceptions.PreventUpdate
+
+    current_alerts = list(alerts or [])
+    if alert_to_remove not in current_alerts:
+        raise dash.exceptions.PreventUpdate
+
+    updated_alerts = [alert for alert in current_alerts if alert != alert_to_remove]
+
+    try:
+        alter_document_details(
+            document_id,
+            updated_alerts,
+            fields if isinstance(fields, dict) else {},
+            last_modified_by="Mariana Dias",
+        )
+    except Exception as exc:
+        return no_update, no_update, f"Erro ao remover alerta: {exc}"
+
+    return updated_alerts, _build_email_detail(document_id), "Alerta removido"
 
