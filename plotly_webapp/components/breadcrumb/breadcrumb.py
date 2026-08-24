@@ -13,13 +13,18 @@ def Breadcrumb():
 
 
 def build_breadcrumb_items(pathname: str):
+    route_labels = {
+        "validation": "Validação",
+    }
+
     if not pathname or pathname == "/":
         return [("Extração", "/")]
 
     parts = pathname.strip("/").split("/")
     links = []
     for i in range(len(parts)):
-        label = parts[i].replace("-", " ").capitalize()
+        part = parts[i]
+        label = route_labels.get(part, part.replace("-", " ").capitalize())
         href = "/" + "/".join(parts[: i + 1])
         links.append((label, href))
 
