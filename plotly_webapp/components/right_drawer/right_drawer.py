@@ -15,11 +15,11 @@ def RightDrawer(
     children: Optional[list] = None,
 ) -> html.Aside:
     children = children or [
-        Section(
-            title="Resumo da Interação",
-            content=html.Div(id=f"{drawer_id}-interaction-content"),
-            open=True,
-        ),
+        # Section(
+        #     title="Resumo da Interação",
+        #     content=html.Div(id=f"{drawer_id}-interaction-content"),
+        #     open=True,
+        # ),
         Section(
             title="Conteúdo do Email",
             content=html.Div(id=f"{drawer_id}-email-content"),
@@ -147,10 +147,15 @@ def register_right_drawer_callbacks(
                     ],
                 ),
                 html.Div(
-                    className="right-sidebar__email-section",
+                    className="right-sidebar__email-box",
                     children=[
                         html.Div(subject, className="right-sidebar__email-subject"),
-                        html.Div(content, className="right-sidebar__email-body"),
+                        html.Div(
+                            className="right-sidebar__email-body-box",
+                            children=[
+                                html.Div(content, className="right-sidebar__email-body"),
+                            ],
+                        ),
                     ],
                 ),
             ],
