@@ -6,13 +6,18 @@ layer touches one place. It reuses the application's own connection pool
 (`api.sql._default_pool`, created by `init_database_pool`), so the same code works
 inside the FastAPI app and from a standalone `asyncio.run(...)` script.
 
+`select_sync` is the one exception to the async interface — see the sync bridge
+below for why the validation tools need it.
+
 JSONB and array columns:
 - pass a JSONB value as a Python dict/list under a key named in `jsonb_columns`;
   it is `json.dumps`-ed and cast with `$n::jsonb` (no asyncpg codec needed).
 - pass a TEXT[]/array column as a native Python list; asyncpg maps it directly.
 """
 
+import asyncio
 import json
+import threading
 from typing import Any, Iterable, Optional
 
 import asyncpg
@@ -32,6 +37,74 @@ async def get_pool() -> asyncpg.Pool:
         pool = _sql._default_pool
     assert pool is not None  # init_database_pool populates the global
     return pool
+
+
+# --- sync bridge -------------------------------------------------------------
+# The `@tool` functions in invoice_extraction.tools are sync, but already run on
+# the event loop thread — `asyncio.run(...)` there raises "This event loop is
+# already running". So the query goes to a background loop instead and the caller
+# blocks on the result. That loop needs its own pool, since an asyncpg pool only
+# works on the loop that created it.
+
+_bridge_loop: Optional[asyncio.AbstractEventLoop] = None
+_bridge_pool: Optional[asyncpg.Pool] = None
+_bridge_lock = threading.Lock()
+
+
+def _bridge() -> asyncio.AbstractEventLoop:
+    """The background loop, started on first use as a daemon thread."""
+    global _bridge_loop
+    with _bridge_lock:
+        if _bridge_loop is None or _bridge_loop.is_closed():
+            _bridge_loop = asyncio.new_event_loop()
+            threading.Thread(
+                target=_bridge_loop.run_forever, name="utils-db-bridge", daemon=True
+            ).start()
+        return _bridge_loop
+
+
+async def _bridge_get_pool() -> asyncpg.Pool:
+    """The bridge's own pool. `init_database_pool` returns the pool it builds and
+    only claims `_default_pool` when unset, so this borrows the DSN without
+    stealing the app's pool.
+    """
+    global _bridge_pool
+    if _bridge_pool is None or _bridge_pool.is_closing():
+        _bridge_pool = await _sql.init_database_pool()
+    return _bridge_pool
+
+
+def select_sync(
+    query: str, params: Optional[Iterable[Any]] = None, timeout: float = 10.0
+) -> list[dict[str, Any]]:
+    """`select()` for synchronous callers. Runs on the background loop and blocks.
+
+    Raises whatever the query raises, or `TimeoutError` past `timeout`.
+    """
+
+    async def _run() -> list[dict[str, Any]]:
+        pool = await _bridge_get_pool()
+        records = await pool.fetch(query, *(params or []))
+        return [dict(record) for record in records]
+
+    return asyncio.run_coroutine_threadsafe(_run(), _bridge()).result(timeout=timeout)
+
+
+def normalize_key(value: Optional[str]) -> Optional[str]:
+    """Strip non-alphanumerics and uppercase, for matching VAT/PO codes whose
+    formatting varies between SAP and the document (`PT 501 925 350` vs
+    `PT501925350`). `normalize_sql` is the column-side equivalent.
+
+    Country prefixes are kept: `PT501925350` and `501925350` stay distinct.
+    """
+    if not value:
+        return None
+    return "".join(char for char in value if char.isalnum()).upper() or None
+
+
+def normalize_sql(column: str) -> str:
+    """`normalize_key` as SQL, so a stored value matches a normalized parameter."""
+    return f"upper(regexp_replace({column}, '[^A-Za-z0-9]', '', 'g'))"
 
 
 def _placeholder(index: int, column: str, jsonb_columns: Iterable[str]) -> str:
