@@ -4,7 +4,11 @@ from pathlib import Path
 from typing import Optional
 
 from api.exceptions import NotFoundError
-from api.repositories.extraction_repository import DocumentsRepository, ExtractionBigNumbers
+from api.repositories.extraction_repository import (
+    BusinessUnitRepository,
+    DocumentsRepository,
+    ExtractionBigNumbers,
+)
 from invoice_extraction.config import PROCESSED_EMAILS_DIR #temporary, while there is no access to blob storage
 
 
@@ -12,6 +16,7 @@ class ExtractionService:
     def __init__(self):
         self.big_numbers = ExtractionBigNumbers()
         self.documents = DocumentsRepository()
+        self.business_units = BusinessUnitRepository()
 
     async def list_priority_documents(self, limit: int = 100) -> list[dict]:
         df = await self.documents.list_priority_documents(limit=limit)
@@ -125,6 +130,9 @@ class ExtractionService:
             "action": updated_row.get("action"),
             "status": updated_row.get("status"),
         }
+
+    async def business_unit_exists(self, vat: str) -> bool:
+        return await self.business_units.exists_by_vat(vat)
 
     async def get_extraction_big_numbers(self) -> dict:
         (
