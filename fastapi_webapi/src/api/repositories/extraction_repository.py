@@ -88,6 +88,14 @@ class ExtractionBigNumbers(BaseRepository):
         return result
 
 
+class BusinessUnitRepository(BaseRepository):
+    __table_name__ = "dim_business_units"
+
+    async def exists_by_vat(self, vat: str) -> bool:
+        query = f"SELECT EXISTS(SELECT 1 FROM {self.table} WHERE vat = $1)"
+        return await self.query_scalar(query, parameters=[vat])
+
+
 class DocumentsRepository(BaseRepository):
     __table_name__ = "fct_documents"
 

@@ -124,6 +124,16 @@ async def get_document_pdf(service: ExtractionServiceDep, document_id: str) -> F
     return FileResponse(path, media_type="application/pdf")
 
 
+@router.get("/business-units/exists", summary="Check whether a business unit exists")
+async def business_unit_exists(service: ExtractionServiceDep, vat: str) -> bool:
+    """
+    Whether a business unit with the given VAT exists in dim_business_units.
+
+    - **vat**: Business unit VAT number
+    """
+    return await service.business_unit_exists(vat)
+
+
 @router.patch("", status_code=201, summary="Alter the details of a document")
 async def alter_document_details(
     service: ExtractionServiceDep, payload: DocumentUpdate
