@@ -5,7 +5,10 @@ non-conformities-resolution pipeline cares about, plus matching sap_messages
 rows engineered so `parse_buyer_reply` (see
 `non_conformities_resolution/nodes/read_buyer_reply.py`) classifies them with
 confidence >= config.BUYER_REPLY_MIN_CONFIDENCE. This exercises RESOLVE, APPLY
-REPLY and RECONCILE without needing a real SAP feed.
+REPLY and RECONCILE without needing a real SAP feed. Also seeds a
+dim_suppliers / dim_business_units row for every supplier_id / bu_id used
+above, so joins against those master-data tables (e.g. validation_repository)
+resolve to a name instead of NULL.
 
 Only appends rows — does not touch or clear existing data.
 
@@ -308,11 +311,60 @@ buyer_reply_messages: list[dict] = [
 
 messages: list[dict] = system_messages + buyer_reply_messages
 
+# -- Master data: one dim_suppliers / dim_business_units row per id used above.
+# name/vat/country are real values sampled from existing fct_documents.document_content
+# (supplier_name/supplier_vat/bu_name), so validation_repository's joins resolve to
+# realistic-looking data instead of invented placeholders.
+suppliers: list[dict] = [
+    {
+        "supplier_id": supplier_id,
+        "name": name,
+        "vat": vat,
+        "country": country,
+        "preferred_language": "pt",
+        "is_financial": is_financial,
+    }
+    for supplier_id, name, vat, country, is_financial in (
+        ("100000001", "Petrogal, S.A.", "PT500697370", "PT", 0),
+        ("100000002", "Realizamus, Lda", "PT901567523", "PT", 1),
+        ("100000003", "CTT Expresso - Serviços Postais e Logística, S.A.", "PT511224826", "PT", 0),
+        ("100000004", "Emater, S.A.", "PT509225918", "PT", 1),
+        ("100000005", "Sociedade Portuguesa de Autores", "PT500257841", "PT", 0),
+        ("100000006", "Broekman Shipping B.V.", "NL800822274B01", "NL", 0),
+        ("100000007", "NILO - Soc. Prod. e Com. de Refrig e Bebidas, SA", "PT268786202", "PT", 2),
+        ("100000008", "SGS Portugal, Sociedade Geral de Superintendência, S.A.", "PT500417660", "PT", 0),
+        ("100000009", "Complexo de Carga do Aeroporto Humberto Delgado", "PT504785753", "PT", 0),
+        ("100000010", "José Gonçalves Cerqueira (Navel - Açores), Lda", "PT512012962", "PT", 0),
+        ("100000011", "Carxop - Barcelos & Florença, Lda", "PT511248547", "PT", 0),
+        ("100000012", "Iberlim - Higiene e Sustentabilidade Ambiental, S.A.", "PT502117281", "PT", 0),
+        ("100000013", "Transporte Barbosa Semedo Sociedade Unipessoal Lda", "286861798", "CV", 0),
+        ("100000014", "SOCOL Sociedade Comercial", "PT200184440", "PT", 0),
+    )
+]
+
+business_units: list[dict] = [
+    {"bu_id": bu_id, "name": name, "vat": vat, "country": "PT"}
+    for bu_id, name, vat in (
+        ("0001", "LOGISLINK, LDA.", "PT509225918"),
+        ("0002", "GSLines Transportes Maritimos LDA.", "PT511011911"),
+        ("0003", "Duaro Lda.", "PT511283300"),
+        ("0004", "Metal - Lobos - Serralharia E Carpintaria, Lda", "PT511065906"),
+        ("0005", "Marmod Cabo Verde - Agência e Trânsito Lda", "PT511099911"),
+        ("0006", "Canada Manuel Vaz", "PT511099922"),
+        ("0007", "OPM Sociedade Operadores Portuários Madeira SA", "PT511099933"),
+    )
+]
+
 
 async def main() -> None:
+    n_suppliers = await insert_rows("dim_suppliers", suppliers)
+    n_bus = await insert_rows("dim_business_units", business_units)
     n_processes = await insert_rows("sap_processes", processes)
     n_messages = await insert_rows("sap_messages", messages)
-    logger.info(f"Inserted {n_processes} sap_processes rows and {n_messages} sap_messages rows.")
+    logger.info(
+        f"Inserted {n_suppliers} dim_suppliers, {n_bus} dim_business_units, "
+        f"{n_processes} sap_processes and {n_messages} sap_messages rows."
+    )
 
 
 if __name__ == "__main__":
