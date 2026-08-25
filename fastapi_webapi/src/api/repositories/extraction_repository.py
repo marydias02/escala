@@ -30,7 +30,7 @@ class ExtractionBigNumbers(BaseRepository):
     async def count_pending_manual_validation(self) -> int:
         query = f"""
         SELECT COUNT(*) FROM {self.table}
-        WHERE action = $1 AND status = 'Criado'
+        WHERE action = $1 AND status IN ('Criado', 'Sob Revisão')
         """
         return await self.query_scalar(query, parameters=[MANUAL])
 

@@ -65,6 +65,7 @@ app.layout = html.Div(
                     className="sidebar__menu",
                     children=[
                         Menu(title="Extração", href="/", icon="lucide:scan-text"),
+                        Menu(title="Validação", href="/validation", icon="lucide:badge-check"),
                         # Menu(title="Template", href="/home", icon="lucide:file-text"),
                         # Menu(title="Grid", href="/grid"),
                         # Menu(title="Segmented Control", href="/components/segmented-control"),

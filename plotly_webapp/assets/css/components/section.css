@@ -46,13 +46,18 @@
 /* 3. SECTION CONTENT */
 .section__content {
   margin-top: var(--spacing-10);
-  max-height: 0;
+  display: grid;
+  grid-template-rows: 0fr;
   overflow: hidden;
-  transition: max-height 0.35s ease, padding 0.35s ease;
+  transition: grid-template-rows 0.35s ease;
+}
+
+.section__content > * {
+  min-height: 0;
 }
 
 details[open] .section__content {
-  max-height: 100vh;
+  grid-template-rows: 1fr;
 }
 
 details[open].section {
