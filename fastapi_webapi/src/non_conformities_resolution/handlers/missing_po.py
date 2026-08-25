@@ -1,13 +1,10 @@
-"""Falta PC: the buyer told us the PO reference; write it to SAP.
-
-`sap_processes` has no `po_code` column today, so persisting it locally is not
-possible yet — that raises `MissingSapColumnError` with a TODO naming the
-migration this needs, rather than silently dropping the value. The SAP-side
-write (`sap_client.update_process_po`) still runs and is stubbed independently.
+"""Falta PC: the buyer told us the PO reference; write it to SAP and persist it
+locally on the process row (`sap_processes.po_code`).
 """
 
-from non_conformities_resolution.handlers.types import HandlerOutcome, MissingSapColumnError
+from non_conformities_resolution.handlers.types import HandlerOutcome
 from non_conformities_resolution.models.buyer_reply import BuyerReply
+from non_conformities_resolution.sap import sap_queries
 from non_conformities_resolution.sap.sap_client import update_process_po
 
 
@@ -20,10 +17,5 @@ async def handle(process: dict, reply: BuyerReply) -> HandlerOutcome:
     if result.status != "ok":
         return HandlerOutcome(resolved=False, detail=result.error or "update_process_po failed")
 
-    # TODO(migration): sap_processes has no po_code column. Once the real SAP
-    # field name is known, persist reply.po_code onto the process row here —
-    # e.g. `await sap_queries.set_po_code(reference_no, reply.po_code)`.
-    raise MissingSapColumnError(
-        "sap_processes has no po_code column; add it in a migration once the SAP "
-        "field name is known, then persist reply.po_code here."
-    )
+    await sap_queries.set_po_code(reference_no, reply.po_code)
+    return HandlerOutcome(resolved=True, detail=f"PO code {reply.po_code!r} written to SAP")
