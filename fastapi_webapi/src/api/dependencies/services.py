@@ -4,6 +4,7 @@ from typing_extensions import Annotated
 from api.services.air_example import AirExampleService
 from api.services.extraction_service import ExtractionService
 from api.services.process_service import ProcessService
+from api.services.validation_service import ValidationService
 from api.services.service_example import ItemService
 
 
@@ -33,6 +34,13 @@ async def get_extraction_service() -> ExtractionService:
 
 
 ExtractionServiceDep = Annotated[ExtractionService, Depends(get_extraction_service)]
+
+
+async def get_validation_service() -> ValidationService:
+    return ValidationService()
+
+
+ValidationServiceDep = Annotated[ValidationService, Depends(get_validation_service)]
 
 
 # These dependencies might seem redundant now, but it's here to allow easy extension in the future
