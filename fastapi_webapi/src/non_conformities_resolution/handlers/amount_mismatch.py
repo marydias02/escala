@@ -6,15 +6,16 @@ directly.
 
 "PO changed" is ambiguous on its own and splits two ways:
 - a NEW PO number was given -> functionally identical to Falta PC's "buyer
-  gave us the PO"; write it with `update_process_po`, same missing-column gap
-  as `missing_po.handle`.
+  gave us the PO"; write it with `update_process_po` and persist it via
+  `sap_queries.set_po_code`, same as `missing_po.handle`.
 - no PO number, just "the PO/PC was altered" -> the PO number itself did not
   change, only its value in SAP did. There is nothing for us to write; SAP
   already has the update, so REVALIDATE just needs to re-check.
 """
 
-from non_conformities_resolution.handlers.types import HandlerOutcome, MissingSapColumnError
+from non_conformities_resolution.handlers.types import HandlerOutcome
 from non_conformities_resolution.models.buyer_reply import BuyerReply
+from non_conformities_resolution.sap import sap_queries
 from non_conformities_resolution.sap.sap_client import update_process_po
 
 
@@ -41,12 +42,7 @@ async def handle(process: dict, reply: BuyerReply) -> HandlerOutcome:
         if result.status != "ok":
             return HandlerOutcome(resolved=False, detail=result.error or "update_process_po failed")
 
-        # TODO(migration): sap_processes has no po_code column. Once the real
-        # SAP field name is known, persist reply.po_code onto the process row
-        # here — same gap as missing_po.handle.
-        raise MissingSapColumnError(
-            "sap_processes has no po_code column; add it in a migration once the SAP "
-            "field name is known, then persist reply.po_code here."
-        )
+        await sap_queries.set_po_code(reference_no, reply.po_code)
+        return HandlerOutcome(resolved=True, detail=f"PO code {reply.po_code!r} written to SAP")
 
     return HandlerOutcome(resolved=False, detail="buyer reply neither bypassed nor pointed at a PO change")

@@ -89,6 +89,16 @@ async def set_status(reference_no: str, status: str) -> None:
     await update_column(PROCESSES_TABLE, "reference_no", reference_no, "status", status)
 
 
+async def set_po_code(reference_no: str, po_code: str) -> None:
+    """Persist the buyer-provided PO code onto the process (missing_po, amount_mismatch)."""
+    await update_column(PROCESSES_TABLE, "reference_no", reference_no, "po_code", po_code)
+
+
+async def set_migo_ref(reference_no: str, migo_ref: str) -> None:
+    """Persist the MIGO reference found in SAP onto the process (missing_migo)."""
+    await update_column(PROCESSES_TABLE, "reference_no", reference_no, "migo_ref", migo_ref)
+
+
 async def record_interaction(reference_no: str, owner: str, timestamp) -> None:
     """Stamp `last_interaction` / `last_interaction_datetime` after we act on a
     process (e.g. sending a message to the buyer), so the next reconciliation
