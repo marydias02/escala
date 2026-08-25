@@ -32,6 +32,9 @@ def upgrade() -> None:
         sa.Column("country", sa.String(length=2), nullable=True),  # ISO 3166-1 alpha-2
         sa.Column("preferred_language", sa.String(length=2), nullable=True),  # ISO 639-1
         sa.Column("is_financial", sa.Integer(), nullable=True),
+        #is_financial = 0 -> logistics supplier
+        #is_financial = 1 -> financial supplier
+        #is_financial = 2 -> both
     )
 
     op.create_table(
