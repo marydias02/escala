@@ -77,6 +77,22 @@ class DocumentRead(BaseModel):
     status: Optional[str] = None
 
 
+class ValidationDocumentRead(BaseModel):
+    reference_no: Optional[str] = None
+    supplier_name: Optional[str] = None
+    bu_name: Optional[str] = None
+    doc_id: Optional[str] = None
+    total_amount: Optional[float] = None
+    document_date: Optional[date] = None
+    is_financial: Optional[bool] = None
+    last_interaction: Optional[str] = None
+    last_interaction_datetime: Optional[datetime] = None
+    status: Optional[str] = None
+    issue: Optional[str] = None
+    owner: Optional[str] = None
+    reconciled: Optional[bool] = None
+
+
 class NextPriorityDocumentRead(BaseModel):
     eligible: bool
     next_document_id: Optional[UUID] = None

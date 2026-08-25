@@ -1,24 +1,28 @@
 import dash
 from dash import dcc, html
 
-from assets.api_calls.extraction_api import get_extraction_dashboard
+from assets.api_calls.validation_api import get_validation_page_data
 from components.cards.indicator_card.indicator_card import IndicatorCard
 from components.page_header.page_header import PageHeader
 from components.section.section import Section
 from components.table.V1.table import Table as TableV1
 
 
-dash.register_page(__name__, path="/validation", title="Validação")
+dash.register_page(__name__, path="/validation", title="Validacao")
 
 
 documents_col_def = [
-    {"field": "document_number", "headerName": "No. Referência", "width": 160},
-    {"field": "bu_name", "headerName": "Unidade de Negócio", "minWidth": 220},
+    {"field": "reference_no", "headerName": "No. Referencia", "width": 160},
+    {"field": "bu_name", "headerName": "Unidade de Negocio", "minWidth": 220},
     {"field": "supplier_name", "headerName": "Fornecedor", "minWidth": 220},
     {"field": "total_amount", "headerName": "Valor", "width": 120},
-    {"field": "issue_date", "headerName": "Data de Emissão", "width": 150},
-    {"field": "created_at", "headerName": "Data de Processamento", "width": 200},
-    {"field": "action", "headerName": "Ação", "width": 180},
+    {"field": "document_date", "headerName": "Data do Documento", "width": 150},
+    {"field": "last_interaction_datetime", "headerName": "Data de Processamento", "width": 200},
+    {"field": "last_interaction", "headerName": "Ultima Interacao", "width": 180},
+    {"field": "is_financial", "headerName": "Financeiro", "width": 120},
+    {"field": "issue", "headerName": "Issue", "minWidth": 180},
+    {"field": "owner", "headerName": "Owner", "minWidth": 180},
+    {"field": "reconciled", "headerName": "Reconciliado", "width": 120},
     {"field": "status", "headerName": "Estado", "width": 120, "cellRenderer": "Status"},
 ]
 
@@ -67,9 +71,9 @@ def layout():
     prevent_initial_call=False,
 )
 def load_validation_content(_pathname):
-    dashboard = get_extraction_dashboard()
+    dashboard = get_validation_page_data()
     kpis = dashboard["kpis"]
-    priority_documents = dashboard["priority_documents"]
+    sap_processes = dashboard["sap_processes"]
 
     return [
         Section(
@@ -143,7 +147,7 @@ def load_validation_content(_pathname):
                     type="default",
                     color="var(--primary-color-13)",
                     children=TableV1(
-                        data_frames=[{"df": priority_documents, "col_def": documents_col_def}],
+                        data_frames=[{"df": sap_processes, "col_def": documents_col_def}],
                         grid_id="validation-priority-processes-table",
                         dashGridOptions={
                             "rowSelection": {
