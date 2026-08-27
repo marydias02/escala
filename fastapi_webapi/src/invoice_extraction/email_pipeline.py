@@ -281,6 +281,16 @@ async def _processed_message_ids() -> set[str]:
     return {row["message_id"] for row in rows}
 
 
+async def _thread_message_count(thread_id: str | None) -> int | None:
+    """This email's position in its thread: 1 for the first ingested, 2 for the second."""
+    if not thread_id:
+        return None
+    rows = await select(
+        f"SELECT count(*) AS n FROM {PROCESSES_TABLE} WHERE thread_id = $1", [thread_id]
+    )
+    return int(rows[0]["n"]) + 1
+
+
 # --------------------------------------------------------------------------- #
 # Orchestrator
 # --------------------------------------------------------------------------- #
@@ -387,9 +397,13 @@ class EmailPipeline:
 
         return statuses
 
-    async def _persist(self, result: EmailProcessingResult) -> None:
+    async def _persist(
+        self, result: EmailProcessingResult, thread_message_count: Optional[int] = None
+    ) -> None:
         """Write one fct_processes row, its fct_documents rows, and their
         fct_document_first_action rows.
+
+        `thread_message_count` is passed here
 
         Every document is inserted first at its day-one status (`derive_status`
         — "Criado", or "Failed" if the pipeline broke on it): a real row, not
@@ -414,6 +428,8 @@ class EmailPipeline:
         ingestion = result.ingestion
         manifest = _load_manifest(ingestion.folder)
 
+        thread_id = manifest.get("thread_id") or None
+
         # Insert the process WITHOUT an id — the DB generates process_id — and read
         # it back to use as the documents' foreign key.
         process_id = await insert_row(
@@ -424,6 +440,10 @@ class EmailPipeline:
                 "email_content": manifest.get("email_content"),
                 "reception_date": parse_reception_date(manifest.get("reception_date")),
                 "message_id": manifest.get("message_id"),
+                "thread_id": thread_id,
+                "thread_message_count": thread_message_count,
+                "email_status": result.decision.status,
+                "email_action": list(result.decision.actions),
             },
             returning="process_id",
         )
@@ -522,6 +542,10 @@ class EmailPipeline:
             pdf_paths = _produced_pdf_paths(ingestion)
             extractions = self.extraction.run_batch(pdf_paths)
 
+            # Counted once, here, because it both routes the email and is stored
+            # with it — two counts could disagree if a sibling lands in between.
+            thread_message_count = await _thread_message_count(email.thread_id or None)
+
             # --- DECIDE ---------------------------------------------------------
             # No usable PDF (A1/A2) is the only case the body can change, so the
             # extra LLM call is confined to it.
@@ -537,9 +561,15 @@ class EmailPipeline:
                             {"filename": e.filename, "status": e.status} for e in extractions
                         ],
                         "attachments": len(ingestion.attachments),
+                        "thread_message_count": thread_message_count,
                     }
                 )
-                decision = decide_email(ingestion, extractions, intent=intent)
+                decision = decide_email(
+                    ingestion,
+                    extractions,
+                    intent=intent,
+                    thread_message_count=thread_message_count,
+                )
                 decision_span.set_outputs(decision_summary(decision))
 
             result = EmailProcessingResult(
@@ -565,7 +595,7 @@ class EmailPipeline:
 
             # --- PERSIST --------------------------------------------------------
             if WRITE_TO_DB:
-                await self._persist(result)
+                await self._persist(result, thread_message_count)
                 # Links the trace to its fct_processes row.
                 set_trace_tags(process_id=result.process_id)
             else:

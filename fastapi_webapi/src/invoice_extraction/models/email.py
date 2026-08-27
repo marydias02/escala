@@ -30,6 +30,7 @@ class LoadedEmail:
     reception_date: str
     attachments: list[EmailAttachment] = field(default_factory=list)
     message_id: str = ""
+    thread_id: str = ""
 
 
 class EmailContent(BaseModel):
@@ -47,3 +48,4 @@ class EmailContent(BaseModel):
     number_annexes: int = Field(description="Total attachments of any type.")
     number_chunked_pdfs: int = Field(description="Single-document PDFs produced by segmentation.")
     message_id: str = Field(default="", description="Graph message id, for dedup against fct_processes.")
+    thread_id: str = Field(default="", description="Graph conversationId, grouping the emails of one thread.")

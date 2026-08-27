@@ -67,6 +67,10 @@ PARSER_KWARGS = {
 # human.
 MIN_CONFIDENCE = 0.7
 
+# A thread on its Nth message has not converged: the earlier exchanges did not
+# land, so a human reads it rather than the supplier being chased again.
+THREAD_ESCALATION_COUNT = 3
+
 # -- Tracing (MLflow) ------------------------------------------------------
 # Development instrumentation only; see `invoice_extraction.tracing`. The
 # tracking URI itself is read from the MLFLOW_TRACKING_URI environment variable

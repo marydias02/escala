@@ -470,6 +470,7 @@ def decision_summary(decision) -> dict:
 
     return {
         "actions": list(decision.actions),
+        "email_status": decision.status,
         "reason": decision.reason,
         "reply_lines": decision.reply_lines,
         "should_reply": decision.should_reply,

@@ -28,6 +28,7 @@ from utils.graph_auth import GRAPH_BASE, get_graph_token, graph_user_path
 _MESSAGE_SELECT = ",".join(
     [
         "id",
+        "conversationId",
         "subject",
         "from",
         "receivedDateTime",
@@ -178,6 +179,7 @@ async def fetch_inbox_emails(
                     reception_date=_received_date_iso(message),
                     attachments=attachments,
                     message_id=message_id,
+                    thread_id=message.get("conversationId") or "",
                 )
             )
 
