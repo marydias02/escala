@@ -84,14 +84,27 @@ def load_validation_content(_pathname):
                     className="homepage__indicator_section-wrapper validation__indicator_section-wrapper",
                     children=[
                         IndicatorCard(
+                            label_text="Não Conformes",
+                            label_tooltip="faturas",
+                            rows=[
+                                (
+                                    kpis["non_conforming_received"]["value"],
+                                    "última semana",
+                                    abs(kpis["non_conforming_received"]["delta_pp"]),
+                                    trend(kpis["non_conforming_received"]["delta_pp"]),
+                                )
+                            ],
+                            badge_unit="%",
+                        ),
+                        IndicatorCard(
                             label_text="Necessita Validação",
                             label_tooltip="faturas",
                             rows=[
                                 (
-                                    kpis["pending_manual_validation"]["value"],
+                                    kpis["needs_manual_validation"]["value"],
                                     "última semana",
-                                    abs(kpis["pending_manual_validation"]["delta_pp"]),
-                                    trend(kpis["pending_manual_validation"]["delta_pp"]),
+                                    abs(kpis["needs_manual_validation"]["delta_pp"]),
+                                    trend(kpis["needs_manual_validation"]["delta_pp"]),
                                 )
                             ],
                             badge_unit="%",
@@ -101,36 +114,23 @@ def load_validation_content(_pathname):
                             label_tooltip="faturas",
                             rows=[
                                 (
-                                    5,
+                                    kpis["with_buyer"]["value"],
                                     "última semana",
-                                    abs(kpis["pending_manual_validation"]["delta_pp"]),
-                                    trend(kpis["pending_manual_validation"]["delta_pp"]),
+                                    abs(kpis["with_buyer"]["delta_pp"]),
+                                    trend(kpis["with_buyer"]["delta_pp"]),
                                 )
                             ],
                             badge_unit="%",
                         ),
                         IndicatorCard(
-                            label_text="Ingeridas Automaticamente",
+                            label_text="Processadas pelo Agente",
                             label_tooltip="faturas",
                             rows=[
                                 (
-                                    154,
+                                    kpis["processed_by_agent"]["value"],
                                     "última semana",
-                                    abs(kpis["pending_manual_validation"]["delta_pp"]),
-                                    trend(kpis["pending_manual_validation"]["delta_pp"]),
-                                )
-                            ],
-                            badge_unit="%",
-                        ),
-                        IndicatorCard(
-                            label_text="Devolvidas ao Fornecedor",
-                            label_tooltip="faturas",
-                            rows=[
-                                (
-                                    3,
-                                    "última semana",
-                                    abs(kpis["pending_manual_validation"]["delta_pp"]),
-                                    trend(kpis["pending_manual_validation"]["delta_pp"]),
+                                    abs(kpis["processed_by_agent"]["delta_pp"]),
+                                    trend(kpis["processed_by_agent"]["delta_pp"]),
                                 )
                             ],
                             badge_unit="%",
