@@ -4,6 +4,12 @@ from dash_iconify import DashIconify
 from dash.dcc import Tab
 import requests
 
+from assets.api_calls.extraction_api import (
+    alter_document_details,
+    get_document_details,
+    get_document_email,
+    get_next_priority_document,
+)
 from components.page_header.page_header import PageHeader
 from components.banner.banner import TableBanner
 from components.tabs.tabs import Tabs
@@ -28,12 +34,6 @@ from components.table.shared.action_bar import action_bar
 import pandas as pd
 from functools import partial
 
-from assets.api_calls.extraction_api import (
-    alter_document_details,
-    get_document_details,
-    get_next_priority_document,
-)
-
 
 def _action_banner_props(action):
     if action in {"Validação Manual"}:
@@ -54,8 +54,69 @@ dash.register_page(
 register_right_drawer_callbacks(
     "email-detail-drawer",
     "email-detail-open-drawer",
-    "document_id_store",
 )
+
+
+def _build_email_drawer_content(document_id):
+    if not document_id:
+        return "Sem documento selecionado."
+
+    try:
+        email = get_document_email(str(document_id))
+    except Exception:
+        return "Não foi possível carregar o email."
+
+    sender = email.get("sender_email") or "N/D"
+    subject = email.get("email_subject") or "N/D"
+    content = email.get("email_content") or "N/D"
+    received = email.get("reception_date") or "N/D"
+
+    if "@" in sender:
+        name, domain = sender.split("@", 1)
+        sender_display = html.Span(
+            [f"{name}@", html.Br(), domain],
+            className="right-sidebar__meta-value",
+        )
+    else:
+        sender_display = html.Span(sender, className="right-sidebar__meta-value")
+
+    return html.Div(
+        className="right-sidebar__content",
+        children=[
+            html.Div(
+                className="right-sidebar__meta-box",
+                children=[
+                    html.Div(
+                        className="right-sidebar__meta-item",
+                        children=[
+                            html.Span("Remetente", className="right-sidebar__meta-label"),
+                            sender_display,
+                        ],
+                    ),
+                    html.Div(className="right-sidebar__meta-divider"),
+                    html.Div(
+                        className="right-sidebar__meta-item",
+                        children=[
+                            html.Span("Data de Receção", className="right-sidebar__meta-label"),
+                            html.Span(str(received), className="right-sidebar__meta-value"),
+                        ],
+                    ),
+                ],
+            ),
+            html.Div(
+                className="right-sidebar__email-box",
+                children=[
+                    html.Div(subject, className="right-sidebar__email-subject"),
+                    html.Div(
+                        className="right-sidebar__email-body-box",
+                        children=[
+                            html.Div(content, className="right-sidebar__email-body"),
+                        ],
+                    ),
+                ],
+            ),
+        ],
+    )
 
 
 
@@ -342,11 +403,28 @@ def _build_email_detail(ref_number):
                 RightDrawer(
                     drawer_id="email-detail-drawer",
                     title="Detalhes do Email",
+                    children=[
+                        Section(
+                            title="Conteúdo do Email",
+                            content=html.Div(id="email-detail-drawer-email-content"),
+                            open=True,
+                        ),
+                    ],
                 ),
             ]           
         )
     ]
 )
+
+
+@dash.callback(
+    Output("email-detail-drawer-email-content", "children"),
+    Input("email-detail-open-drawer", "n_clicks"),
+    State("document_id_store", "data"),
+    prevent_initial_call=True,
+)
+def load_email_drawer_content(_clicks, document_id):
+    return _build_email_drawer_content(document_id)
 
 
 @dash.callback(

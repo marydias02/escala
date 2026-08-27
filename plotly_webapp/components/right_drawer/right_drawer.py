@@ -4,9 +4,6 @@ import dash
 from dash import Input, Output, State, callback_context, html
 from dash_iconify import DashIconify
 
-from assets.api_calls.extraction_api import get_document_email
-from components.section.section import Section
-
 
 def RightDrawer(
     *,
@@ -14,18 +11,7 @@ def RightDrawer(
     title: str,
     children: Optional[list] = None,
 ) -> html.Aside:
-    children = children or [
-        # Section(
-        #     title="Resumo da Interação",
-        #     content=html.Div(id=f"{drawer_id}-interaction-content"),
-        #     open=True,
-        # ),
-        Section(
-            title="Conteúdo do Email",
-            content=html.Div(id=f"{drawer_id}-email-content"),
-            open=True,
-        ),
-    ]
+    children = children or []
     base_style = {
         "position": "fixed",
         "top": "0",
@@ -64,7 +50,6 @@ def RightDrawer(
 def register_right_drawer_callbacks(
     drawer_id: str,
     toggle_button_id: str,
-    document_id_store_id: Optional[str] = None,
 ) -> None:
     close_button_id = f"{drawer_id}-close"
 
@@ -89,74 +74,3 @@ def register_right_drawer_callbacks(
             return f"{class_name} sidebar--collapsed".strip()
 
         return "right-sidebar sidebar--collapsed"
-
-    if document_id_store_id is None:
-        return
-
-    @dash.callback(
-        Output(f"{drawer_id}-email-content", "children"),
-        Input(toggle_button_id, "n_clicks"),
-        State(drawer_id, "className"),
-        State(document_id_store_id, "data"),
-        prevent_initial_call=True,
-    )
-    def load_email_content(toggle_clicks, drawer_class_name, document_id):
-        if not drawer_class_name or "sidebar--collapsed" not in drawer_class_name:
-            return dash.no_update
-
-        if not document_id:
-            return "Sem documento selecionado."
-
-        try:
-            email = get_document_email(str(document_id))
-        except Exception:
-            return "Não foi possível carregar o email."
-
-        sender = email.get("sender_email") or "N/D"
-        subject = email.get("email_subject") or "N/D"
-        content = email.get("email_content") or "N/D"
-        received = email.get("reception_date") or "N/D"
-        
-        if "@" in sender:
-            name, domain = sender.split("@", 1)
-            sender_display = html.Span([f"{name}@", html.Br(), domain], className="right-sidebar__meta-value")
-        else:
-            sender_display = html.Span(sender, className="right-sidebar__meta-value")
-
-        return html.Div(
-            className="right-sidebar__content",
-            children=[
-                html.Div(
-                    className="right-sidebar__meta-box",
-                    children=[
-                        html.Div(
-                            className="right-sidebar__meta-item",
-                            children=[
-                                html.Span("Remetente", className="right-sidebar__meta-label"),
-                                sender_display
-                            ],
-                        ),
-                        html.Div(className="right-sidebar__meta-divider"),
-                        html.Div(
-                            className="right-sidebar__meta-item",
-                            children=[
-                                html.Span("Data de Receção", className="right-sidebar__meta-label"),
-                                html.Span(str(received), className="right-sidebar__meta-value"),
-                            ],
-                        ),
-                    ],
-                ),
-                html.Div(
-                    className="right-sidebar__email-box",
-                    children=[
-                        html.Div(subject, className="right-sidebar__email-subject"),
-                        html.Div(
-                            className="right-sidebar__email-body-box",
-                            children=[
-                                html.Div(content, className="right-sidebar__email-body"),
-                            ],
-                        ),
-                    ],
-                ),
-            ],
-        )

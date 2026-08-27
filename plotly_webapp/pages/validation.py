@@ -3,6 +3,7 @@ from dash import dcc, html
 
 from assets.api_calls.validation_api import get_validation_page_data
 from components.cards.indicator_card.indicator_card import IndicatorCard
+from components.right_drawer.right_drawer import RightDrawer
 from components.page_header.page_header import PageHeader
 from components.section.section import Section
 from components.table.V1.table import Table as TableV1
@@ -169,4 +170,25 @@ def load_validation_content(_pathname):
             ],
             open=True,
         ),
+        RightDrawer(
+            drawer_id="validation-drawer",
+            title="Comunicação em SAP",
+        ),
     ]
+
+
+@dash.callback(
+    dash.Output("validation-drawer", "className"),
+    dash.Input("validation-priority-processes-table", "selectedRows"),
+    dash.Input("validation-drawer-close", "n_clicks"),
+    prevent_initial_call=False,
+)
+def toggle_validation_drawer(selected_rows, close_clicks):
+    triggered_id = dash.callback_context.triggered_id
+
+    if triggered_id == "validation-drawer-close":
+        return "right-sidebar sidebar--collapsed"
+
+    if selected_rows:
+        return "right-sidebar"
+    return "right-sidebar sidebar--collapsed"
