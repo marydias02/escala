@@ -3,23 +3,7 @@ from typing_extensions import Annotated
 
 from api.services.air_example import AirExampleService
 from api.services.extraction_service import ExtractionService
-from api.services.process_service import ProcessService
 from api.services.validation_service import ValidationService
-from api.services.service_example import ItemService
-
-
-async def get_item_service() -> ItemService:
-    return ItemService()
-
-
-ItemServiceDep = Annotated[ItemService, Depends(get_item_service)]
-
-
-async def get_process_service() -> ProcessService:
-    return ProcessService()
-
-
-ProcessServiceDep = Annotated[ProcessService, Depends(get_process_service)]
 
 
 async def get_air_service() -> AirExampleService:

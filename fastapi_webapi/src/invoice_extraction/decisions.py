@@ -19,6 +19,8 @@ business rules can be read without reading the pipeline.
 from dataclasses import dataclass, field
 from typing import Final, Literal, Optional
 
+from loguru import logger
+
 from invoice_extraction.config import MIN_CONFIDENCE
 from invoice_extraction.extraction_pipeline import PipelineResult
 from invoice_extraction.ingestion_pipeline import EmailIngestionResult
@@ -29,8 +31,12 @@ from invoice_extraction.models import (
     document_number_of,
     normalize_document_number,
 )
-from invoice_extraction.tools.po_confirmation import po_exists, supplier_requires_po
-
+from invoice_extraction.tools.po_confirmation import (
+    FINANCIAL,
+    FINANCIAL_AND_LOGISTICS,
+    po_exists,
+    supplier_is_financial,
+)
 
 # Two vocabularies, because the layers answer different questions. A DOCUMENT
 # gets exactly one action — what to do with that piece of paper. An EMAIL can
@@ -195,6 +201,13 @@ def missing_pos(validation: Optional[ValidationReport]) -> Optional[list[str]]:
     The two cases route differently (see `_ingest_or_manual`), so they are
     distinguished by the empty list rather than collapsed into a bool.
 
+    What a PO on the document means depends on `dim_suppliers.is_financial`:
+
+    - logistics (0) — a PO is required, and every one carried is checked.
+    - financial (1) — there should be no PO at all, so one that appears is a
+      misread rather than a real reference. It is dropped, with a log line.
+    - both (2)      — no PO is demanded, but any carried is checked as usual.
+
     Second, independent deterministic check — can only disagree with the LLM's
     own tool-informed conclusion (formed using these same tools during
     validation) if the LLM got it wrong. The tools are invoked directly so the
@@ -211,18 +224,33 @@ def missing_pos(validation: Optional[ValidationReport]) -> Optional[list[str]]:
     if not supplier_vat:
         return None
 
-    if not supplier_requires_po.invoke({"supplier_vat": supplier_vat}):
+    # The tools swallow their own database errors, but this runs outside the
+    # extraction pipeline's error handling — an unexpected failure here would
+    # take down the whole email rather than one document.
+    try:
+        is_financial = supplier_is_financial(supplier_vat)
+
+        if not validation.po_list:
+            # Only a supplier that requires one is missing anything.
+            return [] if is_financial not in (FINANCIAL, FINANCIAL_AND_LOGISTICS) else None
+
+        if is_financial == FINANCIAL:
+            pos = [po.value for po in validation.po_list if po.value]
+            logger.info(
+                f"Ignoring PO(s) {pos} on a financial supplier ({supplier_vat}) — "
+                "likely something else read as a PO"
+            )
+            return None
+
+        unknown = [
+            po.value
+            for po in validation.po_list
+            if po.value and not po_exists.invoke({"po_reference": po.value})
+        ]
+        return unknown or None
+    except Exception as exc:  # noqa: BLE001 - never fail routing on a PO lookup
+        logger.warning(f"PO check failed for supplier {supplier_vat}, skipping it: {exc!r}")
         return None
-
-    if not validation.po_list:
-        return []
-
-    unknown = [
-        po.value
-        for po in validation.po_list
-        if po.value and not po_exists.invoke({"po_reference": po.value})
-    ]
-    return unknown or None
 
 
 # Every ValidationReport field except supplier_id/bu_id (always null pre-registry
