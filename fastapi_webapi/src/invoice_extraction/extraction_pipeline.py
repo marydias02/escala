@@ -156,7 +156,11 @@ class ExtractionPipeline:
                     parse_span.set_outputs({"ok": False, "error": f"{type(exc).__name__}: {exc}"})
                 else:
                     parse_span.set_outputs(
-                        {"ok": True, "chars": len(parsed_text) if parsed_text else 0}
+                        {
+                            "ok": True,
+                            "chars": len(parsed_text) if parsed_text else 0,
+                            "text": parsed_text,
+                        }
                     )
 
             # --- VALIDATION ---------------------------------------------------

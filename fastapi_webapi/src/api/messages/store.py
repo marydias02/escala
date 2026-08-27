@@ -58,6 +58,14 @@ class ValidationDocumentRead(BaseModel):
     reconciled: Optional[bool] = None
 
 
+class SapMessageRead(BaseModel):
+    internal_id: str
+    timestamp: Optional[datetime] = None
+    sender: Optional[str] = None
+    recipient: Optional[str] = None
+    content: Optional[str] = None
+
+
 class NextPriorityDocumentRead(BaseModel):
     eligible: bool
     next_document_id: Optional[UUID] = None

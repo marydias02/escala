@@ -4,16 +4,25 @@ big-numbers tiles shown above it.
 
 import asyncio
 
-from api.repositories.validation_repository import DocumentsRepository, ValidationBigNumbers
+from api.repositories.validation_repository import (
+    DocumentsRepository,
+    SapMessagesRepository,
+    ValidationBigNumbers,
+)
 
 
 class ValidationService:
     def __init__(self):
         self.documents = DocumentsRepository()
         self.big_numbers = ValidationBigNumbers()
+        self.messages = SapMessagesRepository()
 
     async def list_all_documents(self, limit: int = 100) -> list[dict]:
         df = await self.documents.list_all_documents(limit=limit)
+        return df.to_dicts()
+
+    async def list_process_messages(self, process_ref_no: str) -> list[dict]:
+        df = await self.messages.list_by_process(process_ref_no)
         return df.to_dicts()
 
     async def get_validation_big_numbers(self) -> dict:

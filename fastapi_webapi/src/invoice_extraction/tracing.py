@@ -297,6 +297,22 @@ def set_trace_tags(**tags) -> None:
         print(f"⚠️  Could not tag trace: {type(exc).__name__}: {exc}")
 
 
+def set_span_attributes(**attributes) -> None:
+    """Attach attributes to the currently-open span; a no-op when tracing is off.
+
+    For facts discovered by a helper that owns no span of its own — the
+    attribute lands on the enclosing STAGE_* span instead.
+    """
+    if not _ENABLED:
+        return
+    try:
+        active = mlflow.get_current_active_span()
+        if active is not None:
+            active.set_attributes({k: v for k, v in attributes.items() if v is not None})
+    except Exception as exc:  # noqa: BLE001
+        print(f"⚠️  Could not set span attributes: {type(exc).__name__}: {exc}")
+
+
 # --------------------------------------------------------------------------- #
 # Span payloads — what we actually want to read back
 # --------------------------------------------------------------------------- #

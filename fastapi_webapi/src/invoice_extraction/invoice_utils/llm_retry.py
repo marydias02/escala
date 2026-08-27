@@ -5,6 +5,8 @@ from langchain_core.messages import BaseMessage, HumanMessage
 from loguru import logger
 from pydantic import ValidationError
 
+from invoice_extraction.tracing import set_span_attributes
+
 # Parse failures we want to retry (prose instead of JSON), as opposed to
 # transport/HTTP errors which won't improve on a plain retry.
 PARSE_ERRORS = (ValidationError, OutputParserException, ValueError)
@@ -28,12 +30,19 @@ def invoke_with_retry(structured_llm, messages: list[BaseMessage], stage: Option
 
     `stage` labels the pipeline step (chunking, classification, ...) so the
     otherwise-opaque HTTP log line that follows can be traced to a stage.
+
+    `retried` goes on the enclosing stage span: a retry is otherwise invisible
+    in the trace, so its doubled token cost cannot be attributed.
     """
     if stage:
         logger.info(f"LLM call → {stage}")
     try:
-        return structured_llm.invoke(messages)
-    except PARSE_ERRORS:
+        result = structured_llm.invoke(messages)
+    except PARSE_ERRORS as exc:
+        set_span_attributes(retried=True, retry_reason=f"{type(exc).__name__}: {exc}")
         if stage:
             logger.info(f"LLM call → {stage} (retry: JSON-only)")
         return structured_llm.invoke([*messages, JSON_ONLY_NUDGE])
+
+    set_span_attributes(retried=False)
+    return result
