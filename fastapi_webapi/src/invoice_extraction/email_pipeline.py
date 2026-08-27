@@ -81,6 +81,7 @@ from invoice_extraction.nodes import classify_email_intent
 from invoice_extraction.tracing import (
     STAGE_DECISION,
     decision_summary,
+    set_span_attributes,
     set_trace_tags,
     setup_tracing,
     span,
@@ -434,6 +435,9 @@ class EmailPipeline:
 
         document_ids = {extraction.filename: str(uuid.uuid4()) for extraction in result.extractions}
 
+        # Links each extracted document to its fct_documents row, on the email span
+        set_span_attributes(document_ids=document_ids)
+
         rows = []
         for extraction in result.extractions:
             action = actions.get(extraction.filename, MANUAL)
@@ -494,7 +498,8 @@ class EmailPipeline:
 
         with span(f"email:{source}", "CHAIN") as email_span:
             email_span.set_inputs({"source": source})
-            set_trace_tags(email=source)
+            # `model` makes a model swap a filter dimension.
+            set_trace_tags(email=source, model=self.extraction.llm_factory.openai_model)
 
             # --- INGEST ---------------------------------------------------------
             ingestion = self.ingestion.run(email, output_root)
@@ -561,6 +566,8 @@ class EmailPipeline:
             # --- PERSIST --------------------------------------------------------
             if WRITE_TO_DB:
                 await self._persist(result)
+                # Links the trace to its fct_processes row.
+                set_trace_tags(process_id=result.process_id)
             else:
                 print("  💾 WRITE_TO_DB is off — not persisting")
 

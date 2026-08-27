@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends
 
 from api.dependencies.security import verify_api_key
 from api.dependencies.services import ValidationServiceDep
-from api.messages.store import ValidationBigNumbersDict
+from api.messages.store import SapMessageRead, ValidationBigNumbersDict
 
 router = APIRouter(prefix="/validation", tags=["validation"], dependencies=[Depends(verify_api_key)])
 
@@ -37,4 +37,17 @@ async def get_all_documents(service: ValidationServiceDep, limit: int = 100) -> 
     """
     rows = await service.list_all_documents(limit=limit)
     return rows
+
+
+@router.get("/{process_ref_no}/messages", summary="Get the message log of a SAP process")
+async def get_process_messages(process_ref_no: str, service: ValidationServiceDep) -> list[SapMessageRead]:
+    """
+    Messages exchanged during a SAP process, oldest first.
+
+    - **process_ref_no**: the `sap_processes.reference_no` the messages belong to
+
+    Returns an empty list when the process has no messages or does not exist.
+    """
+    rows = await service.list_process_messages(process_ref_no)
+    return [SapMessageRead(**row) for row in rows]
 

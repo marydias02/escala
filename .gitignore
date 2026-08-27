@@ -44,3 +44,7 @@ Thumbs.db
 *.log
 
 # Ignore any other files that should not be versioned
+
+# Claude Code's local skill dir is just symlinks/copies of .agents/skills
+# (the agent-agnostic source of truth, tracked via skills-lock.json).
+.claude/*

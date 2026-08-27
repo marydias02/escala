@@ -100,3 +100,18 @@ class ValidationBigNumbers(BaseRepository):
             key = "current" if row["week"] == current_week else "previous"
             result[key] = (row["matched"], row["total"])
         return result
+
+
+class SapMessagesRepository(BaseRepository):
+    """Message log exchanged during a SAP process."""
+
+    __table_name__ = "sap_messages"
+
+    async def list_by_process(self, process_ref_no: str) -> pl.DataFrame:
+        query = f"""
+        SELECT internal_id, timestamp, sender, recipient, content
+        FROM {self.table}
+        WHERE process_ref_no = $1
+        ORDER BY timestamp ASC NULLS LAST, internal_id
+        """
+        return await self.query_df(query, parameters=[process_ref_no])
