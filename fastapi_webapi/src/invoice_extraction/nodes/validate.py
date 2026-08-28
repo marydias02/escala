@@ -4,8 +4,10 @@ from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, ToolMessage
 from loguru import logger
 
+from invoice_extraction.config import failed_confidence
 from invoice_extraction.invoice_utils.llm_retry import invoke_with_retry
 from invoice_extraction.models import InvoiceData, ValidationReport
+from invoice_extraction.models.common import Checked
 from invoice_extraction.prompts import VALIDATION_SYSTEM_MESSAGE, build_validation_human_message
 from invoice_extraction.tools import VALIDATION_TOOLS
 from invoice_extraction.tracing import (
@@ -19,6 +21,9 @@ from invoice_extraction.tracing import (
 # Safety net for a model that keeps calling tools instead of concluding.
 MAX_TOOL_ROUNDS = 3
 
+# Cents, to absorb float error on amounts the model returns as floats.
+AMOUNT_TOLERANCE = 0.01
+
 SHAPE_REQUEST = HumanMessage(
     content=(
         "Now return your validation as a single ValidationReport object, applying "
@@ -27,6 +32,59 @@ SHAPE_REQUEST = HumanMessage(
         "telegraphic."
     )
 )
+
+
+def _reconcile_amounts(report: ValidationReport) -> ValidationReport:
+    """Apply `base + vat = total`, deterministically — the LLM reads, it does not compute.
+
+    One missing amount is derived from the other two.
+    Three that disagree are left as is and total_amount's confidence is 
+    dropped below MIN_CONFIDENCE so the gate stops it and the reviewer knows where to look.
+    """
+    base, vat, total = report.base_amount, report.vat_amount, report.total_amount
+
+    if base is not None and vat is not None and total is not None:
+        if abs(base.value + vat.value - total.value) <= AMOUNT_TOLERANCE:
+            return report
+        # Which pair is right is unknowable here, so nothing is corrected — only
+        # flagged, below MIN_CONFIDENCE, which REQUIRED_FIELDS turns into a block.
+        confidence = failed_confidence()
+        return _noted(
+            report,
+            "total_amount",
+            Checked[float](value=total.value, confidence=confidence),
+            f"amounts do not reconcile: {base.value:.2f} + {vat.value:.2f} != "
+            f"{total.value:.2f}; kept as read, total_amount confidence {confidence:.2f}",
+        )
+
+    if vat is None and base is not None and total is not None:
+        field, value = "vat_amount", round(total.value - base.value, 2)
+    elif total is None and base is not None and vat is not None:
+        field, value = "total_amount", round(base.value + vat.value, 2)
+    elif base is None and total is not None and vat is not None:
+        field, value = "base_amount", round(total.value - vat.value, 2)
+    else:
+        # Two or more missing: one equation cannot fill two unknowns.
+        return report
+
+    # A derived value is only as good as its weakest input.
+    confidence = min(f.confidence for f in (base, vat, total) if f is not None)
+    return _noted(
+        report,
+        field,
+        Checked[float](value=value, confidence=confidence),
+        f"{field} derived as {value:.2f} @{confidence:.2f} (base + vat = total)",
+    )
+
+
+def _noted(
+    report: ValidationReport, field: str, checked: Checked[float], note: str
+) -> ValidationReport:
+    """Set one field and append the note explaining it, for the reviewer."""
+    logger.info(note)
+    return report.model_copy(
+        update={field: checked, "notes": f"{report.notes.strip()} {note}".strip()}
+    )
 
 
 def _run_tool_calls(response: AIMessage) -> list[ToolMessage]:
@@ -126,6 +184,7 @@ def validate_document(
             report = invoke_with_retry(
                 structured_llm, [*messages, SHAPE_REQUEST], stage="validation (shaping)"
             )
+            report = _reconcile_amounts(report)
             shaping_span.set_outputs(validation_summary(report))
 
         stage_span.set_outputs(validation_summary(report))
