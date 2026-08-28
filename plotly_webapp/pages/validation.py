@@ -1,7 +1,8 @@
 import dash
 from dash import dcc, html
+from datetime import datetime
 
-from assets.api_calls.validation_api import get_validation_page_data
+from assets.api_calls.validation_api import get_process_messages, get_validation_page_data
 from components.cards.indicator_card.indicator_card import IndicatorCard
 from components.right_drawer.right_drawer import RightDrawer
 from components.page_header.page_header import PageHeader
@@ -20,11 +21,26 @@ documents_col_def = [
     {"field": "document_date", "headerName": "Data do Documento", "width": 150},
     {"field": "last_interaction_datetime", "headerName": "Data de Processamento", "width": 200},
     {"field": "last_interaction", "headerName": "Ultima Interacao", "width": 180},
-    {"field": "is_financial", "headerName": "Financeiro", "width": 120},
+    {
+        "field": "is_financial",
+        "headerName": "Financeiro",
+        "width": 120,
+        "cellDataType": "text",
+        "valueFormatter": {
+            "function": "params.value ? 'Sim' : 'Não'"
+        },
+    },
     {"field": "issue", "headerName": "Issue", "minWidth": 180},
-    {"field": "owner", "headerName": "Owner", "minWidth": 180},
-    {"field": "reconciled", "headerName": "Reconciliado", "width": 120},
-    {"field": "status", "headerName": "Estado", "width": 120, "cellRenderer": "Status"},
+    {"field": "owner", "headerName": "Owner", "minWidth": 150},
+    {
+        "field": "reconciled",
+        "headerName": "Reconciliado",
+        "width": 150,
+        "valueFormatter": {
+            "function": "params.value ? 'Sim' : 'Não'"
+        },
+    },
+    {"field": "status", "headerName": "Estado", "width": 280, "cellRenderer": "SAPStatus"},
 ]
 
 
@@ -38,6 +54,82 @@ def trend(delta):
 
 def fmt_pct(value):
     return f"{value:g}%"
+
+
+def _format_message_timestamp(value: str) -> str:
+    if not value:
+        return ""
+
+    normalized = value.replace("Z", "+00:00")
+    try:
+        parsed = datetime.fromisoformat(normalized)
+    except ValueError:
+        return value
+
+    return parsed.strftime("%Y-%m-%d %H:%M")
+
+
+def _message_bubble(message: dict) -> html.Div:
+    sender = (message.get("sender") or "").strip()
+    recipient = (message.get("recipient") or "").strip()
+    content = message.get("content") or ""
+    timestamp = message.get("timestamp") or ""
+    is_system_sender = sender.casefold() == "system"
+
+    return html.Div(
+        className="validation__message validation__message--system" if is_system_sender else "validation__message validation__message--user",
+        children=[
+            html.Div(content, className="validation__message-content"),
+            html.Div(_format_message_timestamp(timestamp), className="validation__message-timestamp"),
+        ],
+    )
+
+
+def _build_messages_section(messages: list[dict]) -> Section:
+    participants = []
+    for message in messages or []:
+        sender = (message.get("sender") or "").strip()
+        recipient = (message.get("recipient") or "").strip()
+        participant = recipient if sender.casefold() == "system" else sender
+        if participant and participant not in participants:
+            participants.append(participant)
+
+    top_line = " / ".join(participants) if participants else "Sem destinatário identificado"
+    message_children = (
+        [_message_bubble(message) for message in messages]
+        if messages
+        else [
+            html.Div(
+                "Sem mensagens para este processo.",
+                className="validation__message-empty",
+            )
+        ]
+    )
+
+    return Section(
+        title="Mensagens",
+        content=[
+            html.Div(
+                className="right-sidebar__content",
+                children=[
+                    html.Div(
+                        className="right-sidebar__meta-box validation__messages-shell",
+                        children=[
+                            html.Div(
+                                top_line,
+                                className="right-sidebar__message-participant body-sm",
+                            ),
+                            html.Div(
+                                className="right-sidebar__email-body-box validation__messages-box",
+                                children=message_children,
+                            ),
+                        ],
+                    ),
+                ],
+            )
+        ],
+        open=True,
+    )
 
 
 def layout():
@@ -173,12 +265,14 @@ def load_validation_content(_pathname):
         RightDrawer(
             drawer_id="validation-drawer",
             title="Comunicação em SAP",
+            children=[html.Div(id="validation-drawer-content")],
         ),
     ]
 
 
 @dash.callback(
     dash.Output("validation-drawer", "className"),
+    dash.Output("validation-drawer-content", "children"),
     dash.Input("validation-priority-processes-table", "selectedRows"),
     dash.Input("validation-drawer-close", "n_clicks"),
     prevent_initial_call=False,
@@ -187,8 +281,11 @@ def toggle_validation_drawer(selected_rows, close_clicks):
     triggered_id = dash.callback_context.triggered_id
 
     if triggered_id == "validation-drawer-close":
-        return "right-sidebar sidebar--collapsed"
+        return "right-sidebar sidebar--collapsed", dash.no_update
 
     if selected_rows:
-        return "right-sidebar"
-    return "right-sidebar sidebar--collapsed"
+        process_ref_no = selected_rows[0].get("reference_no")
+        messages = get_process_messages(str(process_ref_no)) if process_ref_no else []
+        return "right-sidebar", _build_messages_section(messages)
+
+    return "right-sidebar sidebar--collapsed", dash.no_update

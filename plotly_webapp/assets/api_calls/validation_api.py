@@ -49,6 +49,10 @@ def get_sap_processes():
     return _request("GET", "/validation/documents").json()
 
 
+def get_process_messages(process_ref_no: str) -> list[dict]:
+    return _request("GET", f"/validation/{process_ref_no}/messages").json()
+
+
 def get_validation_page_data(*, force_refresh: bool = False) -> dict:
     global _dashboard_cache, _dashboard_cache_expires_at
 
