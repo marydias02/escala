@@ -1,4 +1,4 @@
-from azure.identity import AzureCliCredential
+from azure.identity import AzureCliCredential, ClientSecretCredential
 from azure.storage.blob import BlobServiceClient
 from loguru import logger
 
@@ -7,7 +7,16 @@ from config.settings import settings
 if __name__ == "__main__":
     logger.info("🎯 Testing access to Azure Blob Storage")
 
-    credential = AzureCliCredential()
+    if settings.AZURE_FLG_USE_APP_REGISTRATION:
+        logger.info(f"Authenticating with app registration '{settings.AZURE_CLIENT_ID}'")
+        credential = ClientSecretCredential(
+            settings.AZURE_TENANT_ID,
+            settings.AZURE_CLIENT_ID,
+            settings.AZURE_CLIENT_SECRET,
+        )
+    else:
+        logger.info("Authenticating with the current `az login` session")
+        credential = AzureCliCredential()
 
     logger.info(f"Connecting to blob endpoint '{settings.BLOB_STORAGE_ENDPOINT}'")
     blob_service_client = BlobServiceClient(

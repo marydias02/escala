@@ -37,6 +37,9 @@ class Settings(BaseSettings):
     AZURE_TENANT_ID: Optional[str] = None
     AZURE_CLIENT_ID: Optional[str] = None
     AZURE_CLIENT_SECRET: Optional[str] = None
+    # When true, authenticate with the AZURE_* app registration (client-credentials)
+    # instead of the local `az login` session.
+    AZURE_FLG_USE_APP_REGISTRATION: bool = False
 
     # Authentication - Microsoft Graph (public client app registration, delegated
     # permissions, device-code sign-in — separate app registration from the
