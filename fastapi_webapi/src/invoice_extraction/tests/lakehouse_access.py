@@ -5,7 +5,7 @@ from loguru import logger
 
 from config.settings import settings
 
-TABLE_NAME = "MM"
+TABLE_NAME = "EKKO"
 
 if __name__ == "__main__":
     logger.info("🎯 Testing access to Azure Lakehouse")

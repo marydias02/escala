@@ -19,6 +19,11 @@ class Settings(BaseSettings):
     LAKEHOUSE_STORAGE_ENDPOINT: Optional[str] = None
     LAKEHOUSE_TABLES_PATH: Optional[str] = None
 
+    # Blob Storage (Azure Blob, invoice document access)
+    BLOB_STORAGE_ACCOUNT_NAME: Optional[str] = None
+    BLOB_STORAGE_ENDPOINT: Optional[str] = None
+    BLOB_CONTAINER_NAME: Optional[str] = None
+
     # Authentication - API Keys
     HASHED_API_KEY: Optional[str] = None
 
@@ -32,6 +37,9 @@ class Settings(BaseSettings):
     AZURE_TENANT_ID: Optional[str] = None
     AZURE_CLIENT_ID: Optional[str] = None
     AZURE_CLIENT_SECRET: Optional[str] = None
+    # When true, authenticate with the AZURE_* app registration (client-credentials)
+    # instead of the local `az login` session.
+    AZURE_FLG_USE_APP_REGISTRATION: bool = False
 
     # Authentication - Microsoft Graph (public client app registration, delegated
     # permissions, device-code sign-in — separate app registration from the
@@ -40,7 +48,7 @@ class Settings(BaseSettings):
     GRAPH_CLIENT_ID: Optional[str] = None
 
     # Used for client-credentials auth (app-only) to read a shared mailbox - PRD
-    # Not needed for tests using delegated auth 
+    # Not needed for tests using delegated auth
     GRAPH_CLIENT_SECRET: Optional[str] = None
     GRAPH_MAILBOX: Optional[str] = None
 
