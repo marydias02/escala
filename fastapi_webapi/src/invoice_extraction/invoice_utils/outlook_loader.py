@@ -14,6 +14,7 @@ Auth (delegated device-code, or app-only client-credentials) is via
 `/me/` or `/users/{mailbox}/`.
 """
 
+import re
 from datetime import datetime
 from email.utils import parseaddr
 from pathlib import Path
@@ -52,6 +53,11 @@ def _extract_email_address(sender: dict | None) -> str:
         return address
     _, parsed = parseaddr(str(sender))
     return parsed.strip()
+
+
+def _collapse_blank_lines(text: str) -> str:
+    """Squash runs of consecutive newlines down to a single one, for readability."""
+    return re.sub(r"\n{2,}", "\n", text.replace("\r\n", "\n"))
 
 
 def _received_date_iso(message: dict) -> str:
@@ -170,7 +176,7 @@ async def fetch_inbox_emails(
             if message.get("hasAttachments"):
                 attachments = await _list_attachments(client, headers, message_id)
 
-            body = (message.get("body") or {}).get("content") or ""
+            body = _collapse_blank_lines((message.get("body") or {}).get("content") or "")
             loaded_emails.append(
                 LoadedEmail(
                     sender_email=_extract_email_address(message.get("from")),
