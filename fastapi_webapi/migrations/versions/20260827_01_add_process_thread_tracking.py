@@ -18,8 +18,10 @@ email_status and email_action are the two axes of `decisions.decide_email`, and
 are stored separately because they answer different questions. email_action is
 what the email warrants ("Retornado ao Fornecedor", ...) and is a LIST: one email
 can owe a supplier reply for one document and a treasury forward for another.
-email_status is the process lifecycle — "Aberto" or "Fechado" — i.e. whether
-anyone still owes the email anything.
+email_status is the process lifecycle — whether anyone still owes the email
+anything: "Fechado" when nothing is outstanding, "Aberto" when something is, and
+"Requer Ação" when something is outstanding on a thread that has escalated, so
+only a human can move it on.
 
 ARRAY(Text) for email_action mirrors fct_documents.alerts_list. Unlike that
 column it is nullable with no '{}' default: fct_processes has existing rows, and
