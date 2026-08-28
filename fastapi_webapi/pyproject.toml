@@ -37,6 +37,7 @@ dependencies = [
 dev = [
     "alembic>=1.18.5",
     "psycopg2-binary>=2.9.12",
+    "pytest>=9.1.1",
     "ruff>=0.14.3",
 ]
 
@@ -54,6 +55,9 @@ generate_api_key = "api.development:generate_api_key"
 [build-system]
 requires = ["uv_build>=0.9.6,<0.10.0"]
 build-backend = "uv_build"
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+
 [tool.ruff]
 line-length = 120
 

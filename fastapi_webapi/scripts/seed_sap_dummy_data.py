@@ -8,7 +8,8 @@ confidence >= config.BUYER_REPLY_MIN_CONFIDENCE. This exercises RESOLVE, APPLY
 REPLY and RECONCILE without needing a real SAP feed. Also seeds a
 dim_suppliers / dim_business_units row for every supplier_id / bu_id used
 above, so joins against those master-data tables (e.g. validation_repository)
-resolve to a name instead of NULL.
+resolve to a name instead of NULL, plus the fct_purchase_orders rows for the
+PO codes the extraction pipeline actually found in the traced documents.
 
 Only appends rows — does not touch or clear existing data.
 
@@ -321,24 +322,25 @@ suppliers: list[dict] = [
         "name": name,
         "vat": vat,
         "country": country,
-        "preferred_language": "pt",
+        "preferred_language": language,
         "is_financial": is_financial,
     }
-    for supplier_id, name, vat, country, is_financial in (
-        ("100000001", "Petrogal, S.A.", "PT500697370", "PT", 0),
-        ("100000002", "Realizamus, Lda", "PT901567523", "PT", 1),
-        ("100000003", "CTT Expresso - Serviços Postais e Logística, S.A.", "PT511224826", "PT", 0),
-        ("100000004", "Emater, S.A.", "PT509225918", "PT", 1),
-        ("100000005", "Sociedade Portuguesa de Autores", "PT500257841", "PT", 0),
-        ("100000006", "Broekman Shipping B.V.", "NL800822274B01", "NL", 0),
-        ("100000007", "NILO - Soc. Prod. e Com. de Refrig e Bebidas, SA", "PT268786202", "PT", 2),
-        ("100000008", "SGS Portugal, Sociedade Geral de Superintendência, S.A.", "PT500417660", "PT", 0),
-        ("100000009", "Complexo de Carga do Aeroporto Humberto Delgado", "PT504785753", "PT", 0),
-        ("100000010", "José Gonçalves Cerqueira (Navel - Açores), Lda", "PT512012962", "PT", 0),
-        ("100000011", "Carxop - Barcelos & Florença, Lda", "PT511248547", "PT", 0),
-        ("100000012", "Iberlim - Higiene e Sustentabilidade Ambiental, S.A.", "PT502117281", "PT", 0),
-        ("100000013", "Transporte Barbosa Semedo Sociedade Unipessoal Lda", "286861798", "CV", 0),
-        ("100000014", "SOCOL Sociedade Comercial", "PT200184440", "PT", 0),
+    for supplier_id, name, vat, country, language, is_financial in (
+        ("100000001", "Petrogal, S.A.", "PT500697370", "PT", "pt", 0),
+        ("100000002", "Realizamus, Lda", "PT901567523", "PT", "pt", 1),
+        ("100000003", "CTT Expresso - Serviços Postais e Logística, S.A.", "PT511224826", "PT", "pt", 0),
+        ("100000004", "Emater, S.A.", "PT509225918", "PT", "pt", 1),
+        ("100000005", "Sociedade Portuguesa de Autores", "PT500257841", "PT", "pt", 0),
+        ("100000006", "Broekman Shipping B.V.", "NL800822274B01", "NL", "pt", 0),
+        ("100000007", "NILO - Soc. Prod. e Com. de Refrig e Bebidas, SA", "PT268786202", "PT", "pt", 2),
+        ("100000008", "SGS Portugal, Sociedade Geral de Superintendência, S.A.", "PT500417660", "PT", "pt", 0),
+        ("100000009", "Complexo de Carga do Aeroporto Humberto Delgado", "PT504785753", "PT", "pt", 0),
+        ("100000010", "José Gonçalves Cerqueira (Navel - Açores), Lda", "PT512012962", "PT", "pt", 0),
+        ("100000011", "Carxop - Barcelos & Florença, Lda", "PT511248547", "PT", "pt", 0),
+        ("100000012", "Iberlim - Higiene e Sustentabilidade Ambiental, S.A.", "PT502117281", "PT", "pt", 0),
+        ("100000013", "Transporte Barbosa Semedo Sociedade Unipessoal Lda", "286861798", "CV", "pt", 0),
+        ("100000014", "SOCOL Sociedade Comercial", "PT200184440", "PT", "pt", 0),
+        ("100000015", "CA Indosuez Wealth (Europe) - société anonyme", "LU19578473", "LU", "en", 1),
     )
 ]
 
@@ -356,14 +358,45 @@ business_units: list[dict] = [
 ]
 
 
+# -- Purchase orders: the po_code / supplier / business unit / value / currency
+# combinations extracted by the pipeline itself, read out of the MLflow traces in
+# mlflow.db (the `4-extraction` and `5-validation` spans' purchase_order / po_list
+# fields). Real codes, so `po_exists` (invoice_extraction/tools/po_confirmation.py)
+# returns True for the documents already in the trace store instead of routing
+# every one of them to review as an unknown PO. supplier_id / bu_id are the ids the
+# suppliers / business_units lists above give those same trace entities.
+purchase_orders: list[dict] = [
+    {
+        "po_code": po_code,
+        "supplier_id": supplier_id,
+        "bu_id": bu_id,
+        "date": date,
+        "value": value,
+        "currency": currency,
+    }
+    for po_code, supplier_id, bu_id, date, value, currency in (
+        # Broekman Shipping B.V. -> GSLines Transportes Maritimos
+        ("5000355882", "100000006", "0002", datetime(2026, 7, 2).date(), 104.00, "EUR"),
+        # José Gonçalves Cerqueira (Navel - Açores) -> GSLines Transportes Maritimos
+        ("4500026805", "100000010", "0002", datetime(2026, 7, 2).date(), 654.00, "EUR"),
+        # Transporte Barbosa Semedo -> Marmod Cabo Verde
+        ("5000363444", "100000013", "0005", datetime(2026, 6, 26).date(), 14000.00, "CVE"),
+        # NILO - Soc. Prod. e Com. de Refrig e Bebidas -> Marmod Cabo Verde
+        ("4700037142", "100000007", "0005", datetime(2026, 6, 23).date(), 550.00, "CVE"),
+    )
+]
+
+
 async def main() -> None:
     n_suppliers = await insert_rows("dim_suppliers", suppliers)
     n_bus = await insert_rows("dim_business_units", business_units)
+    n_pos = await insert_rows("fct_purchase_orders", purchase_orders)
     n_processes = await insert_rows("sap_processes", processes)
     n_messages = await insert_rows("sap_messages", messages)
     logger.info(
         f"Inserted {n_suppliers} dim_suppliers, {n_bus} dim_business_units, "
-        f"{n_processes} sap_processes and {n_messages} sap_messages rows."
+        f"{n_pos} fct_purchase_orders, {n_processes} sap_processes and "
+        f"{n_messages} sap_messages rows."
     )
 
 
