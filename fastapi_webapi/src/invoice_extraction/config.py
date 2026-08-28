@@ -5,6 +5,7 @@ pipelines read their configuration from one place. Application-wide settings
 (credentials, model names) stay in `config.settings`.
 """
 
+import math
 from pathlib import Path
 
 BASE_DIR = Path(__file__).parent
@@ -66,6 +67,17 @@ PARSER_KWARGS = {
 # correct but some ambiguity" band. Money-moving data, so ambiguity goes to a
 # human.
 MIN_CONFIDENCE = 0.7
+
+
+def failed_confidence(min_confidence: float = MIN_CONFIDENCE) -> float:
+    """The confidence to stamp on a field a deterministic check has failed.
+    Always the nearest 0.05 below the minimum confidence"""
+    return round(math.floor((min_confidence - 1e-12) / 0.05) * 0.05, 2)
+
+
+# A thread on its Nth message has not converged: the earlier exchanges did not
+# land, so a human reads it rather than the supplier being chased again.
+THREAD_ESCALATION_COUNT = 3
 
 # -- Tracing (MLflow) ------------------------------------------------------
 # Development instrumentation only; see `invoice_extraction.tracing`. The

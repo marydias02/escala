@@ -213,6 +213,7 @@ class IngestionPipeline:
             number_annexes=len(email.attachments),
             number_chunked_pdfs=result.number_chunked_pdfs,
             message_id=email.message_id,
+            thread_id=email.thread_id,
         )
 
         # Written last: a crash part-way through leaves this file missing, so

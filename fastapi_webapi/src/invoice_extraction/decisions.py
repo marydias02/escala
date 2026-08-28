@@ -9,19 +9,29 @@ Two layers, deliberately separated:
 
 The suppression in step 2 is why step 1's answers are not final: a duplicate
 invoice asks for a reply on its own, but if the same email also carried the
-original there is nothing to ask for. Any document reaching "Ingerir em SAP"
-cancels every reply in that email.
+original there is nothing to ask for.
+
+Step 2 suppresses on a second ground: a thread that has run to its
+THREAD_ESCALATION_COUNT-th message has not converged, so anything still owing an
+outbound message is parked in the inbox for a human instead of being chased
+again. See `_downgrade_to_inbox`.
+
+Separately, `EmailDecision.status` reads the rolled-up actions back as a
+lifecycle state — whether the process is still owed something (`Aberto`) or is
+finished (`Fechado`). An email still owed something on an escalated thread is
+`Requer Ação` instead: it will get no further automatic reply, so it is waiting
+on a human rather than on the pipeline.
 
 The full case matrix lives in `DOCUMENT_RULES` and `decide_email` below so the
 business rules can be read without reading the pipeline.
 """
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import Final, Literal, Optional
 
 from loguru import logger
 
-from invoice_extraction.config import MIN_CONFIDENCE
+from invoice_extraction.config import MIN_CONFIDENCE, THREAD_ESCALATION_COUNT
 from invoice_extraction.extraction_pipeline import PipelineResult
 from invoice_extraction.ingestion_pipeline import EmailIngestionResult
 from invoice_extraction.models import (
@@ -68,8 +78,8 @@ DocumentAction = Literal[
 
 EMAIL_ARCHIVE: Final = "Arquivar" #Archive
 EMAIL_INBOX: Final = "Manter na Caixa de Entrada" #Keep in Inbox
-EMAIL_REPLY: Final = "Responder ao fornecedor" #Reply to Supplier
-EMAIL_TREASURY: Final = "Encaminhar para tesouraria" #Forward to Treasury
+EMAIL_REPLY: Final = "Retornado ao Fornecedor" #Reply to Supplier
+EMAIL_TREASURY: Final = "Encaminhar para Tesouraria" #Forward to Treasury
 
 EmailAction = Literal[
     EMAIL_ARCHIVE,
@@ -92,6 +102,22 @@ EMAIL_ACTION_RULES: Final = (
 # An email whose documents are ALL in this set is finished — nothing is owed to
 # anyone, so it leaves the inbox.
 _ARCHIVABLE: Final = (INGEST, IGNORE)
+
+# Document actions that send something outward, and so are what the thread
+# escalation suppresses.
+_OUTBOUND: Final = (REPLY, TREASURY)
+
+# The process lifecycle — a SEPARATE axis from the actions above. `actions` says
+# what the email warrants; status says whether anyone still owes it something.
+EMAIL_STATUS_OPEN: Final = "Aberto"
+EMAIL_STATUS_CLOSED: Final = "Fechado"
+EMAIL_STATUS_ACTION_REQUIRED: Final = "Requer Ação"
+
+EmailStatus = Literal[
+    EMAIL_STATUS_OPEN,
+    EMAIL_STATUS_CLOSED,
+    EMAIL_STATUS_ACTION_REQUIRED,
+]
 
 # Reply wording, in Portuguese, per reason. Only reasons that can produce a
 # REPLY appear here. Each is the "Motivo" clause slotted into REPLY_LETTER_TEMPLATE
@@ -324,7 +350,13 @@ class EmailDecision:
 
     `documents` holds the per-document actions, and is what is written to
     `fct_documents.action`.
-    """
+
+    `thread_escalated` records that the thread had run to
+    THREAD_ESCALATION_COUNT when this email was decided. It cannot be read back
+    from `actions` — an escalated email looks exactly like an ordinary inbox one
+    — so it is carried here for `status`.
+
+    `out_of_scope` says the email carried no document and is not invoice-related."""
 
     actions: list[EmailAction]
     reason: str
@@ -332,6 +364,8 @@ class EmailDecision:
     reply_lines: list[str] = field(default_factory=list)
     treasury_lines: list[str] = field(default_factory=list)
     intent: Optional[EmailIntent] = None
+    thread_escalated: bool = False
+    out_of_scope: bool = False
 
     @property
     def should_reply(self) -> bool:
@@ -348,6 +382,23 @@ class EmailDecision:
     @property
     def should_forward_to_treasury(self) -> bool:
         return EMAIL_TREASURY in self.actions
+
+    @property
+    def status(self) -> EmailStatus:
+        """Whether anyone still owes this email something. THE status rule
+
+        Closed wins over escalation, out_of_scope included. An email that IS
+        outstanding on an escalated thread is "Requer Ação" rather than "Aberto".
+        """
+        if (
+            EMAIL_ARCHIVE in self.actions
+            or self.actions == [EMAIL_TREASURY]
+            or self.out_of_scope
+        ):
+            return EMAIL_STATUS_CLOSED
+        if self.thread_escalated:
+            return EMAIL_STATUS_ACTION_REQUIRED
+        return EMAIL_STATUS_OPEN
 
     @property
     def treasury_body(self) -> str:
@@ -468,7 +519,7 @@ def decide_document(
 
     Cases (see also the tables agreed with the business):
 
-    B0/C0     any non-original whose original is in the email -> Left in Inbox
+    B0/C0     any non-original whose original is in the email -> Ignore (original exists)
     B1/B5/B7  invoice-like + original, confident            -> Ingest in SAP
     B1/B5/B7  invoice-like + original, NOT confident        -> Validate Manually
     B2        invoice-like + proforma                      -> reply (proforma)
@@ -507,18 +558,11 @@ def decide_document(
     state = _state_of(result.classification)
 
     # --- B0/C0: we already hold the original of this document --------------
-    # Ahead of every type rule, because it does not depend on them: whatever a
-    # duplicate is a duplicate OF, and whatever becomes of that original, a
-    # second copy is not ours to act on twice. Two copies of one receipt send a
-    # single receipt to treasury; a copy of an invoice is not requested back from
-    # the supplier who already sent it.
-    #
     # Matched on (type, number): numbering is per document series, so an invoice
     # and a receipt may share a number without being the same document.
     #
     # This is why `document_number` is read at CLASSIFICATION: a copy never
-    # reaches extraction, so its number exists here only because every document
-    # is asked for one.
+    # reaches extraction.
     if state != "original" and original_keys:
         number = normalize_document_number(document_number_of(result.classification))
         if number is not None and (doc_type, number) in original_keys:
@@ -604,6 +648,48 @@ def _dedupe_lines_for(decisions: list[DocumentDecision], action: DocumentAction)
     return lines
 
 
+def _thread_escalated(thread_message_count: Optional[int]) -> bool:
+    """Whether this email is deep enough into its thread to stop chasing.
+
+    None when Graph gave us no conversationId — an email we cannot place in a
+    thread is treated as the first of one.
+    """
+    return (
+        thread_message_count is not None
+        and thread_message_count >= THREAD_ESCALATION_COUNT
+    )
+
+
+def _downgrade_to_inbox(
+    decisions: list[DocumentDecision], thread_message_count: Optional[int]
+) -> list[DocumentDecision]:
+    """On a thread's Nth message, park what would be sent outward.
+
+    N rounds of asking the supplier — or of forwarding to treasury — have not
+    settled this thread, so anything still owing an outbound message goes to a
+    human instead. INGEST/MANUAL/IGNORE are untouched.
+
+    `reply_text` is dropped along with the action.
+    """
+    if not _thread_escalated(thread_message_count):
+        return decisions
+
+    return [
+        replace(
+            decision,
+            action=INBOX,
+            reason=(
+                f"{decision.reason}; thread on message "
+                f"{thread_message_count}, not chased further"
+            ),
+            reply_text=None,
+        )
+        if decision.action in _OUTBOUND
+        else decision
+        for decision in decisions
+    ]
+
+
 def roll_up_actions(decisions: list[DocumentDecision]) -> list[EmailAction]:
     """The email-level actions its documents add up to. THE roll-up rule.
 
@@ -654,12 +740,18 @@ def decide_email(
     ingestion: EmailIngestionResult,
     extractions: list[PipelineResult],
     intent: Optional[EmailIntent] = None,
+    thread_message_count: Optional[int] = None,
 ) -> EmailDecision:
     """Decide one email: per-document actions plus the single reply, if any.
 
     `intent` is the body classification, and is required only for the
     no-usable-PDF cases (A1/A2) — pass None otherwise and those cases fall back
     to leaving the email in the inbox.
+
+    `thread_message_count` is this email's position in its thread. From
+    THREAD_ESCALATION_COUNT on, the thread has not converged: nothing more is
+    sent outward, and everything that would have been goes to a human instead.
+    Pass None (the default) to decide an email without thread context.
 
     Cases:
 
@@ -673,17 +765,29 @@ def decide_email(
     (`original_document_keys`), so a duplicate whose original is in the same
     email is filed away rather than acted on. A duplicate with no matching
     original still gets its reply.
+
+    The thread escalation cuts across every case that would send something
+    outward — the A1/A2 reply below, and any document reaching REPLY or TREASURY.
+    It is also recorded on every decision as `thread_escalated`, which is what
+    turns an otherwise-open status into "Requer Ação".
     """
+    escalated = _thread_escalated(thread_message_count)
+
     # --- A3: ingestion itself failed — nothing was ever read. --------------
     if ingestion.status == "failed":
         return EmailDecision(
             actions=[EMAIL_INBOX],
             reason=f"ingestion failed: {ingestion.message or 'unknown error'}",
+            thread_escalated=escalated,
         )
 
     # --- A4: already processed; the earlier run owns the decision. ---------
     if ingestion.status == "skipped":
-        return EmailDecision(actions=[EMAIL_INBOX], reason="already processed")
+        return EmailDecision(
+            actions=[EMAIL_INBOX],
+            reason="already processed",
+            thread_escalated=escalated,
+        )
 
     # --- A1/A2: no usable PDF came out of this email. ----------------------
     # Both cases ask the same question of the body, so they share a branch; the
@@ -700,6 +804,7 @@ def decide_email(
             return EmailDecision(
                 actions=[EMAIL_INBOX],
                 reason="PDFs reported but no documents extracted",
+                thread_escalated=escalated,
             )
 
         # Only an invoice-related email with NO link is the supplier's mistake.
@@ -711,12 +816,24 @@ def decide_email(
                 actions=[EMAIL_INBOX],
                 reason=f"{reason} (body not classified)",
                 intent=None,
+                thread_escalated=escalated,
             )
 
         is_invoice = intent.is_invoice_related.value
         has_link = intent.has_invoice_link.value
 
         if is_invoice and not has_link:
+            if escalated:
+                return EmailDecision(
+                    actions=[EMAIL_INBOX],
+                    reason=(
+                        f"{reason}; body is invoice-related with no link; thread on "
+                        f"message {thread_message_count}, not chased further"
+                    ),
+                    intent=intent,
+                    thread_escalated=escalated,
+                )
+
             return EmailDecision(
                 actions=[EMAIL_REPLY],
                 reason=f"{reason}; body is invoice-related with no link",
@@ -725,11 +842,22 @@ def decide_email(
             )
 
         if is_invoice and has_link:
-            detail = "body is invoice-related but links to the document"
-        else:
-            detail = "body is not invoice-related"
+            return EmailDecision(
+                actions=[EMAIL_INBOX],
+                reason=f"{reason}; body is invoice-related but links to the document",
+                intent=intent,
+                thread_escalated=escalated,
+            )
+
+        # Out of scope: no document, and the body is not about one. The pipeline
+        # has nothing further to do, so the process is finished even though the
+        # email stays in the inbox for a human to read.
         return EmailDecision(
-            actions=[EMAIL_INBOX], reason=f"{reason}; {detail}", intent=intent
+            actions=[EMAIL_INBOX],
+            reason=f"{reason}; body is not invoice-related",
+            intent=intent,
+            thread_escalated=escalated,
+            out_of_scope=True,
         )
 
     # --- Documents exist: decide each, then roll up. -----------------------
@@ -737,7 +865,10 @@ def decide_email(
     # same set — a duplicate is filed away inside decide_document, not corrected
     # afterwards.
     original_keys = original_document_keys(extractions)
-    decisions = [decide_document(result, original_keys) for result in extractions]
+    decisions = _downgrade_to_inbox(
+        [decide_document(result, original_keys) for result in extractions],
+        thread_message_count,
+    )
 
     return EmailDecision(
         actions=roll_up_actions(decisions),
@@ -745,4 +876,5 @@ def decide_email(
         documents=decisions,
         reply_lines=_dedupe_lines_for(decisions, REPLY),
         treasury_lines=_dedupe_lines_for(decisions, TREASURY),
+        thread_escalated=escalated,
     )
