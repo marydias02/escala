@@ -19,6 +19,11 @@ class Settings(BaseSettings):
     LAKEHOUSE_STORAGE_ENDPOINT: Optional[str] = None
     LAKEHOUSE_TABLES_PATH: Optional[str] = None
 
+    # Blob Storage (Azure Blob, invoice document access)
+    BLOB_STORAGE_ACCOUNT_NAME: Optional[str] = None
+    BLOB_STORAGE_ENDPOINT: Optional[str] = None
+    BLOB_CONTAINER_NAME: Optional[str] = None
+
     # Authentication - API Keys
     HASHED_API_KEY: Optional[str] = None
 
@@ -40,7 +45,7 @@ class Settings(BaseSettings):
     GRAPH_CLIENT_ID: Optional[str] = None
 
     # Used for client-credentials auth (app-only) to read a shared mailbox - PRD
-    # Not needed for tests using delegated auth 
+    # Not needed for tests using delegated auth
     GRAPH_CLIENT_SECRET: Optional[str] = None
     GRAPH_MAILBOX: Optional[str] = None
 
