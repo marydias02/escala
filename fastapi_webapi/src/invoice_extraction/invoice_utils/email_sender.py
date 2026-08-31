@@ -21,12 +21,16 @@ See https://learn.microsoft.com/en-us/graph/api/message-reply and
 https://learn.microsoft.com/en-us/graph/api/message-forward.
 """
 
+import asyncio
 from dataclasses import dataclass
 from typing import Literal, Optional
 
 import httpx
 
 from utils.graph_auth import GRAPH_BASE, get_graph_token, graph_user_path
+
+MAX_SEND_ATTEMPTS = 3
+RETRY_BACKOFF_SECONDS = 2.0
 
 
 @dataclass
@@ -38,12 +42,28 @@ class SendResult:
 
 
 async def _post(url: str, json: dict) -> httpx.Response:
+    """POST to Graph, retrying transient failures (5xx, timeouts, connection
+    errors) with backoff. A 4xx is a permanent failure and raised immediately
+    """
     token = await get_graph_token()
     headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
-    async with httpx.AsyncClient(timeout=30) as client:
-        response = await client.post(url, headers=headers, json=json)
-        response.raise_for_status()
-        return response
+
+    for attempt in range(1, MAX_SEND_ATTEMPTS + 1):
+        try:
+            async with httpx.AsyncClient(timeout=30) as client:
+                response = await client.post(url, headers=headers, json=json)
+                response.raise_for_status()
+                return response
+        except httpx.HTTPStatusError as exc:
+            if exc.response.status_code < 500 or attempt == MAX_SEND_ATTEMPTS:
+                raise
+        except (httpx.TimeoutException, httpx.TransportError):
+            if attempt == MAX_SEND_ATTEMPTS:
+                raise
+
+        await asyncio.sleep(RETRY_BACKOFF_SECONDS * attempt)
+
+    raise AssertionError("unreachable")  # loop always returns or raises
 
 
 async def reply_to_supplier(message_id: str, subject: str, comment: str) -> SendResult:

@@ -384,12 +384,25 @@ class EmailPipeline:
                     statuses[filename] = outcome
 
         if result.decision.should_forward_to_treasury and result.decision.treasury_body:
+            treasury_email = settings.TREASURY_EMAIL or ""
+            treasury_subject = f"Documentos para tesouraria - {manifest.get('email_subject', '')}"
             send_result = await forward_to_treasury(
                 message_id=message_id,
-                to=settings.TREASURY_EMAIL or "",
-                subject=f"Documentos para tesouraria - {manifest.get('email_subject', '')}",
+                to=treasury_email,
+                subject=treasury_subject,
                 comment=result.decision.treasury_body,
             )
+            if send_result.status == "sent":
+                print(
+                    f"  📧 Forwarded to treasury {treasury_email!r} — "
+                    f"subject={treasury_subject!r}"
+                )
+            else:
+                print(
+                    f"  ⚠️  Forward to treasury {treasury_email!r} FAILED "
+                    f"({send_result.error}) — subject={treasury_subject!r}"
+                )
+            print(f"            body={result.decision.treasury_body!r}")
             outcome = "Comunicado" if send_result.status == "sent" else "Criado"
             for filename, decision in decisions_by_file.items():
                 if decision.action == TREASURY:
