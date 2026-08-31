@@ -6,25 +6,31 @@ description of the existing pipeline (thresholds, gating rules, routing matrix),
 
 ## What this module does
 
-The module turns raw supplier emails (`.msg`) into routed, structured accounting documents.
-It is organized as two pipelines composed by one orchestrator:
+The module turns supplier emails fetched live from Outlook (via Microsoft Graph) into routed,
+structured accounting documents. It is organized as two pipelines composed by one orchestrator:
 
 - **Ingestion** (`ingestion_pipeline.py`) — `LOAD → SEGMENT → SPLIT → PERSIST`
-  Parses one `.msg` file, uses an LLM to find document boundaries inside each PDF attachment
-  (an attachment can contain several distinct accounting documents back to back), splits it into
-  one PDF per document, and writes `email_content.json` + the split PDFs to
-  `docs/processed_emails/<email subject>/`. Deterministic page-count validation checks the
-  LLM's segmentation before it's trusted.
+  Fetches emails from the inbox (`invoice_utils/outlook_loader.py`), uses an LLM to find document
+  boundaries inside each PDF attachment (an attachment can contain several distinct accounting
+  documents back to back), splits it into one PDF per document, and writes `email_content.json` +
+  the split PDFs to `docs/processed_emails/<email subject>/`. Deterministic page-count validation
+  checks the LLM's segmentation before it's trusted. Dedup happens once, upstream in
+  `email_pipeline.main()`, keyed on `message_id` — the loader is told which messages to skip so it
+  never re-downloads attachments for an email already in the database.
 
 - **Extraction** (`extraction_pipeline.py`) — `CLASSIFY → EXTRACT → VALIDATE`
   Runs on one already-split PDF at a time. Classifies the document type/state/number, decides
   (deterministically) whether it's worth extracting, pulls out the structured fields, and
   cross-checks them against a parsed-text baseline to produce a `ValidationReport` with a
-  confidence score per field.
+  confidence score per field. Validation also resolves `supplier_id`/`bu_id` against the SAP
+  master data (`dim_suppliers` / `dim_business_units`) — VAT-first, name-fallback — so routing can
+  tell a genuine registry miss from a low-confidence read.
 
 - **Orchestration** (`email_pipeline.py`) — ties the two together per email: ingest → extract
-  each PDF the email produced → make one email-level routing decision
-  (`decisions.py`) → persist `fct_processes` / `fct_documents` rows to Postgres.
+  each PDF the email produced → make one email-level routing decision (`decisions.py`, aware of
+  thread position — see below) → persist `fct_processes` / `fct_documents` /
+  `fct_document_first_action` rows to Postgres, then send the supplier reply / treasury forward
+  those decisions call for.
 
 - **SAP booking** (`sap_pipeline.py`) — a separate, standalone pipeline: bulk-books every
   `fct_documents` row at `action = "Ingerir em SAP", status = "Criado"`, regardless of which
@@ -39,14 +45,18 @@ Supplier / Forward to Treasury / Validate Manually / Keep in Inbox / Ignore — 
 an **email** can warrant several `EmailAction`s at once (Reply to supplier / Forward to treasury /
 Keep in Inbox / Archive), rolled up from its documents' actions. Documents are matched against the
 other originals in the same email by `(document_type, document_number)` so a duplicate/proforma is
-filed away rather than acted on twice, and a document from a PO-required supplier is checked for a
-resolvable purchase order before being booked. See [process.html](process.html) for the full case
-matrix.
+filed away rather than acted on twice, and a document from a supplier whose `is_financial` flag
+requires one is checked for a resolvable purchase order before being booked. A separate lifecycle
+axis, `email_status` (Aberto / Fechado / Requer Ação), tracks whether anyone still owes the email
+something — an email whose thread has run `THREAD_ESCALATION_COUNT` messages deep without
+converging stops being chased automatically and is flagged `Requer Ação` for a human instead. See
+[process.html](process.html) for the full case matrix.
+
+SAP booking is intentionally **not** part of `email_pipeline` — see `sap_pipeline.py` below.
 
 
 ## Missing (NEXT STEPS)
 
-- True email ingestion - connect to outlook inbox instead of reading from folder
 - Saving intermediate emails after ingestion in client folder
 - Sending information to SAP - `sap_pipeline.py` still calls the `book_in_sap` stub; needs a real
   SAP integration, plus something to trigger the pipeline on a schedule (no cron/scheduler exists
@@ -64,15 +74,15 @@ invoice_extraction/
 ├── ingestion_pipeline.py       # Phase 1: LOAD -> SEGMENT -> SPLIT -> PERSIST
 ├── extraction_pipeline.py      # Phase 2: CLASSIFY -> EXTRACT -> VALIDATE
 ├── tracing.py                  # MLflow tracing setup (dev instrumentation, no-op if unset)
-├── loading/                    # .msg parsing (Outlook loader)
 ├── nodes/                      # One LLM call per pipeline stage (segment, classify, extract, validate, classify_email)
 ├── prompts/                    # Prompt templates for each node
 ├── models/                     # Pydantic schemas (InvoiceData, ValidationReport, EmailContent, ...)
-├── invoice_utils/               # PDF splitting/parsing helpers, reporting
+├── invoice_utils/               # Outlook/Graph loader, PDF splitting/parsing, email sender, reporting
 ├── tools/                      # LLM tools (VAT/PO registry lookups) bound during validation
 ├── docs/                       # Sample/test data — original emails, processed output, split PDFs
 ├── documentation/              # This folder
 ├── notebooks/                  # Exploratory notebooks
+├── tests/                      # Unit tests (decisions.py routing cases, etc.)
 └── output/                     # Batch run artifacts
 ```
 

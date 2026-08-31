@@ -368,15 +368,18 @@
       <span class="section-num">02 — Pipeline flow</span>
       <h2>End-to-end, per email</h2>
       <p class="section-desc">
-        <code>EmailPipeline.run(msg_path)</code>, in order. A DB dedup check (sender + subject +
-        reception date) runs first and skips already-processed emails before any LLM call.
+        <code>EmailPipeline.run(email)</code>, in order, driven by <code>main()</code>. Dedup runs
+        once per run, before fetch: every <code>message_id</code> already in
+        <code>fct_processes</code> is collected (<code>_processed_message_ids</code>) and passed to
+        <code>fetch_inbox_emails</code> as <code>skip_message_ids</code>, so a known message is
+        skipped by the Graph loader itself — no attachment download, no LLM call.
       </p>
     </div>
     <div class="flow">
       <div class="flow-stage">
         <span class="stage-tag">Ingest</span>
         <h4>Load &amp; segment</h4>
-        <p>Parse <code>.msg</code>, find document boundaries per PDF attachment.</p>
+        <p>Fetch from Outlook via Graph, find document boundaries per PDF attachment.</p>
         <code>ingestion_pipeline.py</code>
       </div>
       <div class="flow-arrow">→</div>
@@ -424,10 +427,10 @@
     <div class="stage-card">
       <div class="stage-card-head">
         <span class="stage-badge">LOAD</span>
-        <h3>Parse the .msg</h3>
-        <span class="span-name mono">loading.load_msg</span>
+        <h3>Fetch from Outlook</h3>
+        <span class="span-name mono">invoice_utils.outlook_loader.fetch_inbox_emails</span>
       </div>
-      <p class="muted">Outlook <code>.msg</code> parsed into sender, subject, body, reception date and raw attachments (<code>loading/outlook_loader.py</code>).</p>
+      <p class="muted">Messages are pulled live via Microsoft Graph (app or delegated auth) into sender, subject, body, reception date, <code>message_id</code>, <code>thread_id</code> and raw attachments — including zip expansion, bounded by <code>MAX_ZIP_*</code> in <code>config.py</code>. The standalone <code>.msg</code> file loader has been removed; Graph is the only ingestion source now. <code>skip_message_ids</code> lets the loader skip downloading attachments for messages already in the database (see §02).</p>
     </div>
 
     <div class="stage-card">
@@ -462,12 +465,12 @@
         <h3>Write the manifest</h3>
         <span class="span-name mono">IngestionPipeline.ingest_email</span>
       </div>
-      <p>Writes <code>docs/processed_emails/&lt;sanitized subject&gt;/email_content.json</code> (sender, subject, body, reception date, annex/PDF counts) plus every split PDF. The manifest is written <strong>last</strong>, deliberately — it's the "done" marker <code>run()</code> checks before re-ingesting, so a crash mid-way leaves the email unmarked and it retries cleanly.</p>
+      <p>Writes <code>docs/processed_emails/&lt;sanitized subject&gt;/email_content.json</code> (sender, subject, body, reception date, <code>message_id</code>, <code>thread_id</code>, annex/PDF counts) plus every split PDF. <code>IngestionPipeline.run()</code> always ingests — there is no manifest/skip check at this layer any more. Dedup happens once, upstream, in <code>email_pipeline.main()</code>, keyed on <code>message_id</code> (see §02); a folder name collision (subjects collide more than filenames did, and every manual reprocess collides by definition) is resolved by <code>_unique_folder</code> suffixing <code>_2</code>, <code>_3</code>, ... rather than skipping.</p>
       <div class="config-ref">
         <span class="label">Config (config.py)</span>
-        <code>FORCE_REINGEST</code> — re-ingest even if a manifest exists (currently <code>True</code> in the checked-in default; set <code>False</code> for idempotent re-runs).<br>
         <code>MAX_FOLDER_NAME = 80</code> — folder names truncated (Windows' 260-char path cap).<br>
-        <code>INGEST_LIMIT</code> — cap emails processed per run (<code>None</code> = all); currently <code>1</code> for smoke testing.
+        <code>INGEST_LIMIT</code> — cap emails processed per run (<code>None</code> = all); currently <code>1</code> for smoke testing.<br>
+        <code>DEFAULT_FETCH_LIMIT</code> — how many messages <code>fetch_inbox_emails</code> pulls from Graph per run (currently <code>1</code>).
       </div>
     </div>
   </section>
@@ -530,8 +533,8 @@
         <h3>Cross-check &amp; correct</h3>
         <span class="span-name mono">nodes.validate_document · spans 5-validation / 5a-validation:tools / 5b-validation:shaping</span>
       </div>
-      <p>Produces the pipeline's final output, <code>ValidationReport</code> (<code>models/validation.py</code>) — the CORRECTED view (e.g. a swapped supplier/client is fixed here), each field a <code>Checked[T]</code> with <code>{value, confidence}</code>. Runs a tool-use loop (<code>5a-validation:tools</code>) that can independently call VAT/PO registry lookups (<code>tools/vat_registry.py</code>, <code>tools/po_confirmation.py</code>) before shaping the final structured report (<code>5b-validation:shaping</code>).</p>
-      <p class="muted">Naming note: <code>bu_name</code> / <code>bu_vat</code> in <code>ValidationReport</code> correspond to <code>client_name</code> / <code>client_vat</code> in <code>InvoiceData</code> — "BU" is the business unit being billed. <code>supplier_id</code> / <code>bu_id</code> are always <code>null</code> here by design; they're filled by a later registry lookup, not derivable from the document.</p>
+      <p>Produces the pipeline's final output, <code>ValidationReport</code> (<code>models/validation.py</code>) — the CORRECTED view (e.g. a swapped supplier/client is fixed here), each field a <code>Checked[T]</code> with <code>{value, confidence}</code>. Runs a tool-use loop (<code>5a-validation:tools</code>) that can independently call VAT/PO registry lookups (<code>tools/vat_registry.py</code>, <code>tools/po_confirmation.py</code>) before shaping the final structured report (<code>5b-validation:shaping</code>). After shaping, <code>nodes.validate.resolve_registry_ids</code> runs deterministically (no LLM) and fills <code>supplier_id</code>/<code>bu_id</code> from <code>dim_suppliers</code>/<code>dim_business_units</code> — VAT-first, name-fallback, since the registry (not the LLM) is the source of truth for id/name/VAT. Never raises: a failed lookup just leaves that party's id/name/vat as they were.</p>
+      <p class="muted">Naming note: <code>bu_name</code> / <code>bu_vat</code> in <code>ValidationReport</code> correspond to <code>client_name</code> / <code>client_vat</code> in <code>InvoiceData</code> — "BU" is the business unit being billed. <code>supplier_id</code> / <code>bu_id</code> are never read from the document itself — they only ever come from the registry lookup above, so a non-null VAT/name with a still-null id means "not found in the registry" (see §05).</p>
     </div>
   </section>
 
@@ -556,7 +559,7 @@
 
     <div class="stage-card">
       <h3 style="margin-bottom: var(--space-2);">REQUIRED_FIELDS (decisions.py)</h3>
-      <p class="muted">Every field here must be non-null and ≥ 0.7 confidence for the document to be auto-ingested. <code>supplier_id</code> / <code>bu_id</code> are intentionally excluded — the schema guarantees they are always null until the later registry lookup.</p>
+      <p class="muted">Every field here must be non-null and ≥ 0.7 confidence for the document to be auto-ingested. <code>supplier_id</code> / <code>bu_id</code> are checked separately, right below — a missing id means "not found in the registry", not "low confidence", so it gets its own blocker rather than being folded into this list.</p>
       <div class="field-grid">
         <span class="field-chip">supplier_vat</span>
         <span class="field-chip">bu_vat</span>
@@ -569,19 +572,30 @@
     </div>
 
     <div class="stage-card">
+      <h3 style="margin-bottom: var(--space-2);">Registry blockers — supplier_id / bu_id</h3>
+      <p><code>ingestion_blockers</code> also blocks when <code>supplier_id</code> (or <code>bu_id</code>) is still <code>null</code> after <code>resolve_registry_ids</code> (§04) despite a VAT or name having been read — i.e. the party could not be matched in <code>dim_suppliers</code> / <code>dim_business_units</code>. Same treatment as a low-confidence field: routes to <span class="action-pill action-manual">Validate Manually</span>, never to the supplier — a registry miss is ours to resolve, not theirs.</p>
+    </div>
+
+    <div class="stage-card">
       <h3 style="margin-bottom: var(--space-2);">Outcome of a blocked document</h3>
       <p>Any missing field or sub-threshold confidence produces a human-readable blocker string (e.g. <code>"total_amount confidence 0.62 &lt; 0.7"</code>) and the document routes to <span class="action-pill action-manual">Validate Manually</span> instead of <span class="action-pill action-ingest">Ingest in SAP</span> — never to the supplier, since the document itself may be fine and it is our reading of it that fell short.</p>
     </div>
 
     <div class="stage-card">
-      <h3 style="margin-bottom: var(--space-2);">PO check — now routes, not just alerts</h3>
-      <p><code>decisions.missing_pos</code> is a second, independent deterministic check — it can only disagree with the LLM's own tool-informed conclusion (formed with the same tools during validation) if the LLM got it wrong. When <code>tools.po_confirmation.supplier_requires_po(supplier_vat)</code> is true it returns one of three things, and each routes differently in <code>_ingest_or_escalate</code>:</p>
+      <h3 style="margin-bottom: var(--space-2);">PO check — is_financial-aware, routes rather than just alerting</h3>
+      <p><code>decisions.missing_pos</code> is a second, independent deterministic check — it can only disagree with the LLM's own tool-informed conclusion (formed with the same tools during validation) if the LLM got it wrong. What a PO on the document means depends on <code>tools.po_confirmation.supplier_is_financial(supplier_vat)</code>, read from <code>dim_suppliers.is_financial</code>:</p>
       <ul>
-        <li><code>None</code> — no PO required, or every PO on the document resolves via <code>po_exists()</code> → proceeds to <span class="action-pill action-ingest">Ingest in SAP</span>.</li>
-        <li><code>[]</code> — the supplier requires a PO and the document carries none → <span class="action-pill action-reply">Sent back to Supplier</span> ("Documento sem nota de encomenda...") — the supplier's omission, only they can fix it.</li>
+        <li><strong>logistics (0)</strong> — a PO is required; every one carried is checked against <code>po_exists()</code>.</li>
+        <li><strong>financial (1)</strong> — there should be no PO at all; any PO read is dropped as a likely misread (logged), never routes the document anywhere.</li>
+        <li><strong>both (2)</strong> — no PO is demanded, but any carried is still checked as usual.</li>
+      </ul>
+      <p>The function returns one of three things, and each routes differently in <code>_ingest_or_escalate</code>:</p>
+      <ul>
+        <li><code>None</code> — no PO required (financial supplier, or nothing carried by a non-requiring one), or every PO on the document resolves via <code>po_exists()</code> → proceeds to <span class="action-pill action-ingest">Ingest in SAP</span>.</li>
+        <li><code>[]</code> — a PO-requiring supplier (logistics or both) and the document carries none → <span class="action-pill action-reply">Sent back to Supplier</span> ("Documento sem nota de encomenda...") — the supplier's omission, only they can fix it.</li>
         <li>a non-empty list — PO references on the document that don't resolve → <span class="action-pill action-manual">Validate Manually</span> — ours to investigate, not the supplier's.</li>
       </ul>
-      <p class="muted"><code>build_alerts_list</code> calls the same <code>missing_pos</code> function, so an alert and its routing action can never disagree. A supplier VAT we never read is not a PO problem — it's already caught by the <code>REQUIRED_FIELDS</code> gate above.</p>
+      <p class="muted"><code>build_alerts_list</code> calls the same <code>missing_pos</code> function, so an alert and its routing action can never disagree. A supplier VAT we never read is not a PO problem — it's already caught by the <code>REQUIRED_FIELDS</code> gate above. The tools are invoked directly here (not via the LLM's tool calls), so the answer never depends on the LLM having actually called them during validation; a lookup failure is swallowed and logged rather than blocking routing.</p>
     </div>
   </section>
 
@@ -704,25 +718,70 @@
       (downgrading a REPLY when an INGEST was present in the same email) — that case is now handled earlier, by
       duplicate filing against <code>original_keys</code> (B0/C0 above).</p>
     </div>
+
+    <div class="stage-card">
+      <h3 style="margin-bottom: var(--space-2);">Thread escalation — when to stop chasing</h3>
+      <p><code>_thread_message_count</code> (email_pipeline.py) counts this email's position in its Graph
+      <code>conversationId</code> thread, queried once per email against <code>fct_processes.thread_id</code>. From
+      <code>THREAD_ESCALATION_COUNT</code> (currently <strong>3</strong>, config.py) on, the thread is considered
+      not to have converged, and <code>_downgrade_to_inbox</code> parks anything that would otherwise go
+      <span class="action-pill action-reply">outward</span> (REPLY or TREASURY, including the A1/A2 body-decided
+      reply) as <span class="action-pill action-inbox">Keep in Inbox</span> instead — a human reads it rather than
+      the supplier/treasury being chased a third time. <code>INGEST</code> / <code>MANUAL</code> / <code>IGNORE</code>
+      are untouched; only outbound actions are downgraded.</p>
+    </div>
+
+    <div class="stage-card">
+      <h3 style="margin-bottom: var(--space-2);">Email status — a separate lifecycle axis</h3>
+      <p><code>EmailDecision.status</code> answers a different question than <code>actions</code>: not what the
+      email warrants, but whether anyone still owes it something. Written to
+      <code>fct_processes.email_status</code>.</p>
+      <div class="table-wrap">
+        <table class="matrix">
+          <thead><tr><th>Status</th><th>When</th></tr></thead>
+          <tbody>
+            <tr><td><span class="action-pill action-ingest">Fechado</span></td><td>Archived, or the only action is TREASURY, or the email is <code>out_of_scope</code> (no document and the body isn't invoice-related) — closed wins even on an escalated thread.</td></tr>
+            <tr><td><span class="action-pill action-manual">Requer Ação</span></td><td>Something is still outstanding (REPLY/TREASURY/INBOX) AND the thread has hit <code>THREAD_ESCALATION_COUNT</code> — no further automatic reply will go out, so it is waiting on a human instead of the pipeline.</td></tr>
+            <tr><td><span class="action-pill action-inbox">Aberto</span></td><td>Something is still outstanding, thread not escalated — the normal in-progress state.</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
   </section>
 
   <section id="sec-07">
     <div class="section-head">
       <span class="section-num">07 — Persistence</span>
       <h2>What gets written, and when</h2>
+      <p class="section-desc">
+        Three tables, written from <code>EmailPipeline._persist</code>. Booking to SAP is
+        <strong>not</strong> part of this — see the standalone pipeline callout below.
+      </p>
     </div>
     <div class="card-grid">
       <div class="mini-card">
         <h4>fct_processes</h4>
-        <p>One row per email: sender, subject, body, reception date. <code>process_id</code> is DB-generated and returned to key the documents below.</p>
+        <p>One row per email: <code>sender_email</code>, <code>email_subject</code>, <code>email_content</code>, <code>reception_date</code>, <code>message_id</code>, <code>thread_id</code>, <code>thread_message_count</code>, <code>email_status</code> (Aberto/Fechado/Requer Ação, §06), <code>email_action</code> (the rolled-up action list). <code>process_id</code> is DB-generated and returned to key the documents below.</p>
       </div>
       <div class="mini-card">
         <h4>fct_documents</h4>
-        <p>One row per extracted PDF: document type/state label, final (post-suppression) action, derived status, flattened <code>ValidationReport</code> as JSONB, and <code>alerts_list</code>.</p>
+        <p>One row per extracted PDF, inserted first at its day-one status (<code>derive_status</code> — "Criado", or "Failed" if the pipeline broke on it): document type/state label, final (post-suppression) <code>action</code>, <code>status</code>, flattened <code>ValidationReport</code> as JSONB (<code>document_content</code>), and <code>alerts_list</code>. <code>document_id</code> is generated in code (<code>uuid.uuid4()</code>), not left to the column default, so the whole batch inserts in one call yet every id is already known for the follow-up UPDATE below.</p>
+      </div>
+      <div class="mini-card">
+        <h4>fct_document_first_action</h4>
+        <p>One immutable row per document, written once right after <code>fct_documents</code>, from the same <code>action</code> values — before any follow-up send or later manual review can change them. Always reflects the document's ORIGINAL routing, unlike <code>fct_documents.action</code>, which manual review overwrites.</p>
+      </div>
+      <div class="mini-card">
+        <h4>Follow-ups: reply / treasury forward</h4>
+        <p><code>_send_followups</code> runs after every row above already exists at "Criado". It sends the supplier reply and/or treasury forward — each ONCE per email, as a Graph reply/forward on the original <code>message_id</code>, deduped/joined across every REPLY/TREASURY document — then UPDATEs just those documents' <code>fct_documents.status</code> to "Comunicado" on success (left at "Criado" on send failure, e.g. <code>Mail.Send</code> not yet granted). <code>INGEST</code> rows are deliberately left at "Criado" here.</p>
+      </div>
+      <div class="mini-card">
+        <h4>sap_pipeline.py — booking, separate and in bulk</h4>
+        <p>SAP booking is a standalone pipeline (<code>sap_pipeline.py</code>), run manually/separately (no scheduler yet), NOT invoked inline from <code>email_pipeline</code>. It finds every <code>fct_documents</code> row at <code>action = "Ingerir em SAP"</code>, <code>status = "Criado"</code> — regardless of which email wrote it — and books each via <code>invoice_utils.sap_sender.book_in_sap</code>, advancing successes to <code>status = "Ingerido"</code>. Kept separate because a document can reach that state well after its email was processed, e.g. after manual review flips a MANUAL document's action outside this codebase.</p>
       </div>
       <div class="mini-card">
         <h4>WRITE_TO_DB (config.py)</h4>
-        <p>Off by default in the checked-in config — lets the pipeline run (and trace) without a database, and keeps test runs out of the tables. Note: <code>FORCE_REINGEST</code> bypasses the DB dedup check, so running both on inserts duplicate process rows on every re-run.</p>
+        <p>Currently <code>True</code> in the checked-in default. When off, the pipeline can still run (and trace) without a database — no pool is opened, and dedup falls back to an empty skip set, so every fetched email runs unconditionally.</p>
       </div>
     </div>
   </section>
@@ -794,6 +853,14 @@ mlflow server --backend-store-uri sqlite:///mlflow.db --default-artifact-root ./
       <p class="muted"><code>scripts/build_trace_viewer.py</code> reads the MLflow SQLite backend + source PDFs on disk and writes one self-contained, shareable HTML file — relabels stages into business language and strips confidence/cost/evidence by default.</p>
       <div class="cmd-block">cd fastapi_webapi
 .venv/Scripts/python.exe scripts/build_trace_viewer.py</div>
+    </div>
+
+    <div class="stage-card">
+      <h3 style="margin-bottom: var(--space-2);">Run the pipelines</h3>
+      <p class="muted"><code>email_pipeline.py</code> is the production entry point — fetch, ingest, extract, decide, persist. <code>sap_pipeline.py</code> is a separate, later step: bulk-books every pending row (§07) and must be run on its own, since there is no scheduler in this repo yet to trigger it automatically.</p>
+      <div class="cmd-block">cd fastapi_webapi
+.venv/Scripts/python.exe -m invoice_extraction.email_pipeline
+.venv/Scripts/python.exe -m invoice_extraction.sap_pipeline</div>
     </div>
   </section>
 
