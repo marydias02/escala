@@ -165,9 +165,7 @@ _INVOICE_LIKE = ("invoice", "credit_note", "debit_note")
 # gate decides whether a document is good enough for SAP. Deliberately not an LLM
 # judgement: this rule is auditable and testable.
 
-# Every field here must be present AND clear MIN_CONFIDENCE. `supplier_id` /
-# `bu_id` are excluded by design — the schema says they are always null until a
-# later registry lookup fills them.
+# Every field here must be present AND clear MIN_CONFIDENCE. 
 REQUIRED_FIELDS = (
     "supplier_vat",
     "bu_vat",
@@ -205,13 +203,27 @@ def ingestion_blockers(validation: Optional[ValidationReport]) -> list[str]:
     if validation is None:
         return ["no validation report"]
 
-    return [
+    blockers = [
         f"{name} missing" if confidence is None
         else f"{name} confidence {confidence:.2f} < {MIN_CONFIDENCE}"
         for name, _label, confidence in _field_problems(
             validation, {name: name for name in REQUIRED_FIELDS}
         )
     ]
+
+    # supplier_id/bu_id are filled by nodes.validate.resolve_registry_ids. 
+    # Null means - "not found in registry"
+    if validation.supplier_id is None and (
+        validation.supplier_vat is not None or validation.supplier_name is not None
+    ):
+        blockers.append("supplier_id not found in registry")
+
+    if validation.bu_id is None and (
+        validation.bu_vat is not None or validation.bu_name is not None
+    ):
+        blockers.append("bu_id not found in registry")
+
+    return blockers
 
 
 def missing_pos(validation: Optional[ValidationReport]) -> Optional[list[str]]:
@@ -279,8 +291,9 @@ def missing_pos(validation: Optional[ValidationReport]) -> Optional[list[str]]:
         return None
 
 
-# Every ValidationReport field except supplier_id/bu_id (always null pre-registry
-# lookup) and notes/po_list (handled separately, below). Portuguese labels since
+# Every ValidationReport field except supplier_id/bu_id (checked separately,
+# below — a missing id means "not found in the registry", not "low confidence")
+# and notes/po_list (handled separately too). Portuguese labels since
 # alerts_list is reviewer-facing.
 _ALERT_FIELD_LABELS = {
     "supplier_name": "Nome do fornecedor",
@@ -320,8 +333,16 @@ def build_alerts_list(result: PipelineResult) -> list[str]:
     elif pos:
         alerts.extend(f"Nota de encomenda não encontrada: {po}" for po in pos)
 
-    #TODO: add alerts for client NIF not in client BU list or supplier NIF not in supplier list
-    #Expand alerts
+    # supplier_id/bu_id are filled by nodes.validate.resolve_registry_ids, from a VAT/name lookup 
+    if validation.supplier_id is None and (
+        validation.supplier_vat is not None or validation.supplier_name is not None
+    ):
+        alerts.append("Fornecedor não identificado no registo")
+
+    if validation.bu_id is None and (
+        validation.bu_vat is not None or validation.bu_name is not None
+    ):
+        alerts.append("Cliente não identificado no registo")
 
     return alerts
 

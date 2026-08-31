@@ -1,10 +1,13 @@
+import re
+import unicodedata
 from typing import Optional
 
 from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, ToolMessage
 from loguru import logger
+from rapidfuzz import fuzz
 
-from invoice_extraction.config import failed_confidence
+from invoice_extraction.config import MIN_CONFIDENCE, failed_confidence
 from invoice_extraction.invoice_utils.llm_retry import invoke_with_retry
 from invoice_extraction.models import InvoiceData, ValidationReport
 from invoice_extraction.models.common import Checked
@@ -12,14 +15,29 @@ from invoice_extraction.prompts import VALIDATION_SYSTEM_MESSAGE, build_validati
 from invoice_extraction.tools import VALIDATION_TOOLS
 from invoice_extraction.tracing import (
     STAGE_VALIDATION,
+    STAGE_VALIDATION_REGISTRY,
     STAGE_VALIDATION_SHAPING,
     STAGE_VALIDATION_TOOLS,
     span,
     validation_summary,
 )
+from utils.utils_db import normalize_key, normalize_sql, select_sync
+
+# Below this, two names are considered unrelated rather than a match.
+NAME_MATCH_THRESHOLD = 0.85
+
+# Drop punctuation from words
+_INNER_PUNCTUATION = re.compile(r"[.,]")
+
+# Everything else non-alphanumeric collapses to a single space, preserving it
+_WORD_BREAK = re.compile(r"[^a-z0-9]+")
 
 # Safety net for a model that keeps calling tools instead of concluding.
 MAX_TOOL_ROUNDS = 3
+
+
+# Confidence stamped on a party resolved by fuzzy name matching 
+FUZZY_MATCH_CONFIDENCE = min(round(MIN_CONFIDENCE + 0.1, 2), 1)
 
 # Cents, to absorb float error on amounts the model returns as floats.
 AMOUNT_TOLERANCE = 0.01
@@ -33,6 +51,15 @@ SHAPE_REQUEST = HumanMessage(
     )
 )
 
+def _normalize_name(name: str) -> str:
+    """Lowercase, accent-stripped, punctuation-normalized form of a company name.
+
+    Construções S.A. -> construcoes sa
+    """
+    decomposed = unicodedata.normalize("NFKD", name)
+    without_accents = "".join(c for c in decomposed if not unicodedata.combining(c))
+    tight = _INNER_PUNCTUATION.sub("", without_accents.lower())
+    return _WORD_BREAK.sub(" ", tight).strip()
 
 def _reconcile_amounts(report: ValidationReport) -> ValidationReport:
     """Apply `base + vat = total`, deterministically — the LLM reads, it does not compute.
@@ -85,6 +112,120 @@ def _noted(
     return report.model_copy(
         update={field: checked, "notes": f"{report.notes.strip()} {note}".strip()}
     )
+
+
+def _best_name_match(table: str, name: str) -> Optional[tuple[dict, float]]:
+    """The `table` row whose name best matches `name`, paired with its match
+    confidence — or None below NAME_MATCH_THRESHOLD.
+
+    Scored with `token_sort_ratio` on normalized names (see `_normalize_name`),
+    which tolerates word-order and formatting differences.
+
+    A tie breaks on plain Levenshtein `ratio`. If still tied, break on first row and log
+    """
+    rows = select_sync(f"SELECT * FROM {table}", [])
+    if not rows:
+        return None
+
+    target = _normalize_name(name)
+    scored = [(fuzz.token_sort_ratio(target, _normalize_name(row["name"])), row) for row in rows]
+
+    best_score = max(score for score, _row in scored)
+    if best_score < NAME_MATCH_THRESHOLD * 100:
+        return None
+
+    # An exact normalized match (100) is as certain as a VAT hit; anything
+    # below that, down to the threshold, is a guess.
+    confidence = 1.0 if best_score == 100 else FUZZY_MATCH_CONFIDENCE
+
+    best = [row for score, row in scored if score == best_score]
+    if len(best) == 1:
+        return best[0], confidence
+
+    best_by_ratio = sorted(
+        best, key=lambda row: fuzz.ratio(target, _normalize_name(row["name"])), reverse=True
+    )
+    top_ratio = fuzz.ratio(target, _normalize_name(best_by_ratio[0]["name"]))
+    tied = [row for row in best_by_ratio if fuzz.ratio(target, _normalize_name(row["name"])) == top_ratio]
+
+    if len(tied) > 1:
+        logger.warning(
+            f"{table}: {len(tied)} names tied at token_sort={best_score:.0f}/ratio="
+            f"{top_ratio:.0f} for {name!r}; picking {tied[0]['name']!r}"
+        )
+
+    return tied[0], confidence
+
+
+def _find_party(
+    table: str, vat: Optional[str], name: Optional[str]
+) -> Optional[tuple[dict, float]]:
+    """One row from `table` matching `vat`, or failing that the closest `name`
+    match above NAME_MATCH_THRESHOLD, paired with the confidence the match
+    deserves. None if neither hits.
+
+    VAT first: it is the unique, normalized key every other lookup in this
+    package already keys on (see `vat_registry.py`, `po_confirmation.py`). Name
+    is the fallback for a document whose VAT was missed or misread.
+    """
+    normalized_vat = normalize_key(vat)
+    if normalized_vat:
+        rows = select_sync(
+            f"SELECT * FROM {table} WHERE {normalize_sql('vat')} = $1 LIMIT 1",
+            [normalized_vat],
+        )
+        if rows:
+            return rows[0], 1.0
+
+    if name:
+        return _best_name_match(table, name)
+
+    return None
+
+
+def _resolve_party(
+    report: ValidationReport, prefix: str, table: str, id_column: str
+) -> ValidationReport:
+    """Fill `{prefix}_id` and overwrite `{prefix}_name`/`{prefix}_vat` with the
+    registry's own values.
+
+    A VAT match or an exact (post-normalization) name match is stamped at
+    confidence 1.0; a fuzzy name match - confidence at FUZZY_MATCH_CONFIDENCE
+
+    No match: the report is returned unchanged (id stays null, extracted
+    name/vat are kept) — which will get flagged in decisions.py
+    """
+    vat = getattr(report, f"{prefix}_vat")
+    name = getattr(report, f"{prefix}_name")
+
+    found = _find_party(table, vat.value if vat else None, name.value if name else None)
+    if found is None:
+        return report
+    row, confidence = found
+
+    return report.model_copy(
+        update={
+            f"{prefix}_id": Checked[str](value=str(row[id_column]), confidence=confidence),
+            f"{prefix}_name": Checked[str](value=row["name"], confidence=confidence),
+            f"{prefix}_vat": Checked[str](value=row["vat"], confidence=confidence),
+        }
+    )
+
+
+def resolve_registry_ids(report: ValidationReport) -> ValidationReport:
+    """Fill supplier_id/bu_id from the SAP master data, deterministically.
+
+    VAT-first, name-fallback — the LLM cannot derive registry id, 
+    and registry is source of truth for the name and VAT
+
+    Never raises. A failed lookup just leaves that party's id/name/vat as they were.
+    """
+    try:
+        report = _resolve_party(report, "supplier", "dim_suppliers", "supplier_id")
+        report = _resolve_party(report, "bu", "dim_business_units", "bu_id")
+    except Exception as exc:  # noqa: BLE001 - a DB blip must not break validation
+        logger.warning(f"Registry lookup failed, leaving ids unresolved: {exc!r}")
+    return report
 
 
 def _run_tool_calls(response: AIMessage) -> list[ToolMessage]:
@@ -186,6 +327,10 @@ def validate_document(
             )
             report = _reconcile_amounts(report)
             shaping_span.set_outputs(validation_summary(report))
+
+        with span(STAGE_VALIDATION_REGISTRY) as registry_span:
+            report = resolve_registry_ids(report)
+            registry_span.set_outputs(validation_summary(report))
 
         stage_span.set_outputs(validation_summary(report))
         return report

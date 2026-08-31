@@ -33,6 +33,7 @@ The span tree for one email:
             verify_client_nif               (TOOL)
             verify_supplier_nif             (TOOL)
           5b-validation:shaping             (LLM)
+          5c-validation:registry            (CHAIN, deterministic, no LLM)
       6-decision                            (CHAIN, pure business rules)
 
 The numbered STAGE_* spans exist because `mlflow.langchain.autolog()` names its
@@ -80,6 +81,7 @@ STAGE_EXTRACTION = "4-extraction"
 STAGE_VALIDATION = "5-validation"
 STAGE_VALIDATION_TOOLS = "5a-validation:tools"
 STAGE_VALIDATION_SHAPING = "5b-validation:shaping"
+STAGE_VALIDATION_REGISTRY = "5c-validation:registry"
 STAGE_DECISION = "6-decision"
 
 # Off the numbered path on purpose: the body classifier runs only on the
