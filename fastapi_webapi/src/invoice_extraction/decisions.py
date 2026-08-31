@@ -393,6 +393,10 @@ class EmailDecision:
         return EMAIL_REPLY in self.actions
 
     @property
+    def should_archive(self) -> bool:
+        return EMAIL_ARCHIVE in self.actions
+
+    @property
     def reply_body(self) -> str:
         """The single reply sent to the supplier: REPLY_LETTER_TEMPLATE with one
         "Motivo" clause per distinct reason, joined so the sentence still reads

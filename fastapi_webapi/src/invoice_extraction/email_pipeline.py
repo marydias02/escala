@@ -73,7 +73,11 @@ from invoice_extraction.ingestion_pipeline import (
 from invoice_extraction.ingestion_pipeline import (
     create_pipeline as create_ingestion_pipeline,
 )
-from invoice_extraction.invoice_utils.email_sender import forward_to_treasury, reply_to_supplier
+from invoice_extraction.invoice_utils.email_sender import (
+    archive_message,
+    forward_to_treasury,
+    reply_to_supplier,
+)
 from invoice_extraction.invoice_utils.outlook_loader import fetch_inbox_emails
 from invoice_extraction.invoice_utils.reporting import print_pipeline_result
 from invoice_extraction.models import DocumentClassification, EmailIntent, LoadedEmail, ValidationReport
@@ -356,6 +360,11 @@ class EmailPipeline:
         `invoice_utils.email_sender`) leave the returned status at "Criado",
         so an email whose reply/forward could not be sent stays visible as
         outstanding rather than being marked done.
+
+        The archive move (`Arquivar`) runs last and independently of the
+        returned dict: it acts on the message itself, not on any document row,
+        and firing after any reply/forward send avoids racing Graph's own
+        move of a message we are still replying to/forwarding.
         """
         manifest = _load_manifest(result.ingestion.folder)
         decisions_by_file = {d.filename: d for d in result.decision.documents}
@@ -407,6 +416,16 @@ class EmailPipeline:
             for filename, decision in decisions_by_file.items():
                 if decision.action == TREASURY:
                     statuses[filename] = outcome
+
+        if result.decision.should_archive:
+            send_result = await archive_message(message_id)
+            if send_result.status == "sent":
+                print(f"  📦 Archived message — subject={manifest.get('email_subject', '')!r}")
+            else:
+                print(
+                    f"  ⚠️  Archive FAILED ({send_result.error}) — "
+                    f"subject={manifest.get('email_subject', '')!r}"
+                )
 
         return statuses
 
