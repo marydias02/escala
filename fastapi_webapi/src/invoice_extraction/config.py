@@ -55,10 +55,8 @@ ZIP_CHUNK_SIZE = 64 * 1024
 # Deterministic parser settings, matching the notebook.
 PARSER_KWARGS = {
     "max_pages_text": 10,
-    "max_pages_vision": 4,
-    "dpi": 100,
     "min_good_chars_per_page": 200,
-    "min_font_size": 5,
+    "min_font_size": 4,
 }
 
 # -- Validation / decisions -------------------------------------------------
