@@ -77,6 +77,16 @@ def failed_confidence(min_confidence: float = MIN_CONFIDENCE) -> float:
 # land, so a human reads it rather than the supplier being chased again.
 THREAD_ESCALATION_COUNT = 3
 
+# -- Document status vocabulary --------------------------------------------
+# What reaches `fct_documents.status`. Written by `email_pipeline`, advanced by
+# `sap_pipeline`, read back by `invoice_utils.persist_db`.
+
+DOC_STATUS_CREATED = "Criado"  # routed, nothing carried out yet
+DOC_STATUS_BOOKED = "Ingerido"  # booked into SAP
+DOC_STATUS_COMMUNICATED = "Comunicado"  # reply/forward sent
+DOC_STATUS_IGNORED = "Ignorado"  # nothing was ever owed
+DOC_STATUS_FAILED = "Failed"  # pipeline broke on it
+
 # -- Tracing (MLflow) ------------------------------------------------------
 # Development instrumentation only; see `invoice_extraction.tracing`. The
 # tracking URI itself is read from the MLFLOW_TRACKING_URI environment variable

@@ -23,7 +23,14 @@ THREAD_ESCALATION_COUNT does not silently invalidate these tests.
 import pytest
 
 from invoice_extraction import decisions
-from invoice_extraction.config import MIN_CONFIDENCE, THREAD_ESCALATION_COUNT
+from invoice_extraction.config import (
+    DOC_STATUS_BOOKED,
+    DOC_STATUS_COMMUNICATED,
+    DOC_STATUS_CREATED,
+    DOC_STATUS_IGNORED,
+    MIN_CONFIDENCE,
+    THREAD_ESCALATION_COUNT,
+)
 from invoice_extraction.decisions import (
     EMAIL_ARCHIVE,
     EMAIL_INBOX,
@@ -44,6 +51,7 @@ from invoice_extraction.decisions import (
     TREASURY,
     EmailDecision,
     build_alerts_list,
+    close_prior_process,
     decide_document,
     decide_email,
     ingestion_blockers,
@@ -114,6 +122,11 @@ def validation(
     report = {
         "supplier_vat": checked("PT123456789", confidence),
         "bu_vat": checked("PT987654321", confidence),
+        # Filled by nodes.validate.resolve_registry_ids before routing sees the
+        # report. Null is "not found in the registry", which blocks ingestion, so
+        # the default report carries both — pass None to test that case.
+        "supplier_id": checked("SUP-1", confidence),
+        "bu_id": checked("BU-1", confidence),
         "issue_date": checked("01-01-2024", confidence),
         "base_amount": checked(100.0, confidence),
         "vat_amount": checked(23.0, confidence),
@@ -375,6 +388,20 @@ class TestIngestionBlockers:
 
     def test_a_missing_field_is_reported_as_missing_not_low_confidence(self):
         assert ingestion_blockers(validation(currency=None)) == ["currency missing"]
+
+    def test_a_supplier_absent_from_the_registry_blocks_ingestion(self):
+        """A null id after `resolve_registry_ids` means "not found", not "not yet looked up"."""
+        assert ingestion_blockers(validation(supplier_id=None)) == [
+            "supplier_id not found in registry"
+        ]
+
+    def test_a_client_absent_from_the_registry_blocks_ingestion(self):
+        assert ingestion_blockers(validation(bu_id=None)) == ["bu_id not found in registry"]
+
+    def test_an_id_is_only_expected_when_there_was_something_to_look_up(self):
+        """No VAT and no name means no lookup was owed, so the null id is not a miss."""
+        report = validation(supplier_id=None, supplier_vat=None, supplier_name=None)
+        assert "supplier_id not found in registry" not in ingestion_blockers(report)
 
 
 class TestMissingPos:
@@ -707,3 +734,51 @@ class TestEmailStatus:
     def test_the_end_to_end_statuses_of_a_processed_email(self):
         assert decide_email(ingested(), [extraction()]).status == EMAIL_STATUS_CLOSED
         assert decide_email(ingested(), [extraction(state="proforma")]).status == EMAIL_STATUS_OPEN
+
+
+class TestClosePriorProcess:
+    """Layer 3 — an earlier email revisited because a newer one arrived.
+
+    `documents` is (action, status) per fct_documents row of the EARLIER process.
+    """
+
+    def test_a_reply_only_process_is_closed(self):
+        """The supplier answered what we asked; nothing else was pending."""
+        assert close_prior_process([EMAIL_REPLY], []) is True
+
+    def test_reply_plus_treasury_is_closed(self):
+        """The forward is terminal on its own, so it adds nothing to wait for."""
+        assert close_prior_process([EMAIL_REPLY, EMAIL_TREASURY], []) is True
+
+    def test_a_process_that_never_asked_the_supplier_is_untouched(self):
+        assert close_prior_process([EMAIL_INBOX], []) is False
+        assert close_prior_process([EMAIL_TREASURY], []) is False
+        assert close_prior_process([EMAIL_ARCHIVE], []) is False
+
+    def test_a_process_with_no_recorded_action_is_untouched(self):
+        """NULL email_action — written before the column existed."""
+        assert close_prior_process(None, []) is False
+        assert close_prior_process([], []) is False
+
+    def test_reply_plus_inbox_closes_when_every_document_is_settled(self):
+        documents = [
+            (INBOX, DOC_STATUS_IGNORED),
+            (INGEST, DOC_STATUS_BOOKED),
+            (REPLY, DOC_STATUS_COMMUNICATED),
+            (IGNORE, DOC_STATUS_IGNORED),
+            (TREASURY, DOC_STATUS_COMMUNICATED),
+        ]
+        assert close_prior_process([EMAIL_REPLY, EMAIL_INBOX], documents) is True
+
+    def test_reply_plus_inbox_stays_open_on_a_document_awaiting_review(self):
+        documents = [(INBOX, DOC_STATUS_IGNORED), (MANUAL, DOC_STATUS_CREATED)]
+        assert close_prior_process([EMAIL_REPLY, EMAIL_INBOX], documents) is False
+
+    def test_reply_plus_inbox_stays_open_on_a_document_not_yet_booked(self):
+        """Bound for SAP but `sap_pipeline` has not booked it — still owed."""
+        documents = [(INGEST, DOC_STATUS_CREATED)]
+        assert close_prior_process([EMAIL_REPLY, EMAIL_INBOX], documents) is False
+
+    def test_reply_plus_inbox_with_no_documents_is_closed(self):
+        """Vacuously settled: the INBOX came from the email body, not a document."""
+        assert close_prior_process([EMAIL_REPLY, EMAIL_INBOX], []) is True
