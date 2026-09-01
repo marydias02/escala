@@ -6,7 +6,7 @@ readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
     "plotly",
-    "dash>=3.1.1",
+    "dash>=4.1.0",
     "dash-iconify>=0.1.2",
     "ruff>=0.12.1",
     "dash-ag-grid>=31.3.1",

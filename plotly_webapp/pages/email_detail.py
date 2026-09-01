@@ -477,18 +477,6 @@ def load_email_drawer_content(_clicks, document_id):
 
 
 @dash.callback(
-    Output("email-detail-toast-host", "children", allow_duplicate=True),
-    Output("email-detail-toast-timer", "disabled", allow_duplicate=True),
-    Input("send-sap-button", "n_clicks"),
-    prevent_initial_call=True,
-)
-def show_sap_loading_toast(n_clicks):
-    if not n_clicks:
-        raise dash.exceptions.PreventUpdate
-    return _build_sap_loading_toast(), True
-
-
-@dash.callback(
     Output("email-detail-update-status", "children", allow_duplicate=True),
     Output("email-detail-content", "children", allow_duplicate=True),
     Output("url", "pathname", allow_duplicate=True),
@@ -636,7 +624,7 @@ def update_document_details(
         if next_document_id:
             return (
                 "Documento enviado para SAP",
-                _build_email_detail(next_document_id),
+                no_update,
                 f"/detalhe/{next_document_id}",
                 _build_sap_success_toast(True),
                 False,
@@ -644,13 +632,13 @@ def update_document_details(
             )
         return (
             "Documento enviado para SAP",
-            _build_email_detail(document_id),
+            no_update,
             no_update,
             _build_sap_success_toast(False),
             False,
             0,
         )
-    return "Documento guardado", _build_email_detail(document_id), no_update, no_update, no_update, no_update
+    return "Documento guardado", no_update, no_update, no_update, no_update, no_update
 
 
 @dash.callback(
