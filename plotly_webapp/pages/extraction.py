@@ -311,7 +311,7 @@ def load_extraction_content(_pathname):
                     children=[
                         IndicatorCard(
                             label_text="Faturas para Validação",
-                            label_tooltip="faturas pendentes de validação",
+                            label_tooltip="Faturas pendentes de validação manual; variação percentual face à semana anterior no número de documentos que necessitaram de validação manual",
                             rows=[(kpis["pending_manual_validation"]["value"],
                                    "última semana",
                                    abs(kpis["pending_manual_validation"]["delta_pp"]),
@@ -322,7 +322,7 @@ def load_extraction_content(_pathname):
                         ),
                         IndicatorCard(
                             label_text="Faturas Ingeridas Automaticamente",
-                            label_tooltip="extra info",
+                            label_tooltip="Percentagem de documentos que não necessitaram de validação manual e foram ingeridas em SAP; diferença em pontos percentuais face à semana anterior",
                             rows=[(fmt_pct(kpis["auto_ingested"]["pct"]),
                                 "última semana",
                                 abs(kpis["auto_ingested"]["delta_pp"]),
@@ -331,7 +331,7 @@ def load_extraction_content(_pathname):
                         ),
                         IndicatorCard(
                             label_text="Faturas Devolvidas ao Fornecedor",
-                            label_tooltip="extra info",
+                            label_tooltip="Percentagem de documentos que devolvidas ao fornecedor; diferença em pontos percentuais face à semana anterior",
                             rows=[(fmt_pct(kpis["returned_to_supplier"]["pct"]),
                                 "última semana",
                                 abs(kpis["returned_to_supplier"]["delta_pp"]),
