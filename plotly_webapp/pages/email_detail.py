@@ -3,6 +3,7 @@ from dash import html, dcc, Input, Output, State, callback_context, no_update, A
 from dash_iconify import DashIconify
 from dash.dcc import Tab
 import requests
+from requests import RequestException
 
 from assets.api_calls.extraction_api import (
     alter_document_details,
@@ -125,12 +126,7 @@ def layout(ref_number=None, **_kwargs):
     return html.Div(
         [
             dcc.Store(id="email-detail-ref-number", data=str(ref_number)),
-            dcc.Loading(
-                id="email-detail-loading",
-                type="default",
-                color="var(--primary-color-13)",
-                children=html.Div(id="email-detail-content"),
-            ),
+            html.Div(id="email-detail-content"),
         ]
     )
 
@@ -150,27 +146,33 @@ def _build_email_detail(ref_number):
         match = None
 
     if match:
-        fields = match.get("fields", {})
+        fields = match.get("fields") or {}
         alerts = match.get("alerts", [])
         action = match.get("action")
 
-        issue_date = fields.get("issue_date", {}).get("value")
+        def field_value(name: str):
+            field = fields.get(name)
+            if isinstance(field, dict):
+                return field.get("value")
+            return None
+
+        issue_date = field_value("issue_date")
         data_recepcao = (
             pd.to_datetime(issue_date, dayfirst=True).date()
             if issue_date
             else None
         )
 
-        business_unit = fields.get("bu_name", {}).get("value")
+        business_unit = field_value("bu_name")
         # bu_vat = fields.get("bu_vat", {}).get("value")
-        
-        supplier_name = fields.get("supplier_name", {}).get("value")
-        supplier_vat = fields.get("supplier_vat", {}).get("value")
-        
-        total_amount = fields.get("total_amount", {}).get("value")
-        vat_amount = fields.get("vat_amount", {}).get("value")
-        base_amount = fields.get("base_amount", {}).get("value")
-        currency = fields.get("currency", {}).get("value")
+
+        supplier_name = field_value("supplier_name")
+        supplier_vat = field_value("supplier_vat")
+
+        total_amount = field_value("total_amount")
+        vat_amount = field_value("vat_amount")
+        base_amount = field_value("base_amount")
+        currency = field_value("currency")
 
     else:
         fields = {}
@@ -185,37 +187,42 @@ def _build_email_detail(ref_number):
         currency = None
 
     return html.Div(
-    [  
-        dcc.Store(id="document_id_store", data=str(ref_number)),
-        dcc.Store(id="document_fields_store", data=fields),
-        dcc.Store(id="document_alerts_store", data=alerts),
-        html.Div( 
-            className="email_detail__container",
-            children=[
-                html.Section(
-                    className="email_detail__top_section",
-                    children=[
-                      html.Section(
-                        className="email_detail__top_left_section",
-                        children = [
-                            PageHeader(
-                                title = f"Detalhe da fatura do fornecedor: {supplier_name}",  
+        [
+            dcc.Store(id="document_id_store", data=str(ref_number)),
+            dcc.Store(id="document_fields_store", data=fields),
+            dcc.Store(id="document_alerts_store", data=alerts),
+            html.Div(
+                className="email_detail__container",
+                children=[
+                    html.Section(
+                        className="email_detail__top_section",
+                        children=[
+                            html.Section(
+                                className="email_detail__top_left_section",
+                                children=[
+                                    PageHeader(
+                                        title=f"Detalhe da fatura do fornecedor: {supplier_name}",
+                                    ),
+                                    TableBanner(
+                                        message=action,
+                                        variant=_action_banner_props(action)[0],
+                                        icon=_action_banner_props(action)[1],
+                                    ),
+                                ],
                             ),
-                            TableBanner(
-                                message=action,
-                                variant=_action_banner_props(action)[0],
-                                icon=_action_banner_props(action)[1],
-                            )
-                        ]
-                      ),
-                      html.Section(
-                        className="email_detail__top_right_section",
-                            children = [
-                              Button("Detalhes do Email", id="email-detail-open-drawer", icon="lucide:eye", variant="outline")
-                            ]
-                      )
-                    ],                  
-                ),
+                            html.Section(
+                                className="email_detail__top_right_section",
+                                children=[
+                                    Button(
+                                        "Detalhes do Email",
+                                        id="email-detail-open-drawer",
+                                        icon="lucide:eye",
+                                        variant="outline",
+                                    )
+                                ],
+                            ),
+                        ],
+                    ),
                 html.Section(
                     className="email_detail__content_section",
                     children=[
@@ -417,6 +424,48 @@ def _build_email_detail(ref_number):
 )
 
 
+def _build_sap_success_toast(has_next_document: bool):
+    message = (
+        "O Documento foi enviado para SAP, passando ao próximo..."
+        if has_next_document
+        else "O Documento foi enviado para SAP"
+    )
+    return html.Div(
+        [
+            html.Div(className="email_detail__modal_backdrop"),
+            html.Div(
+                className="email_detail__modal",
+                children=[
+                    html.Div(
+                        className="email_detail__modal_icon",
+                        children=[DashIconify(icon="lucide:check", width=28)],
+                    ),
+                    html.P(message, className="email_detail__modal_message"),
+                ],
+            ),
+        ],
+        className="email_detail__toast email_detail__toast--modal",
+    )
+
+
+def _build_sap_loading_toast():
+    return html.Div(
+        [
+            html.Div(className="email_detail__modal_backdrop"),
+            html.Div(
+                className="email_detail__modal",
+                children=[
+                    html.P(
+                        "A enviar documento para SAP...",
+                        className="email_detail__modal_message",
+                    ),
+                ],
+            ),
+        ],
+        className="email_detail__toast email_detail__toast--modal",
+    )
+
+
 @dash.callback(
     Output("email-detail-drawer-email-content", "children"),
     Input("email-detail-open-drawer", "n_clicks"),
@@ -428,9 +477,24 @@ def load_email_drawer_content(_clicks, document_id):
 
 
 @dash.callback(
+    Output("email-detail-toast-host", "children", allow_duplicate=True),
+    Output("email-detail-toast-timer", "disabled", allow_duplicate=True),
+    Input("send-sap-button", "n_clicks"),
+    prevent_initial_call=True,
+)
+def show_sap_loading_toast(n_clicks):
+    if not n_clicks:
+        raise dash.exceptions.PreventUpdate
+    return _build_sap_loading_toast(), True
+
+
+@dash.callback(
     Output("email-detail-update-status", "children", allow_duplicate=True),
     Output("email-detail-content", "children", allow_duplicate=True),
     Output("url", "pathname", allow_duplicate=True),
+    Output("email-detail-toast-host", "children", allow_duplicate=True),
+    Output("email-detail-toast-timer", "disabled", allow_duplicate=True),
+    Output("email-detail-toast-timer", "n_intervals", allow_duplicate=True),
     Input("save-button", "n_clicks"),
     Input("send-sap-button", "n_clicks"),
     State("document_id_store", "data"),
@@ -471,7 +535,7 @@ def update_document_details(
         raise dash.exceptions.PreventUpdate
 
     if not document_id:
-        return "Documento invalido", no_update
+        return "Documento invalido", no_update, no_update, no_update, no_update, no_update
 
     button_id = triggered[0]["prop_id"].split(".")[0]
     updated_fields = fields.copy() if isinstance(fields, dict) else {}
@@ -547,7 +611,10 @@ def update_document_details(
     if button_id == "send-sap-button":
         action = "Ingerir em SAP"
         status = "Criado"
-        result = get_next_priority_document(document_id)
+        try:
+            result = get_next_priority_document(document_id)
+        except RequestException:
+            result = {}
         next_document_id = result.get("next_document_id")
     elif button_id == "save-button":
         action = "Validação Manual"
@@ -563,19 +630,34 @@ def update_document_details(
             last_modified_by="Mariana Dias",
         )
     except Exception as exc:
-        return f"Erro ao guardar: {exc}", no_update
+        return f"Erro ao guardar: {exc}", no_update, no_update, no_update, no_update, no_update
 
     if button_id == "send-sap-button":
         if next_document_id:
-            return "Documento enviado para SAP", _build_email_detail(next_document_id), f"/detalhe/{next_document_id}"
-        return "Documento enviado para SAP", _build_email_detail(document_id), no_update
-    return "Documento guardado", _build_email_detail(document_id), no_update
+            return (
+                "Documento enviado para SAP",
+                _build_email_detail(next_document_id),
+                f"/detalhe/{next_document_id}",
+                _build_sap_success_toast(True),
+                False,
+                0,
+            )
+        return (
+            "Documento enviado para SAP",
+            _build_email_detail(document_id),
+            no_update,
+            _build_sap_success_toast(False),
+            False,
+            0,
+        )
+    return "Documento guardado", _build_email_detail(document_id), no_update, no_update, no_update, no_update
 
 
 @dash.callback(
     Output("document_alerts_store", "data"),
     Output("email-detail-content", "children", allow_duplicate=True),
     Output("email-detail-update-status", "children"),
+    Output("email-detail-toast-host", "children", allow_duplicate=True),
     Input({"type": "email-detail-correction-button", "alert": ALL}, "n_clicks"),
     State("document_id_store", "data"),
     State("document_alerts_store", "data"),
@@ -588,7 +670,7 @@ def remove_alert_from_document(_clicks, document_id, alerts, fields):
         raise dash.exceptions.PreventUpdate
 
     if not document_id:
-        return no_update, no_update, "Documento invalido"
+        return no_update, no_update, "Documento invalido", no_update
 
     triggered_id = callback_context.triggered_id
     if not isinstance(triggered_id, dict):
@@ -615,7 +697,19 @@ def remove_alert_from_document(_clicks, document_id, alerts, fields):
             last_modified_by="Mariana Dias",
         )
     except Exception as exc:
-        return no_update, no_update, f"Erro ao remover alerta: {exc}"
+        return no_update, no_update, f"Erro ao remover alerta: {exc}", no_update
 
-    return updated_alerts, _build_email_detail(document_id), "Alerta removido"
+    return updated_alerts, _build_email_detail(document_id), "Alerta removido", no_update
+
+
+@dash.callback(
+    Output("email-detail-toast-host", "children", allow_duplicate=True),
+    Output("email-detail-toast-timer", "disabled", allow_duplicate=True),
+    Input("email-detail-toast-timer", "n_intervals"),
+    prevent_initial_call=True,
+)
+def clear_sap_success_toast(_n_intervals):
+    if not _n_intervals:
+        raise dash.exceptions.PreventUpdate
+    return None, True
 
