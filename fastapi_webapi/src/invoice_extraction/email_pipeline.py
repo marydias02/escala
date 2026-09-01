@@ -6,16 +6,13 @@ This sits on top of the two existing (synchronous) pipelines without changing th
   PDFs plus `email_content.json`.
 - `extraction_pipeline` (Phase 2) classifies / extracts / validates one PDF.
 
-Running them separately means extraction sees a flat glob of every PDF and can
-never reason about a whole email at once, and nothing records what was processed.
-This orchestrator restores the per-email view: for each email it extracts exactly
-the PDFs that email produced, makes one email-level decision ("reply to the
-supplier because no usable invoice came out?"), and writes the outcome to
-Postgres — one `fct_processes` row per email, one `fct_documents` row per PDF.
-
 The DB is async (asyncpg), so this module is async and is driven by
 `asyncio.run(main())`; the sync ingestion/extraction `.run()` calls happen inside
 the async flow. Writes go through the generic helpers in `utils.utils_db`.
+
+PERSIST also looks BACKWARDS: a new email can settle an EARLIER process on the
+same thread — the supplier answered what we asked — so `close_prior_processes`
+closes those instead of leaving them `Aberto` forever.
 
 Booking documents to SAP is NOT part of this pipeline — see `sap_pipeline`,
 which runs separately, in bulk, over every `fct_documents` row at
@@ -36,6 +33,10 @@ from typing import Optional
 from config.settings import settings
 from invoice_extraction.config import (
     DEFAULT_FETCH_LIMIT,
+    DOC_STATUS_COMMUNICATED,
+    DOC_STATUS_CREATED,
+    DOC_STATUS_FAILED,
+    DOC_STATUS_IGNORED,
     ENABLE_TRACING,
     INGEST_LIMIT,
     MANIFEST_NAME,
@@ -47,6 +48,8 @@ from invoice_extraction.decisions import (
     EMAIL_ARCHIVE,
     EMAIL_INBOX,
     EMAIL_REPLY,
+    EMAIL_STATUS_CLOSED,
+    EMAIL_STATUS_OPEN,
     EMAIL_TREASURY,
     IGNORE,
     INBOX,
@@ -56,6 +59,7 @@ from invoice_extraction.decisions import (
     DocumentAction,
     EmailDecision,
     build_alerts_list,
+    close_prior_process,
     decide_email,
 )
 from invoice_extraction.extraction_pipeline import (
@@ -73,7 +77,11 @@ from invoice_extraction.ingestion_pipeline import (
 from invoice_extraction.ingestion_pipeline import (
     create_pipeline as create_ingestion_pipeline,
 )
-from invoice_extraction.invoice_utils.email_sender import forward_to_treasury, reply_to_supplier
+from invoice_extraction.invoice_utils.email_sender import (
+    archive_message,
+    forward_to_treasury,
+    reply_to_supplier,
+)
 from invoice_extraction.invoice_utils.outlook_loader import fetch_inbox_emails
 from invoice_extraction.invoice_utils.reporting import print_pipeline_result
 from invoice_extraction.models import DocumentClassification, EmailIntent, LoadedEmail, ValidationReport
@@ -175,30 +183,18 @@ def derive_status(result: PipelineResult, action: DocumentAction) -> str:
     Most routed documents start life as "Criado": `EmailPipeline._send_followups`
     then carries out the document's email-level action (supplier reply, treasury
     forward) inline and overrides this with the outcome — "Comunicado" on
-    success, left at "Criado" on failure. INGEST has no inline follow-up — SAP
-    booking is `sap_pipeline`'s job, run separately in bulk — so it also stays
-    at "Criado", same as MANUAL, which has no follow-up because a human has not
-    looked at it yet.
+    success, left at "Criado" on failure.
 
-    IGNORE and INBOX have no follow-up AND nothing pending: there is no action
-    left to carry out (a duplicate whose original is already in the email;
-    a cancelled or unprocessed document type), so the row is terminal from the
-    moment it is written. Those go straight to "Ignorado" rather than sitting
-    in "Criado" indistinguishable from documents still awaiting one.
+    IGNORE and INBOX have no follow-up AND nothing pending - Ignorado
 
     Only a document that actually broke (a stage raised, so no classification) is
     "Failed" — the pipeline did not manage to route it at all.
     """
     if result.status == "failed":
-        return "Failed"
+        return DOC_STATUS_FAILED
     if action in (IGNORE, INBOX):
-        return "Ignorado"
-    return "Criado"
-
-
-# NOTE: the per-document action is no longer derived here. It comes from
-# `decisions.decide_email`, which computes each document's action and then
-# suppresses the ones the email as a whole does not warrant.
+        return DOC_STATUS_IGNORED
+    return DOC_STATUS_CREATED
 
 
 def _checked_to_dict(checked) -> Optional[dict]:
@@ -292,6 +288,62 @@ async def _thread_message_count(thread_id: str | None) -> int | None:
 
 
 # --------------------------------------------------------------------------- #
+# Thread continuation — settling EARLIER processes
+# --------------------------------------------------------------------------- #
+
+
+async def _open_processes_in_thread(thread_id: str, exclude_process_id) -> list[dict]:
+    """This thread's still-`Aberto` processes, minus the one just written.
+
+    Only "Aberto": a "Requer Ação" process is waiting on a human, and a supplier
+    answering does not discharge that, so it is left for them to close.
+    """
+    return await select(
+        f"""
+        SELECT process_id, email_action
+        FROM {PROCESSES_TABLE}
+        WHERE thread_id = $1 AND email_status = $2 AND process_id <> $3
+        """,
+        [thread_id, EMAIL_STATUS_OPEN, exclude_process_id],
+    )
+
+
+async def _document_states(process_id) -> list[tuple[Optional[str], Optional[str]]]:
+    """(action, status) for each of a process's documents."""
+    rows = await select(
+        f"SELECT action, status FROM {DOCUMENTS_TABLE} WHERE process_id = $1", [process_id]
+    )
+    return [(row["action"], row["status"]) for row in rows]
+
+
+async def close_prior_processes(thread_id: Optional[str], current_process_id) -> list[str]:
+    """Close the earlier processes of this thread that the new email settles.
+
+    A supplier answering on the thread is what an earlier `Retornado ao
+    Fornecedor` was waiting for, so that process is revisited now rather than
+    staying `Aberto` forever. `decisions.close_prior_process` holds the rule;
+    this reads the candidates, applies it, and writes `Fechado`.
+
+    Returns the process_ids actually closed, for the caller to log and trace.
+    """
+    if not thread_id:
+        return []
+
+    closed: list[str] = []
+    for row in await _open_processes_in_thread(thread_id, current_process_id):
+        documents = await _document_states(row["process_id"])
+        if not close_prior_process(row["email_action"], documents):
+            continue
+
+        await update_column(
+            PROCESSES_TABLE, "process_id", row["process_id"], "email_status", EMAIL_STATUS_CLOSED
+        )
+        closed.append(str(row["process_id"]))
+
+    return closed
+
+
+# --------------------------------------------------------------------------- #
 # Orchestrator
 # --------------------------------------------------------------------------- #
 
@@ -330,32 +382,19 @@ class EmailPipeline:
     async def _send_followups(self, result: EmailProcessingResult) -> dict[str, str]:
         """Carry out each document's email-level action (send) and return {filename: status}.
 
-        Called from `_persist` AFTER every document row already exists at its
-        day-one status ("Criado", see `derive_status`) — "Criado" is a real,
-        queryable row, not a value only ever held in memory before being
-        overwritten. This just decides which rows to UPDATE, and to what. A
-        filename absent from the returned dict is left exactly as inserted.
-
         The supplier reply and the treasury forward are each sent ONCE per
         email, as a Graph reply/forward on the original message (`message_id`
         from the manifest) — `decision.reply_body`/`decision.treasury_body`
-        are already deduped/joined across every REPLY/TREASURY document by
-        `decisions.py` — not once per document. The reply is gated on
-        `decision.should_reply` rather than on `decision.documents`, so it
-        also fires for the no-usable-PDF case (an email-level REPLY with zero
-        fct_documents rows) — there is simply nothing in the returned dict to
-        apply that status to there, since no document row exists.
+        are already deduped/joined across every REPLY/TREASURY document 
 
-        INGEST documents are deliberately left at "Criado" here: booking to
-        SAP is not an email-level action and can happen well after this email
-        was processed (e.g. once a MANUAL document clears human review), so it
-        is `sap_pipeline`'s job, run separately, in bulk, over every row at
-        `action = INGEST, status = "Criado"` regardless of which email wrote it.
+        INGEST documents are deliberately left at "Criado": ingestion done
+        by SAP pipeline
 
         Failures (Mail.Send is not yet a granted Graph permission — see
-        `invoice_utils.email_sender`) leave the returned status at "Criado",
-        so an email whose reply/forward could not be sent stays visible as
-        outstanding rather than being marked done.
+        `invoice_utils.email_sender`) leave the returned status at "Criado".
+
+        The archive move (`Arquivar`) runs last and independently of the
+        returned dict: it acts on the message itself.
         """
         manifest = _load_manifest(result.ingestion.folder)
         decisions_by_file = {d.filename: d for d in result.decision.documents}
@@ -378,7 +417,9 @@ class EmailPipeline:
                     f"({send_result.error}) — subject={reply_subject!r}"
                 )
             print(f"            body={result.decision.reply_body!r}")
-            outcome = "Comunicado" if send_result.status == "sent" else "Criado"
+            outcome = (
+                DOC_STATUS_COMMUNICATED if send_result.status == "sent" else DOC_STATUS_CREATED
+            )
             for filename, decision in decisions_by_file.items():
                 if decision.action == REPLY:
                     statuses[filename] = outcome
@@ -403,10 +444,20 @@ class EmailPipeline:
                     f"({send_result.error}) — subject={treasury_subject!r}"
                 )
             print(f"            body={result.decision.treasury_body!r}")
-            outcome = "Comunicado" if send_result.status == "sent" else "Criado"
+            outcome = (DOC_STATUS_COMMUNICATED if send_result.status == "sent" else DOC_STATUS_CREATED)
             for filename, decision in decisions_by_file.items():
                 if decision.action == TREASURY:
                     statuses[filename] = outcome
+
+        if result.decision.should_archive:
+            send_result = await archive_message(message_id)
+            if send_result.status == "sent":
+                print(f"  📦 Archived message — subject={manifest.get('email_subject', '')!r}")
+            else:
+                print(
+                    f"  ⚠️  Archive FAILED ({send_result.error}) — "
+                    f"subject={manifest.get('email_subject', '')!r}"
+                )
 
         return statuses
 
@@ -414,29 +465,22 @@ class EmailPipeline:
         self, result: EmailProcessingResult, thread_message_count: Optional[int] = None
     ) -> None:
         """Write one fct_processes row, its fct_documents rows, and their
-        fct_document_first_action rows.
+        fct_document_first_action rows — then settle what this email closes.
 
         `thread_message_count` is passed here
-
-        Every document is inserted first at its day-one status (`derive_status`
-        — "Criado", or "Failed" if the pipeline broke on it): a real row, not
-        just an in-memory value. `_send_followups` then carries out each
-        document's email-level action and UPDATEs the rows it advances
-        (REPLY/TREASURY -> "Comunicado"). INGEST rows stay at "Criado" here —
-        SAP booking is `sap_pipeline`'s job, run separately in bulk. Two real
-        writes per advanced document, deliberately — "Criado" stays an
-        observable state, not a value overwritten before ever reaching the
-        database.
 
         `fct_document_first_action` is written once, immediately after
         `fct_documents`, from the same `action` values — before any follow-up
         or later manual review can change them — so it always reflects the
         document's ORIGINAL routing, unlike `fct_documents.action`.
 
-        Each row's `document_id` is generated here (rather than left to the
-        column's DB-side default) so the whole batch can still go through one
-        `insert_rows` call, yet every id is already known for the follow-up
+        Each row's `document_id` is generated here so the whole batch can still 
+        go through one `insert_rows` call, yet every id is already known for 
         UPDATE — no per-row INSERT round-trip needed just to read one back.
+
+        Finally `close_prior_processes` revisits the EARLIER processes of this
+        thread: an email arriving can be what one of them was waiting for, so its
+        `email_status` is not frozen at what it was when it was processed.
         """
         ingestion = result.ingestion
         manifest = _load_manifest(ingestion.folder)
@@ -511,6 +555,13 @@ class EmailPipeline:
             document_id = document_ids.get(filename)
             if document_id is not None:
                 await update_column(DOCUMENTS_TABLE, "document_id", document_id, "status", status)
+
+        # This email arriving can be exactly what an earlier one on the thread was
+        # waiting for. Last, so the row just written cannot count itself.
+        closed = await close_prior_processes(thread_id, process_id)
+        if closed:
+            print(f"  🔒 Closed {len(closed)} earlier process(es) on this thread")
+            set_span_attributes(closed_prior_processes=closed)
 
     async def run(
         self,

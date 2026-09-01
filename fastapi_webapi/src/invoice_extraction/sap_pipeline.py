@@ -18,14 +18,15 @@ import asyncio
 from dataclasses import dataclass
 from typing import Optional
 
+from invoice_extraction.config import DOC_STATUS_BOOKED, DOC_STATUS_CREATED
 from invoice_extraction.decisions import INGEST
 from invoice_extraction.invoice_utils.sap_sender import book_in_sap
 from utils.utils_db import get_pool, select, update_column
 
 DOCUMENTS_TABLE = "fct_documents"
 
-STATUS_PENDING = "Criado"
-STATUS_BOOKED = "Ingerido"
+STATUS_PENDING = DOC_STATUS_CREATED
+STATUS_BOOKED = DOC_STATUS_BOOKED
 
 
 @dataclass

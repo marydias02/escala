@@ -9,6 +9,8 @@ from typing import List, Tuple
 import fitz  # PyMuPDF
 from pypdf import PdfReader
 
+from invoice_extraction.invoice_utils.pdf_ocr import ocr_page
+
 PDF_LAYOUT_WIDTH_CHARS = 200     # increase if columns collide 
 PDF_LAYOUT_LINE_Y_TOL = 4     # points; increase if a single line splits 
 PDF_LAYOUT_GAP_MULT = 1.6        # bigger => fewer blank lines inserted
@@ -568,7 +570,8 @@ def pdf_text_per_page(pdf_path: Path, max_pages: int) -> list[str]:
                     )
                 )
             else:
-                out.append("")
+                # No text layer: scanned page, fall back to OCR.
+                out.append(ocr_page(page))
         return out
     except Exception:
         pass
@@ -599,23 +602,11 @@ def doc_type_label(p: Path) -> str:
         return "XLS"
     return ext.upper().lstrip(".")
 
-def pdf_pages_to_image_data_urls(pdf_path: Path, max_pages: int, dpi: int = 100) -> list[str]:
-    doc = fitz.open(str(pdf_path))
-    urls: list[str] = []
-    for i in range(min(len(doc), max_pages)):
-        page = doc.load_page(i)
-        pix = page.get_pixmap(dpi=dpi)
-        b64 = base64.b64encode(pix.tobytes("png")).decode("utf-8")
-        urls.append(f"data:image/png;base64,{b64}")
-    return urls
-
 
 def build_attachment_evidence(
     p: Path,
     *,
     max_pages_text: int,
-    max_pages_vision: int,
-    dpi: int,
     min_good_chars_per_page: int,
     min_font_size: int,
 ) -> dict:

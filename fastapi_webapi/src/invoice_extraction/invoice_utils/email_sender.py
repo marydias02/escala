@@ -10,6 +10,9 @@ in the manifest), not a freshly composed one:
 - `forward_to_treasury` -> `POST /messages/{id}/forward`, which carries the
   original attachments along automatically — the receipts treasury needs are
   already on the source message, so nothing is re-attached here.
+- `archive_message` -> `POST /messages/{id}/move` to the well-known `archive`
+  folder. Well-known folder names (`archive`, `inbox`, `deleteditems`, ...) are
+  valid `destinationId` values directly — no folder-id lookup needed.
 
 `comment` in both requests is a short note Graph inserts above the original
 message, which it quotes below automatically — not a full replacement body
@@ -17,8 +20,9 @@ message, which it quotes below automatically — not a full replacement body
 equivalent), so the supplier/treasury see our note plus the original message
 for context, same as any manual reply/forward.
 
-See https://learn.microsoft.com/en-us/graph/api/message-reply and
-https://learn.microsoft.com/en-us/graph/api/message-forward.
+See https://learn.microsoft.com/en-us/graph/api/message-reply,
+https://learn.microsoft.com/en-us/graph/api/message-forward and
+https://learn.microsoft.com/en-us/graph/api/message-move.
 """
 
 import asyncio
@@ -120,3 +124,28 @@ async def forward_to_treasury(message_id: str, to: str, subject: str, comment: s
         return SendResult(status="failed", to=to, subject=subject, error=str(exc))
 
     return SendResult(status="sent", to=to, subject=subject)
+
+
+async def archive_message(message_id: str) -> SendResult:
+    """Move `message_id` to the Archive folder via Graph. `subject`/`to` on the
+    returned SendResult are left blank — archiving has neither.
+    """
+    if not message_id:
+        return SendResult(status="failed", to="", subject="", error="no message_id")
+
+    try:
+        await _post(
+            f"{GRAPH_BASE}/{graph_user_path()}/messages/{message_id}/move",
+            {"destinationId": "archive"},
+        )
+    except httpx.HTTPStatusError as exc:
+        return SendResult(
+            status="failed",
+            to="",
+            subject="",
+            error=f"{exc.response.status_code}: {exc.response.text}",
+        )
+    except Exception as exc:  # noqa: BLE001 - any failure here must not crash the pipeline
+        return SendResult(status="failed", to="", subject="", error=str(exc))
+
+    return SendResult(status="sent", to="", subject="")

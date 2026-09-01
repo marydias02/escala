@@ -150,7 +150,7 @@ async def _list_attachments(client: httpx.AsyncClient, headers: dict, message_id
 async def fetch_inbox_emails(
     limit: int, skip_message_ids: set[str] | None = None
 ) -> list[LoadedEmail]:
-    """Fetch the most recent `limit` messages from the inbox, newest first.
+    """Fetch the most recent `limit` messages from the inbox, then process oldest first.
 
     Messages whose id is in `skip_message_ids` are skipped before their
     attachments are downloaded — that's the expensive part this avoids for
@@ -165,6 +165,7 @@ async def fetch_inbox_emails(
     skipped = 0
     async with httpx.AsyncClient(timeout=60) as client:
         messages = await _list_messages(client, headers, top=limit)
+        messages.reverse()
 
         for message in messages:
             message_id = message["id"]
