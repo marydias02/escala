@@ -1,11 +1,13 @@
 """Email- and document-level routing decisions — THE place to change the rules.
 
-Two layers, deliberately separated:
+Three layers, deliberately separated:
 
 1. `decide_document(result)` — what to do with ONE document, from its
    classification alone. Pure, no I/O, no LLM.
 2. `decide_email(...)` — rolls the per-document decisions up into the single
    reply the email may get, and SUPPRESSES replies the email does not warrant.
+3. `close_prior_process(...)` — whether an EARLIER email of the same thread is
+   settled by a newer one arriving. The only rule that looks backwards.
 
 The suppression in step 2 is why step 1's answers are not final: a duplicate
 invoice asks for a reply on its own, but if the same email also carried the
@@ -31,7 +33,11 @@ from typing import Final, Literal, Optional
 
 from loguru import logger
 
-from invoice_extraction.config import MIN_CONFIDENCE, THREAD_ESCALATION_COUNT
+from invoice_extraction.config import (
+    DOC_STATUS_BOOKED,
+    MIN_CONFIDENCE,
+    THREAD_ESCALATION_COUNT,
+)
 from invoice_extraction.extraction_pipeline import PipelineResult
 from invoice_extraction.ingestion_pipeline import EmailIngestionResult
 from invoice_extraction.models import (
@@ -391,6 +397,10 @@ class EmailDecision:
     @property
     def should_reply(self) -> bool:
         return EMAIL_REPLY in self.actions
+
+    @property
+    def should_archive(self) -> bool:
+        return EMAIL_ARCHIVE in self.actions
 
     @property
     def reply_body(self) -> str:
@@ -899,3 +909,44 @@ def decide_email(
         treasury_lines=_dedupe_lines_for(decisions, TREASURY),
         thread_escalated=escalated,
     )
+
+
+# --------------------------------------------------------------------------- #
+# Layer 3 — an EARLIER email, revisited because a newer one arrived
+# --------------------------------------------------------------------------- #
+
+# A prior process's document is settled when its action needs nothing further,
+# or when the one action that does — booking to SAP — has actually happened.
+# MANUAL is deliberately absent: a human has not looked at it yet.
+_SETTLED_DOCUMENT_ACTIONS: Final = (INBOX, REPLY, TREASURY, IGNORE)
+
+
+def _document_is_settled(action: Optional[str], status: Optional[str]) -> bool:
+    """Whether one prior document has nothing left owing on it."""
+    if action == INGEST:
+        return status == DOC_STATUS_BOOKED
+    return action in _SETTLED_DOCUMENT_ACTIONS
+
+
+def close_prior_process(
+    email_action: Optional[list[str]],
+    documents: list[tuple[Optional[str], Optional[str]]],
+) -> bool:
+    """Whether an earlier, still-`Aberto` process is closed by a newer email in
+    its thread
+
+    - REPLY alone, or REPLY + TREASURY  -> closed. 
+    - REPLY + INBOX                     -> closed only if every document is
+      settled (`_document_is_settled`)
+    - anything without REPLY            -> untouched. 
+
+    `documents` is (action, status) per `fct_documents` row of the earlier
+    process. Pure: the caller does the reading and the writing.
+    """
+    if not email_action or EMAIL_REPLY not in email_action:
+        return False
+
+    if EMAIL_INBOX not in email_action:
+        return True
+
+    return all(_document_is_settled(action, status) for action, status in documents)

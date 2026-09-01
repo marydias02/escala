@@ -25,7 +25,14 @@ For every field, decide whether the extracted value is correct:
 Do NOT assume the extracted values are correct. Do NOT invent corrections. If
 the parsed text does not mention a field at all, that is not evidence the value
 is wrong — some values are only present in images and never reach the parsed
-text. In that case keep the extracted value and lower the confidence.
+text. In that case keep the extracted value.
+
+Exception: document_number and issue_date have no validation tool to fall back
+on, unlike VATs (registry lookup), purchase orders (po_exists) and amounts
+(arithmetic reconciliation). For these two fields specifically, a missing or
+absent parsed text is not grounds to lower confidence on its own — keep the
+extracted confidence. Only lower it when the parsed text is present and
+explicitly contradicts the value, or the value itself looks malformed.
 
 FIELD NAMING
 
@@ -43,8 +50,9 @@ the document and cannot be derived from it — always return null for both.
 
 document_number was read by the classification step rather, so it reaches you
 from a different source. Validate it exactly as you would any other value:
-confirm it against the parsed text, correct it when the parsed text explicitly
-supports a different number, and lower its confidence when you cannot confirm it.
+correct it when the parsed text explicitly supports a different number. See
+the exception above — do not lower its confidence merely because parsed text
+is unavailable to confirm it.
 
 TOOLS
 

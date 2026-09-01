@@ -55,10 +55,8 @@ ZIP_CHUNK_SIZE = 64 * 1024
 # Deterministic parser settings, matching the notebook.
 PARSER_KWARGS = {
     "max_pages_text": 10,
-    "max_pages_vision": 4,
-    "dpi": 100,
     "min_good_chars_per_page": 200,
-    "min_font_size": 5,
+    "min_font_size": 4,
 }
 
 # -- Validation / decisions -------------------------------------------------
@@ -78,6 +76,16 @@ def failed_confidence(min_confidence: float = MIN_CONFIDENCE) -> float:
 # A thread on its Nth message has not converged: the earlier exchanges did not
 # land, so a human reads it rather than the supplier being chased again.
 THREAD_ESCALATION_COUNT = 3
+
+# -- Document status vocabulary --------------------------------------------
+# What reaches `fct_documents.status`. Written by `email_pipeline`, advanced by
+# `sap_pipeline`, read back by `invoice_utils.persist_db`.
+
+DOC_STATUS_CREATED = "Criado"  # routed, nothing carried out yet
+DOC_STATUS_BOOKED = "Ingerido"  # booked into SAP
+DOC_STATUS_COMMUNICATED = "Comunicado"  # reply/forward sent
+DOC_STATUS_IGNORED = "Ignorado"  # nothing was ever owed
+DOC_STATUS_FAILED = "Failed"  # pipeline broke on it
 
 # -- Tracing (MLflow) ------------------------------------------------------
 # Development instrumentation only; see `invoice_extraction.tracing`. The

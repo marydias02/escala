@@ -78,9 +78,14 @@ Do not normalize evidence.
 
 KNOWN EDGE CASES
 
-If the email comes from COMPLEXO DE CARGA DO Aeroporto Humberto Delgado, the issue date is the first date, 
-that appears after "EMITIDO EM:" in the pdf. 
+If the email comes from COMPLEXO DE CARGA DO Aeroporto Humberto Delgado, the issue date is the first date,
+that appears after "EMITIDO EM:" in the pdf.
 The second date, which appears after "DATA DE EMISSÃO:", relates to the goods and should be ignored.
+
+On freight/shipping invoices, the line-item table may have a column literally
+labelled "Base" that is a quantity or rate-calculation basis. Do not extract base_amount from that
+column. The real base_amount is the taxable base shown in the VAT/tax summary
+block near the totals (e.g. labelled "Basis VAT" or "Base Imponible").
 
 FINAL RULE
 

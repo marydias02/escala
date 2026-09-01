@@ -109,7 +109,7 @@ MLflow server backed by SQLite:
 
 ```powershell
 cd .\fastapi_webapi\
-uv sync
+uv sync (.\.venv\Scripts\Activate.ps1)
 mlflow server --backend-store-uri sqlite:///mlflow.db --default-artifact-root ./mlruns --port 5000
 ```
 

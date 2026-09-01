@@ -272,6 +272,8 @@ def validate_document(
                         registry as needed (capped at MAX_TOOL_ROUNDS).
       2. Shaping pass — the whole conversation is replayed through
                         `with_structured_output` to produce the report.
+      3. Registry phase — supplier and bu information is fetched from the db
+                        according to their vat and/or name 
 
     `document_number` comes from the CLASSIFICATION stage, not from `invoice` —
     it is read there so duplicates can be matched before extraction runs. It is

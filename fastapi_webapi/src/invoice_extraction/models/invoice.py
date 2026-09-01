@@ -41,7 +41,7 @@ class InvoiceData(BaseModel):
     supplier_vat: Optional[Confident[str]] = Field(
         default=None,
         description="""
-        Tax identification number (VAT/NIF) of the supplier.
+        Tax identification number (VAT/NIF/BRN) of the supplier.
 
         Usually appears close to the supplier name.
 
@@ -139,15 +139,23 @@ class InvoiceData(BaseModel):
     base_amount: Optional[Confident[float]] = Field(
         default=None,
         description="""
-        Net amount before VAT.
+        Net amount before VAT (the taxable base).
 
-        Usually labelled:
+        Usually labelled, typically in a VAT/tax summary block near the
+        totals (not in the line-item table):
 
-        Base
+        Basis VAT
+        Base Imponible
         Valor Líquido
         Net Amount
         Taxable Amount
         Subtotal
+
+        Some invoices may also have a column inside the line-item table labelled just "Base". 
+        On those documents that column is a quantity or rate-calculation basis (e.g. weight,
+        units) and is NOT a monetary amount — do not confuse it with the taxable base amount. 
+        The real base_amount is a monetary value in the invoice currency, normally found next to
+        "VAT Amount" and the VAT rate in the tax summary.
 
         Do not return the total including VAT.
 
