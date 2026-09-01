@@ -41,12 +41,16 @@ def _request(method: str, path: str, **kwargs) -> requests.Response:
     return response
 
 
-def get_validation_dashboard() -> dict:
-    return _request("GET", "/extraction/big-numbers").json()
+def get_big_numbers() -> dict:
+    return _request("GET", "/validation/big-numbers").json()
 
 
 def get_sap_processes():
     return _request("GET", "/validation/documents").json()
+
+
+def get_process_messages(process_ref_no: str) -> list[dict]:
+    return _request("GET", f"/validation/{process_ref_no}/messages").json()
 
 
 def get_validation_page_data(*, force_refresh: bool = False) -> dict:
@@ -58,10 +62,11 @@ def get_validation_page_data(*, force_refresh: bool = False) -> dict:
             return deepcopy(_dashboard_cache)
 
         futures = {
-            "kpis": _dashboard_executor.submit(get_validation_dashboard),
+            "big_numbers": _dashboard_executor.submit(get_big_numbers),
             "sap_processes": _dashboard_executor.submit(get_sap_processes),
         }
         data = {name: future.result() for name, future in futures.items()}
+        data["kpis"] = data["big_numbers"]
 
         _dashboard_cache = data
         _dashboard_cache_expires_at = monotonic() + _DASHBOARD_CACHE_TTL_SECONDS

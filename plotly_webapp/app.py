@@ -34,12 +34,21 @@ app = Dash(
     external_stylesheets=external_stylesheets,
     title="ESCALA",
     update_title="ESCALA - Updating ...",
+    suppress_callback_exceptions=True,
 )
 
 
 app.layout = html.Div(
     [
         dcc.Store(id="sidebar--state", data={"open": False}),
+        html.Div(id="email-detail-toast-host", className="email_detail__toast_host"),
+        dcc.Interval(
+            id="email-detail-toast-timer",
+            interval=3000,
+            disabled=True,
+            n_intervals=0,
+            max_intervals=1,
+        ),
         html.Aside(
             className="app__sidebar",
             id="app__sidebar",
