@@ -324,7 +324,7 @@ def _build_email_detail(ref_number):
                                                         dcc.DatePickerSingle(
                                                             id='issue_date',
                                                             date=data_recepcao,
-                                                            className="email_detail__input"
+                                                            className="email_detail__input email_detail__date_picker",
                                                         )
                                                     ],
                                                 ),
@@ -362,7 +362,7 @@ def _build_email_detail(ref_number):
                                                             options=['EUR', 'USD', 'CVE'],
                                                             value=currency,
                                                             clearable=False,
-                                                            className="email_detail__input"
+                                                            className="email_detail__input email_detail__dropdown",
                                                         )
                                                     ],
                                                 ),
