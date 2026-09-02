@@ -146,6 +146,7 @@ REPLY_LETTER_TEMPLATE = """Exmos. Senhores,
 O documento enviado não pode ser aceite pelo facto de {reasons}.
 
 Ficamos a aguardar o envio do documento original em formato PDF, com os dados da empresa corretos.
+
 Obrigado"""
 
 # Full treasury-facing letter. Reasons are always the same (C4 is the only
@@ -153,6 +154,7 @@ Obrigado"""
 TREASURY_LETTER = """Exmos. Senhores,
 
 Seguem em anexo recibos para processamento.
+
 Obrigado"""
 
 # Document types routed by the B-cases below. Kept in sync with
@@ -949,4 +951,12 @@ def close_prior_process(
     if EMAIL_INBOX not in email_action:
         return True
 
+    return all(_document_is_settled(action, status) for action, status in documents)
+
+
+def close_process_after_manual_send(
+    documents: list[tuple[Optional[str], Optional[str]]],
+) -> bool:
+    """Whether a process is finished once a human has sent one of its documents
+    to SAP"""
     return all(_document_is_settled(action, status) for action, status in documents)

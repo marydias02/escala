@@ -3,6 +3,8 @@ import json
 from pathlib import Path
 from typing import Optional
 
+from loguru import logger
+
 from api.exceptions import NotFoundError
 from api.repositories.extraction_repository import (
     BusinessUnitRepository,
@@ -11,6 +13,8 @@ from api.repositories.extraction_repository import (
     ProcessesRepository,
 )
 from invoice_extraction.config import PROCESSED_EMAILS_DIR #temporary, while there is no access to blob storage
+from invoice_extraction.decisions import INGEST, MANUAL, close_process_after_manual_send
+from invoice_extraction.sap_pipeline import STATUS_BOOKED, book_document
 
 
 class ExtractionService:
@@ -19,6 +23,7 @@ class ExtractionService:
         self.documents = DocumentsRepository()
         self.processes = ProcessesRepository()
         self.business_units = BusinessUnitRepository()
+        self.processes = ProcessesRepository()
 
     async def list_priority_documents(self, limit: int = 100) -> list[dict]:
         df = await self.documents.list_priority_documents(limit=limit)
@@ -102,7 +107,8 @@ class ExtractionService:
         if not isinstance(content, str):
             content = json.dumps(content)
 
-        action = action or row.get("action")
+        previous_action = row.get("action")
+        action = action or previous_action
         status = status or "Sob Revisão"
         last_modified_by = last_modified_by
 
@@ -116,11 +122,19 @@ class ExtractionService:
         }
 
         updated_row = await self.documents.alter(data)
+
         updated_content_value = updated_row.get("document_content")
         if isinstance(updated_content_value, str):
             updated_content = json.loads(updated_content_value) if updated_content_value else {}
         else:
             updated_content = updated_content_value or {}
+
+        sap_booked = False
+        process_closed = False
+        if previous_action == MANUAL and action == INGEST:
+            sap_booked, process_closed = await self._send_to_sap(
+                document_id, row.get("document_type"), updated_content
+            )
 
         po_list = updated_content.pop("po_list", None) or []
 
@@ -130,8 +144,59 @@ class ExtractionService:
             "fields": updated_content,
             "po_list": po_list,
             "action": updated_row.get("action"),
-            "status": updated_row.get("status"),
+            "status": STATUS_BOOKED if sap_booked else updated_row.get("status"),
+            "sap_booked": sap_booked,
+            "process_closed": process_closed,
         }
+
+    async def _send_to_sap(
+        self, document_id: str, document_type: Optional[str], document_content: dict
+    ) -> tuple[bool, bool]:
+        """Book a manually validated document, then close its process if nothing
+        else is owed. Returns (booked, process_closed).
+
+        Best-effort: the document is already saved, so a booking or closing
+        failure must not fail the request. An unbooked document keeps
+        `status = "Criado"` and stays eligible for the bulk `sap_pipeline` run.
+        """
+        booking_row = {
+            "document_id": document_id,
+            "document_type": document_type,
+            "document_content": document_content,
+        }
+
+        try:
+            outcome = await book_document(booking_row)
+        except Exception as exc:  # noqa: BLE001 - the save stands regardless
+            logger.error(f"SAP booking failed for document {document_id}: {exc}")
+            return False, False
+
+        if outcome.status != STATUS_BOOKED:
+            logger.warning(f"SAP did not book document {document_id}")
+            return False, False
+
+        await self.documents.set_status(document_id, STATUS_BOOKED)
+
+        try:
+            return True, await self._close_process_if_settled(document_id)
+        except Exception as exc:  # noqa: BLE001 - the booking stands regardless
+            logger.error(f"Closing the process of document {document_id} failed: {exc}")
+            return True, False
+
+    async def _close_process_if_settled(self, document_id: str) -> bool:
+        """Close the document's process once all of its documents are terminal."""
+        process_id = await self.documents.get_process_id(document_id)
+        if not process_id:
+            return False
+
+        documents = await self.documents.list_process_document_states(process_id)
+        if not close_process_after_manual_send(documents):
+            return False
+
+        closed = await self.processes.close(process_id)
+        if closed:
+            logger.info(f"Process {process_id} closed after a manual send to SAP")
+        return closed
 
     async def business_unit_exists(self, vat: str) -> bool:
         return await self.business_units.exists_by_vat(vat)

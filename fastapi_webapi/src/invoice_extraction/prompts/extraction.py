@@ -87,6 +87,10 @@ labelled "Base" that is a quantity or rate-calculation basis. Do not extract bas
 column. The real base_amount is the taxable base shown in the VAT/tax summary
 block near the totals (e.g. labelled "Basis VAT" or "Base Imponible").
 
+For Seaco, the Purcher Order number is the number between brackets after Lease number. 
+Example:
+Summary Charges - Lease Number : 182991 (5000284123)
+
 FINAL RULE
 
 Accuracy is more important than completeness.

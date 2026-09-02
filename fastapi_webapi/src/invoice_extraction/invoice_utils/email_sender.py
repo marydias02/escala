@@ -26,6 +26,7 @@ https://learn.microsoft.com/en-us/graph/api/message-move.
 """
 
 import asyncio
+import html
 from dataclasses import dataclass
 from typing import Literal, Optional
 
@@ -43,6 +44,11 @@ class SendResult:
     to: str
     subject: str
     error: Optional[str] = None
+
+
+def _as_html(text: str) -> str:
+    """Graph inserts `comment` into an HTML body, so newlines collapse without <br>."""
+    return html.escape(text).replace("\n", "<br>")
 
 
 async def _post(url: str, json: dict) -> httpx.Response:
@@ -82,7 +88,7 @@ async def reply_to_supplier(message_id: str, subject: str, comment: str) -> Send
     try:
         await _post(
             f"{GRAPH_BASE}/{graph_user_path()}/messages/{message_id}/reply",
-            {"comment": comment},
+            {"comment": _as_html(comment)},
         )
     except httpx.HTTPStatusError as exc:
         return SendResult(
@@ -111,7 +117,7 @@ async def forward_to_treasury(message_id: str, to: str, subject: str, comment: s
     try:
         await _post(
             f"{GRAPH_BASE}/{graph_user_path()}/messages/{message_id}/forward",
-            {"comment": comment, "toRecipients": [{"emailAddress": {"address": to}}]},
+            {"comment": _as_html(comment), "toRecipients": [{"emailAddress": {"address": to}}]},
         )
     except httpx.HTTPStatusError as exc:
         return SendResult(

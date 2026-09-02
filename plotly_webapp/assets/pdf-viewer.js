@@ -8,6 +8,7 @@ const viewer = document.getElementById("viewer");
 
 let pdfDoc = null;
 let resizeTimer = null;
+let renderToken = 0;
 
 function showError(message) {
   viewer.innerHTML = `<div class="error">${message}</div>`;
@@ -16,6 +17,7 @@ function showError(message) {
 async function renderPdf() {
   if (!pdfDoc) return;
 
+  const token = ++renderToken;
   viewer.innerHTML = "";
 
   const availableWidth = Math.min(viewer.clientWidth - 32, 1100);
@@ -23,6 +25,7 @@ async function renderPdf() {
 
   for (let pageNum = 1; pageNum <= pdfDoc.numPages; pageNum++) {
     const page = await pdfDoc.getPage(pageNum);
+    if (token !== renderToken) return;
 
     const baseViewport = page.getViewport({ scale: 1 });
     const scale = availableWidth / baseViewport.width;
@@ -50,12 +53,19 @@ async function renderPdf() {
       viewport,
       transform,
     }).promise;
+
+    if (token !== renderToken) return;
   }
 }
 
 async function loadPdf(url) {
   try {
-    const loadingTask = pdfjsLib.getDocument({ url: decodeURIComponent(url) });
+    // Scanned invoices use JBIG2/JPX images, decoded by wasm modules that
+    // PDF.js loads from here. Without this the images are silently dropped.
+    const loadingTask = pdfjsLib.getDocument({
+      url: decodeURIComponent(url),
+      wasmUrl: "/assets/pdfjs/web/wasm/",
+    });
     pdfDoc = await loadingTask.promise;
     await renderPdf();
   } catch (err) {
