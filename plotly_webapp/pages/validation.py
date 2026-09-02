@@ -177,7 +177,7 @@ def load_validation_content(_pathname):
                     children=[
                         IndicatorCard(
                             label_text="Não Conformes",
-                            label_tooltip="faturas",
+                            label_tooltip="faturas não conformes recebidas esta semana",
                             rows=[
                                 (
                                     kpis["non_conforming_received"]["value"],
@@ -190,7 +190,7 @@ def load_validation_content(_pathname):
                         ),
                         IndicatorCard(
                             label_text="Necessita Validação",
-                            label_tooltip="faturas",
+                            label_tooltip="faturas pendentes de validação manual neste momento; a diferença percentual foi calculada no início da semana",
                             rows=[
                                 (
                                     kpis["needs_manual_validation"]["value"],
@@ -203,7 +203,7 @@ def load_validation_content(_pathname):
                         ),
                         IndicatorCard(
                             label_text="Necessita Acompanhamento",
-                            label_tooltip="faturas",
+                            label_tooltip="faturas em resolução pelo Buyer neste momento; a diferença percentual foi calculada no início da semana",
                             rows=[
                                 (
                                     kpis["with_buyer"]["value"],
@@ -216,7 +216,7 @@ def load_validation_content(_pathname):
                         ),
                         IndicatorCard(
                             label_text="Processadas pelo Agente",
-                            label_tooltip="faturas",
+                            label_tooltip="total de faturas processadas pelo agente esta semana",
                             rows=[
                                 (
                                     kpis["processed_by_agent"]["value"],

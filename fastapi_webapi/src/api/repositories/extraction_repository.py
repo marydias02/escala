@@ -164,21 +164,6 @@ class DocumentsRepository(BaseRepository):
         """
         return await self.query_df(query, parameters=[limit])
 
-    async def list_pending_documents(self, limit: int = 100) -> pl.DataFrame:
-        query = f"""
-        SELECT
-            {_DOCUMENT_LIST_COLUMNS},
-            p.sender_email,
-            p.email_subject
-        FROM {self.table} d
-        LEFT JOIN fct_processes p ON p.process_id = d.process_id
-        WHERE d.status IN ('Ignorado', 'Criado')
-            AND d.document_content = '{{}}'::jsonb
-        ORDER BY created_at DESC
-        LIMIT $1
-        """
-        return await self.query_df(query, parameters=[limit])
-
     async def get_document(self, document_id: str) -> Optional[dict]:
         query = f"""
         SELECT document_id, alerts_list, document_content, document_type, action, status
@@ -226,3 +211,45 @@ class DocumentsRepository(BaseRepository):
         params = [data["document_id"], data["alerts_list"], data["document_content"], data["action"], data["status"], data["last_modified_by"]]
 
         return await self.query_dict(query, parameters=params)
+
+
+class ProcessesRepository(BaseRepository):
+    __table_name__ = "fct_processes"
+
+    async def list_pending_processes(self, limit: int = 100) -> pl.DataFrame:
+        query = f"""
+        SELECT
+            sender_email,
+            email_subject,
+            email_content,
+            reception_date,
+            email_status
+        FROM (
+            SELECT
+                sender_email,
+                email_subject,
+                email_content,
+                reception_date,
+                email_status,
+                process_id,
+                thread_id,
+                thread_message_count,
+                ROW_NUMBER() OVER (
+                    PARTITION BY thread_id
+                    ORDER BY thread_message_count DESC NULLS LAST, reception_date DESC
+                ) AS rn
+            FROM {self.table}
+            -- Pre-migration rows have a NULL status and remain pending until
+            -- explicitly closed.
+            WHERE email_status IS NULL OR email_status <> 'Fechado'
+        ) t
+        LEFT JOIN fct_documents d ON d.process_id = t.process_id
+        WHERE rn = 1 AND (
+            d.process_id IS NULL OR
+            d.document_content IS NULL OR
+            d.document_content = '{{}}'::jsonb
+        )
+        ORDER BY reception_date ASC
+        LIMIT $1
+        """
+        return await self.query_df(query, parameters=[limit])

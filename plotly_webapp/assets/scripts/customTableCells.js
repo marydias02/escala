@@ -218,6 +218,63 @@ dagcomponentfuncs.Status = function (props) {
   );
 };
 
+dagcomponentfuncs.EmailStatus = function (props) {
+  const { value, setData } = props;
+
+  let bg = "#eee",
+    color = "#222",
+    icon = "lucide:arrow-right";
+
+  if (value === "Requer Ação") {
+    bg = "rgba(245, 234, 235, 1)"; // Negative colors
+    color = "rgba(122, 31, 32, 1)";
+    border = "rgba(239, 220, 220, 1)";
+    icon = "lucide:triangle-alert";
+  } else if (value === "Aberto") {
+    bg = "rgba(241, 237, 218, 1)"; // Warning colors
+    color = "rgba(74, 65, 28, 1)";
+    border = "rgba(238, 232, 211, 1)";
+    icon = "lucide:clock";
+  }
+
+  function onClick() {
+    if (setData) setData();
+  }
+
+  const iconElement = React.createElement(window.dash_iconify.DashIconify, {
+    icon: icon,
+    width: 14,
+    height: 14,
+    style: {
+      marginRight: "2px",
+    },
+  });
+
+  return React.createElement(
+    "div",
+    {
+      onClick,
+      style: {
+        backgroundColor: bg,
+        color: color,
+        borderRadius: "4px",
+        padding: "2px 6px",
+        fontSize: ".8rem",
+        marginTop: "7px",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "flex-start",
+        boxSizing: "border-box",
+        borderColor: "1px solid transparent",
+        width: "fit-content",
+        lineHeight: 1.5,
+        fontWeight: 500,
+      },
+    },
+    [iconElement, React.createElement("span", null, value)],
+  );
+};
+
 dagfuncs.action_options = function () {
   return {
     values: [

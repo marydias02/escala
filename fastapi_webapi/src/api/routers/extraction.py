@@ -66,15 +66,15 @@ async def get_all_documents(service: ExtractionServiceDep, limit: int = 100) -> 
     return [DocumentRead.model_validate(r) for r in rows]
 
 
-@router.get("/pending-documents", summary="Get pending documents")
-async def get_pending_documents(service: ExtractionServiceDep, limit: int = 100) -> list[DocumentRead]:
+@router.get("/pending-processes", summary="Get pending processes")
+async def get_pending_processes(service: ExtractionServiceDep, limit: int = 100) -> list[dict]:
     """
     Documents awaiting a response, most recently received first.
 
-    - **limit**: Maximum number of documents to return (default: 100)
+    - **limit**: Maximum number of processes to return (default: 100)
     """
-    rows = await service.list_pending_documents(limit=limit)
-    return [DocumentRead.model_validate(r) for r in rows]
+    rows = await service.list_pending_processes(limit=limit)
+    return rows
 
 
 @router.get("/documents/{document_id}", summary="Get document details")

@@ -222,6 +222,14 @@
   height: 28px;
 }
 
+.email_detail__date_picker {
+  height: 34px;
+}
+
+.email_detail__dropdown {
+  height: 34px;
+}
+
 .email_detail__indicator_section-wrapper {
   display: flex;
   gap: var(--spacing-16);
