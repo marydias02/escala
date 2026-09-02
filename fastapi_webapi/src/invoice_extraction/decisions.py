@@ -952,3 +952,11 @@ def close_prior_process(
         return True
 
     return all(_document_is_settled(action, status) for action, status in documents)
+
+
+def close_process_after_manual_send(
+    documents: list[tuple[Optional[str], Optional[str]]],
+) -> bool:
+    """Whether a process is finished once a human has sent one of its documents
+    to SAP"""
+    return all(_document_is_settled(action, status) for action, status in documents)
