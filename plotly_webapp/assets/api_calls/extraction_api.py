@@ -1,3 +1,4 @@
+import os
 from concurrent.futures import ThreadPoolExecutor
 from copy import deepcopy
 from threading import Lock, local
@@ -8,7 +9,7 @@ from requests.adapters import HTTPAdapter
 
 BASE_URL = "http://localhost:8000"
 
-HEADERS = {"X-API-KEY": "4TOaTIKu64Dea4Kj0YmEH3bOF3K1ip9005NmXweWyes"}
+HEADERS = {"X-API-KEY": os.environ.get("API_KEY", "")}
 
 _REQUEST_TIMEOUT = 10
 _DASHBOARD_CACHE_TTL_SECONDS = 20

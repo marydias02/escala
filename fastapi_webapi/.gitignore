@@ -28,7 +28,8 @@ __pypackages__/ # Local packages directory created by Poetry
 *.swp
 *.swo
 .idea/
-.vscode/
+.vscode/*
+!.vscode/settings.json
 *.iml
 
 # OS generated files
