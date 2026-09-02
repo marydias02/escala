@@ -90,7 +90,7 @@ documents_col_def = [
     {
         "field": "status",
         "headerName": "Estado",
-        "width": 120,
+        "width": 130,
         "cellRenderer": "Status",
     },
 ]

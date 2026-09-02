@@ -231,6 +231,7 @@ class ProcessesRepository(BaseRepository):
                 email_content,
                 reception_date,
                 email_status,
+                process_id,
                 thread_id,
                 thread_message_count,
                 ROW_NUMBER() OVER (
@@ -242,7 +243,12 @@ class ProcessesRepository(BaseRepository):
             -- explicitly closed.
             WHERE email_status IS NULL OR email_status <> 'Fechado'
         ) t
-        WHERE rn = 1
+        LEFT JOIN fct_documents d ON d.process_id = t.process_id
+        WHERE rn = 1 AND (
+            d.process_id IS NULL OR
+            d.document_content IS NULL OR
+            d.document_content = '{{}}'::jsonb
+        )
         ORDER BY reception_date ASC
         LIMIT $1
         """
