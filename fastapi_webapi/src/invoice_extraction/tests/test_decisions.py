@@ -52,6 +52,7 @@ from invoice_extraction.decisions import (
     EmailDecision,
     build_alerts_list,
     close_prior_process,
+    close_process_after_manual_send,
     decide_document,
     decide_email,
     ingestion_blockers,
@@ -782,3 +783,41 @@ class TestClosePriorProcess:
     def test_reply_plus_inbox_with_no_documents_is_closed(self):
         """Vacuously settled: the INBOX came from the email body, not a document."""
         assert close_prior_process([EMAIL_REPLY, EMAIL_INBOX], []) is True
+
+
+class TestCloseProcessAfterManualSend:
+    """Layer 3 — a process revisited because a human sent a document to SAP.
+
+    `documents` is (action, status) per fct_documents row of the process, read
+    AFTER the booking has been written.
+    """
+
+    def test_closed_when_every_document_is_settled(self):
+        documents = [
+            (INGEST, DOC_STATUS_BOOKED),
+            (REPLY, DOC_STATUS_COMMUNICATED),
+            (TREASURY, DOC_STATUS_COMMUNICATED),
+            (INBOX, DOC_STATUS_IGNORED),
+            (IGNORE, DOC_STATUS_IGNORED),
+        ]
+        assert close_process_after_manual_send(documents) is True
+
+    def test_the_just_booked_document_alone_closes_the_process(self):
+        assert close_process_after_manual_send([(INGEST, DOC_STATUS_BOOKED)]) is True
+
+    def test_stays_open_on_a_sibling_awaiting_review(self):
+        """Another document still sitting in manual validation."""
+        documents = [(INGEST, DOC_STATUS_BOOKED), (MANUAL, DOC_STATUS_CREATED)]
+        assert close_process_after_manual_send(documents) is False
+
+    def test_stays_open_on_a_sibling_not_yet_booked(self):
+        documents = [(INGEST, DOC_STATUS_BOOKED), (INGEST, DOC_STATUS_CREATED)]
+        assert close_process_after_manual_send(documents) is False
+
+    def test_an_unbooked_document_does_not_close_the_process(self):
+        """The booking failed, so `sap_pipeline` still owes this row."""
+        assert close_process_after_manual_send([(INGEST, DOC_STATUS_CREATED)]) is False
+
+    def test_no_documents_is_closed(self):
+        """Vacuously settled, as in `close_prior_process`."""
+        assert close_process_after_manual_send([]) is True

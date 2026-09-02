@@ -92,6 +92,9 @@ class DocumentDetailRead(BaseModel):
     po_list: list[ConfidentValue]
     action: Optional[str] = None
     status: Optional[str] = None
+    # Only a manual send to SAP sets these; a plain read leaves them False.
+    sap_booked: bool = False
+    process_closed: bool = False
 
 
 class DocumentEmailRead(BaseModel):

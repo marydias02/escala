@@ -3,7 +3,7 @@ from typing import Any, Optional
 import polars as pl
 
 from api.sql import BaseRepository
-from invoice_extraction.decisions import INGEST, MANUAL, REPLY
+from invoice_extraction.decisions import EMAIL_STATUS_CLOSED, INGEST, MANUAL, REPLY
 
 _DOCUMENT_LIST_COLUMNS = """
     document_id,
@@ -96,6 +96,21 @@ class BusinessUnitRepository(BaseRepository):
         return await self.query_scalar(query, parameters=[vat])
 
 
+class ProcessesRepository(BaseRepository):
+    __table_name__ = "fct_processes"
+
+    async def close(self, process_id) -> bool:
+        """Mark a process `Fechado`. False if it was already closed."""
+        query = f"""
+        UPDATE {self.table}
+        SET email_status = $2
+        WHERE process_id = $1 AND email_status IS DISTINCT FROM $2
+        RETURNING process_id
+        """
+        updated = await self.query_scalar(query, parameters=[process_id, EMAIL_STATUS_CLOSED])
+        return updated is not None
+
+
 class DocumentsRepository(BaseRepository):
     __table_name__ = "fct_documents"
 
@@ -166,11 +181,23 @@ class DocumentsRepository(BaseRepository):
 
     async def get_document(self, document_id: str) -> Optional[dict]:
         query = f"""
-        SELECT document_id, alerts_list, document_content, action, status
+        SELECT document_id, alerts_list, document_content, document_type, action, status
         FROM {self.table}
         WHERE document_id = $1
         """
         return await self.query_dict(query, parameters=[document_id])
+
+    async def list_process_document_states(self, process_id) -> list[tuple[Optional[str], Optional[str]]]:
+        """(action, status) for each of a process's documents."""
+        query = f"SELECT action, status FROM {self.table} WHERE process_id = $1"
+        df = await self.query_df(query, parameters=[process_id])
+        if df.is_empty():
+            return []
+        return [(row["action"], row["status"]) for row in df.iter_rows(named=True)]
+
+    async def set_status(self, document_id: str, status: str) -> None:
+        query = f"UPDATE {self.table} SET status = $2 WHERE document_id = $1"
+        await self.execute(query, parameters=[document_id, status])
 
     async def get_document_email(self, document_id: str) -> Optional[dict]:
         query = f"""
