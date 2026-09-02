@@ -8,6 +8,7 @@ from api.repositories.extraction_repository import (
     BusinessUnitRepository,
     DocumentsRepository,
     ExtractionBigNumbers,
+    ProcessesRepository,
 )
 from invoice_extraction.config import PROCESSED_EMAILS_DIR #temporary, while there is no access to blob storage
 
@@ -16,6 +17,7 @@ class ExtractionService:
     def __init__(self):
         self.big_numbers = ExtractionBigNumbers()
         self.documents = DocumentsRepository()
+        self.processes = ProcessesRepository()
         self.business_units = BusinessUnitRepository()
 
     async def list_priority_documents(self, limit: int = 100) -> list[dict]:
@@ -32,8 +34,8 @@ class ExtractionService:
         df = await self.documents.list_all_documents(limit=limit)
         return df.to_dicts()
     
-    async def list_pending_documents(self, limit: int = 100) -> list[dict]:
-        df = await self.documents.list_pending_documents(limit=limit)
+    async def list_pending_processes(self, limit: int = 100) -> list[dict]:
+        df = await self.processes.list_pending_processes(limit=limit)
         return df.to_dicts()
 
     async def get_document(self, document_id: str) -> dict:

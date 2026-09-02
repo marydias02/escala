@@ -26,7 +26,7 @@ class ExtractionDashboardTests(unittest.TestCase):
             patch.object(extraction_api, "get_big_numbers", side_effect=result({"total": 1})) as big_numbers,
             patch.object(extraction_api, "get_priority_documents", side_effect=result(["priority"])) as priority,
             patch.object(extraction_api, "get_all_documents", side_effect=result(["all"])) as all_documents,
-            patch.object(extraction_api, "get_pending_documents", side_effect=result(["pending"])) as pending,
+            patch.object(extraction_api, "get_pending_processes", side_effect=result(["pending"])) as pending,
         ):
             first = extraction_api.get_extraction_dashboard()
             first["all_documents"].append("local mutation")
@@ -56,7 +56,7 @@ class ExtractionDashboardTests(unittest.TestCase):
             with (
                 patch.object(extraction_api, "get_priority_documents", return_value=[]),
                 patch.object(extraction_api, "get_all_documents", return_value=[]),
-                patch.object(extraction_api, "get_pending_documents", return_value=[]),
+                patch.object(extraction_api, "get_pending_processes", return_value=[]),
             ):
                 self.assertEqual(extraction_api.get_extraction_dashboard(), cached)
                 extraction_api.invalidate_dashboard_cache()

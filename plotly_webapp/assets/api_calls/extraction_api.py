@@ -69,13 +69,13 @@ def get_all_documents():
     return rows
 
 
-def get_pending_documents():
-    rows = _request("GET", "/extraction/pending-documents").json()
+def get_pending_processes():
+    rows = _request("GET", "/extraction/pending-processes").json()
 
     for row in rows:
-        created_at = row.get("created_at")
-        if created_at:
-            row["created_at"] = created_at[:16].replace("T", " ")
+        reception_date = row.get("reception_date")
+        if reception_date:
+            row["reception_date"] = reception_date[:16].replace("T", " ")
 
     return rows
 
@@ -148,7 +148,7 @@ def get_extraction_dashboard(*, force_refresh: bool = False) -> dict:
             "kpis": _dashboard_executor.submit(get_big_numbers),
             "priority_documents": _dashboard_executor.submit(get_priority_documents),
             "all_documents": _dashboard_executor.submit(get_all_documents),
-            "pending_documents": _dashboard_executor.submit(get_pending_documents),
+            "pending_documents": _dashboard_executor.submit(get_pending_processes),
         }
         dashboard = {name: future.result() for name, future in futures.items()}
 

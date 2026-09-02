@@ -3,7 +3,7 @@ from dash import html
 from dash_iconify import DashIconify
 from dash.dcc import Tab
 from dash import dcc
-from dash import callback, Input, Output
+from dash import callback, Input, Output, State, callback_context, no_update
 from dash.exceptions import PreventUpdate
 
 from components.page_header.page_header import PageHeader
@@ -11,6 +11,7 @@ from components.tabs.tabs import Tabs
 from components.button.button import Button
 from components.section.section import Section
 from components.cards.indicator_card.indicator_card import IndicatorCard
+from components.right_drawer.right_drawer import RightDrawer
 from utils.base.grid_system.grid import Col, Container, Row
 
 from components.table.V1.table import Table as TableV1
@@ -96,30 +97,25 @@ documents_col_def = [
 
 short_documents_col_def = [
     {
-        "field": "created_at",
+        "field": "reception_date",
         "headerName": "Data de Processamento",
         "width": 200,
     },
     {
         "field": "sender_email",
         "headerName": "Email do Remetente",
-        "minWidth": 180,
+        "minWidth": 220,
     },
     {
         "field": "email_subject",
         "headerName": "Assunto do Email",
-        "minWidth": 180,
+        "minWidth": 220,
     },
     {
-        "field": "action",
-        "headerName": "Ação",
-        "width": 200,
-    },
-    {
-        "field": "status",
+        "field": "email_status",
         "headerName": "Estado",
-        "width": 140,
-        "cellRenderer": "Status",
+        "width": 180,
+        "cellRenderer": "EmailStatus",
     },
 ]
 
@@ -337,13 +333,24 @@ def load_extraction_content(_pathname):
                                 abs(kpis["returned_to_supplier"]["delta_pp"]),
                                 trend(kpis["returned_to_supplier"]["delta_pp"]))],
                             badge_unit="pp",
-                        ),
-                    ]
+        ),
+    ]
                 ),
             ],
             open=True,
         ),
         make_medium_tabs(priority_documents, all_documents, pending_documents),
+        RightDrawer(
+            drawer_id="extraction-email-drawer",
+            title="Detalhes do Email",
+            children=[
+                Section(
+                    title="Conteúdo do Email",
+                    content=html.Div(id="extraction-email-drawer-content"),
+                    open=True,
+                ),
+            ],
+        ),
     ]
 
     return content_children
@@ -363,3 +370,79 @@ def go_to_detail(priority_rows, all_rows):
 
     ref_number = rows[0]["document_id"]
     return f"/detalhe/{ref_number}"
+
+
+def _build_pending_email_drawer_content(row):
+    sender = row.get("sender_email") or "N/D"
+    if "@" in sender:
+        name, domain = sender.split("@", 1)
+        sender_display = html.Span(
+            [f"{name}@", html.Br(), domain],
+            className="right-sidebar__meta-value",
+        )
+    else:
+        sender_display = html.Span(sender, className="right-sidebar__meta-value")
+
+    return html.Div(
+        className="right-sidebar__content",
+        children=[
+            html.Div(
+                className="right-sidebar__meta-box",
+                children=[
+                    html.Div(
+                        className="right-sidebar__meta-item",
+                        children=[
+                            html.Span("Remetente", className="right-sidebar__meta-label"),
+                            sender_display,
+                        ],
+                    ),
+                    html.Div(className="right-sidebar__meta-divider"),
+                    html.Div(
+                        className="right-sidebar__meta-item",
+                        children=[
+                            html.Span("Data de Receção", className="right-sidebar__meta-label"),
+                            html.Span(str(row.get("reception_date") or "N/D"), className="right-sidebar__meta-value"),
+                        ],
+                    ),
+                ],
+            ),
+            html.Div(
+                className="right-sidebar__email-box",
+                children=[
+                    html.Div(row.get("email_subject") or "N/D", className="right-sidebar__email-subject"),
+                    html.Div(
+                        html.Div(
+                            row.get("email_content") or "N/D",
+                            className="right-sidebar__email-body",
+                        ),
+                        className="right-sidebar__email-body-box",
+                    ),
+                ],
+            ),
+        ],
+    )
+
+
+@callback(
+    Output("extraction-email-drawer", "className"),
+    Output("extraction-email-drawer-content", "children"),
+    Input("pending-processes-table", "selectedRows"),
+    Input("extraction-email-drawer-close", "n_clicks"),
+    State("extraction-email-drawer", "className"),
+    prevent_initial_call=True,
+)
+def toggle_extraction_email_drawer(selected_rows, close_clicks, current_class_name):
+    triggered = callback_context.triggered
+    if not triggered:
+        raise PreventUpdate
+
+    trigger_id = triggered[0]["prop_id"].split(".")[0]
+    if trigger_id == "extraction-email-drawer-close":
+        return "right-sidebar sidebar--collapsed", no_update
+
+    if not selected_rows:
+        raise PreventUpdate
+
+    row = selected_rows[0]
+    content = _build_pending_email_drawer_content(row)
+    return "right-sidebar", content
