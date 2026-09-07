@@ -2,22 +2,12 @@
 
 Delegated (`DeviceCodeCredential`) acts as the signed-in user: no client secret,
 needs its own public client app registration with "Allow public client flows"
-enabled and the `Mail.Read` delegated permission granted. The device flow prints
-a URL and a short code to the console; sign in with a browser using your normal
-account, and the token comes back here.
+enabled and the `Mail.Read`, 'Mail.Send' and 'Mail.ReadWrite'
 
 App-only (`ClientSecretCredential`) reads a configured mailbox directly, with no
-human at a browser — needed for unattended runs. It requires **Mail.Read as an
-Application permission with admin consent** (the delegated Mail.Read above is
-not sufficient for `/users/{mailbox}/`). That permission is **not yet granted**:
-this path is a placeholder so the switch is a config change later, but it is
-untested and must not be assumed working. With `GRAPH_CLIENT_SECRET` /
-`GRAPH_MAILBOX` unset, the delegated flow is selected automatically, so this
-stays dormant.
-
-Separate from the `ClientSecretCredential` used for Lakehouse/SQL access
-(`invoice_extraction/tests/lakehouse_access.py`): that's a different app
-registration (`AZURE_*` settings) than the Graph one (`GRAPH_*` settings) here.
+human at a browser — needed for unattended runs. It requires **Mail.Read/Send
+ReadWrite as an Application permission with admin consent**
+(the delegated Mail.Read above is not sufficient for `/users/{mailbox}/`).
 
 Both credential classes only ship sync `get_token`, so it runs in a thread via
 `asyncio.to_thread` to avoid blocking the event loop.
@@ -60,10 +50,9 @@ def _get_delegated_credential() -> DeviceCodeCredential:
 def _get_app_only_credential() -> ClientSecretCredential:
     global _app_only_credential
     if _app_only_credential is None:
-        if not settings.GRAPH_TENANT_ID or not settings.GRAPH_CLIENT_ID:
+        if not settings.GRAPH_TENANT_ID or not settings.GRAPH_CLIENT_ID or not settings.GRAPH_CLIENT_SECRET:
             raise RuntimeError(
-                "GRAPH_TENANT_ID / GRAPH_CLIENT_ID are not set alongside "
-                "GRAPH_CLIENT_SECRET / GRAPH_MAILBOX."
+                "GRAPH_TENANT_ID / GRAPH_CLIENT_ID are not set alongside GRAPH_CLIENT_SECRET / GRAPH_MAILBOX."
             )
         _app_only_credential = ClientSecretCredential(
             tenant_id=settings.GRAPH_TENANT_ID,

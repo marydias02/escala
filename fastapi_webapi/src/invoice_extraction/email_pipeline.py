@@ -28,7 +28,6 @@ import uuid
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
-from typing import Optional
 
 from config.settings import settings
 from invoice_extraction.config import (
@@ -53,7 +52,6 @@ from invoice_extraction.decisions import (
     EMAIL_TREASURY,
     IGNORE,
     INBOX,
-    MANUAL,
     REPLY,
     TREASURY,
     DocumentAction,
@@ -134,7 +132,7 @@ class EmailProcessingResult:
     ingestion: EmailIngestionResult
     decision: EmailDecision
     extractions: list[PipelineResult] = field(default_factory=list)
-    process_id: Optional[str] = None
+    process_id: str | None = None
 
 
 # --------------------------------------------------------------------------- #
@@ -156,7 +154,7 @@ _STATE_LABELS = {
 }
 
 
-def document_type_label(classification: Optional[DocumentClassification]) -> str:
+def document_type_label(classification: DocumentClassification | None) -> str:
     """Human-readable document type, e.g. "Invoice (Original)".
 
     A null state is treated as Original, matching the extraction gate's rule that
@@ -165,14 +163,8 @@ def document_type_label(classification: Optional[DocumentClassification]) -> str
     if classification is None:
         return "Unknown"
 
-    type_label = _TYPE_LABELS.get(
-        classification.document_type.value, classification.document_type.value
-    )
-    state_value = (
-        classification.document_state.value
-        if classification.document_state is not None
-        else "original"
-    )
+    type_label = _TYPE_LABELS.get(classification.document_type.value, classification.document_type.value)
+    state_value = classification.document_state.value if classification.document_state is not None else "original"
     state_label = _STATE_LABELS.get(state_value, state_value)
     return f"{type_label} ({state_label})"
 
@@ -197,14 +189,14 @@ def derive_status(result: PipelineResult, action: DocumentAction) -> str:
     return DOC_STATUS_CREATED
 
 
-def _checked_to_dict(checked) -> Optional[dict]:
+def _checked_to_dict(checked) -> dict | None:
     """A Checked[T] field -> {"value", "confidence"}; None stays None."""
     if checked is None:
         return None
     return {"value": checked.value, "confidence": checked.confidence}
 
 
-def build_document_content(validation: Optional[ValidationReport]) -> dict:
+def build_document_content(validation: ValidationReport | None) -> dict:
     """Flatten a ValidationReport into the document_content JSONB payload.
 
     Each field keeps its {value, confidence} so the validator's confidence
@@ -213,14 +205,12 @@ def build_document_content(validation: Optional[ValidationReport]) -> dict:
     if validation is None:
         return {}
 
-    content: dict = {
-        name: _checked_to_dict(getattr(validation, name)) for name in _CONTENT_FIELDS
-    }
+    content: dict = {name: _checked_to_dict(getattr(validation, name)) for name in _CONTENT_FIELDS}
     content["po_list"] = [_checked_to_dict(po) for po in validation.po_list]
     return content
 
 
-def parse_reception_date(value: Optional[str]) -> Optional[datetime]:
+def parse_reception_date(value: str | None) -> datetime | None:
     """Parse the manifest's ISO-8601 reception date to a datetime, or None.
 
     `fct_processes.reception_date` is a timestamptz; asyncpg maps a datetime
@@ -256,7 +246,7 @@ def _produced_pdf_paths(ingestion: EmailIngestionResult) -> list[Path]:
     ]
 
 
-def _load_manifest(folder: Optional[Path]) -> dict:
+def _load_manifest(folder: Path | None) -> dict:
     """Read an email's `email_content.json`, or {} if it is missing/unreadable."""
     if folder is None:
         return {}
@@ -281,9 +271,7 @@ async def _thread_message_count(thread_id: str | None) -> int | None:
     """This email's position in its thread: 1 for the first ingested, 2 for the second."""
     if not thread_id:
         return None
-    rows = await select(
-        f"SELECT count(*) AS n FROM {PROCESSES_TABLE} WHERE thread_id = $1", [thread_id]
-    )
+    rows = await select(f"SELECT count(*) AS n FROM {PROCESSES_TABLE} WHERE thread_id = $1", [thread_id])
     return int(rows[0]["n"]) + 1
 
 
@@ -308,15 +296,13 @@ async def _open_processes_in_thread(thread_id: str, exclude_process_id) -> list[
     )
 
 
-async def _document_states(process_id) -> list[tuple[Optional[str], Optional[str]]]:
+async def _document_states(process_id) -> list[tuple[str | None, str | None]]:
     """(action, status) for each of a process's documents."""
-    rows = await select(
-        f"SELECT action, status FROM {DOCUMENTS_TABLE} WHERE process_id = $1", [process_id]
-    )
+    rows = await select(f"SELECT action, status FROM {DOCUMENTS_TABLE} WHERE process_id = $1", [process_id])
     return [(row["action"], row["status"]) for row in rows]
 
 
-async def close_prior_processes(thread_id: Optional[str], current_process_id) -> list[str]:
+async def close_prior_processes(thread_id: str | None, current_process_id) -> list[str]:
     """Close the earlier processes of this thread that the new email settles.
 
     A supplier answering on the thread is what an earlier `Retornado ao
@@ -335,9 +321,7 @@ async def close_prior_processes(thread_id: Optional[str], current_process_id) ->
         if not close_prior_process(row["email_action"], documents):
             continue
 
-        await update_column(
-            PROCESSES_TABLE, "process_id", row["process_id"], "email_status", EMAIL_STATUS_CLOSED
-        )
+        await update_column(PROCESSES_TABLE, "process_id", row["process_id"], "email_status", EMAIL_STATUS_CLOSED)
         closed.append(str(row["process_id"]))
 
     return closed
@@ -355,9 +339,7 @@ class EmailPipeline:
         self.ingestion = ingestion
         self.extraction = extraction
 
-    def _classify_body(
-        self, email: LoadedEmail, ingestion: EmailIngestionResult
-    ) -> Optional[EmailIntent]:
+    def _classify_body(self, email: LoadedEmail, ingestion: EmailIngestionResult) -> EmailIntent | None:
         """Classify the email body, for the cases where no usable PDF came out.
 
         Prefers the manifest ingestion just wrote; falls back to the
@@ -385,7 +367,7 @@ class EmailPipeline:
         The supplier reply and the treasury forward are each sent ONCE per
         email, as a Graph reply/forward on the original message (`message_id`
         from the manifest) — `decision.reply_body`/`decision.treasury_body`
-        are already deduped/joined across every REPLY/TREASURY document 
+        are already deduped/joined across every REPLY/TREASURY document
 
         INGEST documents are deliberately left at "Criado": ingestion done
         by SAP pipeline
@@ -413,13 +395,10 @@ class EmailPipeline:
                 print(f"  📧 Reply sent to supplier {sender_email!r} — subject={reply_subject!r}")
             else:
                 print(
-                    f"  ⚠️  Reply to supplier {sender_email!r} FAILED "
-                    f"({send_result.error}) — subject={reply_subject!r}"
+                    f"  ⚠️  Reply to supplier {sender_email!r} FAILED ({send_result.error}) — subject={reply_subject!r}"
                 )
             print(f"            body={result.decision.reply_body!r}")
-            outcome = (
-                DOC_STATUS_COMMUNICATED if send_result.status == "sent" else DOC_STATUS_CREATED
-            )
+            outcome = DOC_STATUS_COMMUNICATED if send_result.status == "sent" else DOC_STATUS_CREATED
             for filename, decision in decisions_by_file.items():
                 if decision.action == REPLY:
                     statuses[filename] = outcome
@@ -434,17 +413,14 @@ class EmailPipeline:
                 comment=result.decision.treasury_body,
             )
             if send_result.status == "sent":
-                print(
-                    f"  📧 Forwarded to treasury {treasury_email!r} — "
-                    f"subject={treasury_subject!r}"
-                )
+                print(f"  📧 Forwarded to treasury {treasury_email!r} — subject={treasury_subject!r}")
             else:
                 print(
                     f"  ⚠️  Forward to treasury {treasury_email!r} FAILED "
                     f"({send_result.error}) — subject={treasury_subject!r}"
                 )
             print(f"            body={result.decision.treasury_body!r}")
-            outcome = (DOC_STATUS_COMMUNICATED if send_result.status == "sent" else DOC_STATUS_CREATED)
+            outcome = DOC_STATUS_COMMUNICATED if send_result.status == "sent" else DOC_STATUS_CREATED
             for filename, decision in decisions_by_file.items():
                 if decision.action == TREASURY:
                     statuses[filename] = outcome
@@ -454,16 +430,11 @@ class EmailPipeline:
             if send_result.status == "sent":
                 print(f"  📦 Archived message — subject={manifest.get('email_subject', '')!r}")
             else:
-                print(
-                    f"  ⚠️  Archive FAILED ({send_result.error}) — "
-                    f"subject={manifest.get('email_subject', '')!r}"
-                )
+                print(f"  ⚠️  Archive FAILED ({send_result.error}) — subject={manifest.get('email_subject', '')!r}")
 
         return statuses
 
-    async def _persist(
-        self, result: EmailProcessingResult, thread_message_count: Optional[int] = None
-    ) -> None:
+    async def _persist(self, result: EmailProcessingResult, thread_message_count: int | None = None) -> None:
         """Write one fct_processes row, its fct_documents rows, and their
         fct_document_first_action rows — then settle what this email closes.
 
@@ -474,8 +445,8 @@ class EmailPipeline:
         or later manual review can change them — so it always reflects the
         document's ORIGINAL routing, unlike `fct_documents.action`.
 
-        Each row's `document_id` is generated here so the whole batch can still 
-        go through one `insert_rows` call, yet every id is already known for 
+        Each row's `document_id` is generated here so the whole batch can still
+        go through one `insert_rows` call, yet every id is already known for
         UPDATE — no per-row INSERT round-trip needed just to read one back.
 
         Finally `close_prior_processes` revisits the EARLIER processes of this
@@ -508,7 +479,9 @@ class EmailPipeline:
 
         # Each document's FINAL action (post-suppression) comes from the decision.
         # Paired by filename rather than by position so the two lists cannot drift.
-        actions = {d.filename: d.action for d in result.decision.documents}
+        # The whole decision is kept, not just its action: `build_alerts_list`
+        # reads the PO answer off it rather than repeating the lookups.
+        decisions_by_file = {d.filename: d for d in result.decision.documents}
 
         document_ids = {extraction.filename: str(uuid.uuid4()) for extraction in result.extractions}
 
@@ -517,16 +490,20 @@ class EmailPipeline:
 
         rows = []
         for extraction in result.extractions:
-            action = actions.get(extraction.filename, MANUAL)
+            # `decide_email` builds one decision per extraction, from this same
+            # list, so every filename is present — indexed directly rather than
+            # defaulted, so a broken invariant surfaces instead of silently
+            # routing a document to manual review.
+            decision = decisions_by_file[extraction.filename]
             rows.append(
                 {
                     "document_id": document_ids[extraction.filename],
                     "process_id": process_id,
                     "document_type": document_type_label(extraction.classification),
-                    "action": action,
-                    "status": derive_status(extraction, action),
+                    "action": decision.action,
+                    "status": derive_status(extraction, decision.action),
                     "document_content": build_document_content(extraction.validation),
-                    "alerts_list": build_alerts_list(extraction),
+                    "alerts_list": build_alerts_list(extraction, decision),
                     "created_by": "pipeline",
                     "file_path": f"{ingestion.folder.name}/{extraction.filename}" if ingestion.folder else None,
                 }
@@ -593,9 +570,7 @@ class EmailPipeline:
             if ingestion.status != "ingested":
                 decision = decide_email(ingestion, [])
                 set_trace_tags(action=", ".join(decision.actions), outcome=ingestion.status)
-                email_span.set_outputs(
-                    {"ingestion_status": ingestion.status, "decision": decision_summary(decision)}
-                )
+                email_span.set_outputs({"ingestion_status": ingestion.status, "decision": decision_summary(decision)})
                 return EmailProcessingResult(
                     source=source,
                     ingestion=ingestion,
@@ -621,9 +596,7 @@ class EmailPipeline:
             with span(STAGE_DECISION, "CHAIN") as decision_span:
                 decision_span.set_inputs(
                     {
-                        "documents": [
-                            {"filename": e.filename, "status": e.status} for e in extractions
-                        ],
+                        "documents": [{"filename": e.filename, "status": e.status} for e in extractions],
                         "attachments": len(ingestion.attachments),
                         "thread_message_count": thread_message_count,
                     }
@@ -700,7 +673,7 @@ class EmailPipeline:
         return results
 
 
-def create_pipeline(llm_factory: Optional[LLMFactory] = None) -> EmailPipeline:
+def create_pipeline(llm_factory: LLMFactory | None = None) -> EmailPipeline:
     """Build an EmailPipeline, sharing one LLM factory across both phases."""
     if llm_factory is None:
         llm_factory = LLMFactory.from_settings(settings)
@@ -731,11 +704,9 @@ def print_email_summary(results: list[EmailProcessingResult]) -> None:
         marker = " + ".join(_ACTION_MARKERS.get(action, action) for action in decision.actions)
         print(f"  {marker}  {result.source} — {decision.reason}")
 
-        # The reply and/or treasury forward that would go out, and each
-        # document's own action.
+        # The reply that would go out, and each document's own action. The
+        # treasury forward has no per-document reasons — its letter is fixed.
         for line in decision.reply_lines:
-            print(f"            ↳ {line}")
-        for line in decision.treasury_lines:
             print(f"            ↳ {line}")
         for document in decision.documents:
             print(f"            · {document.filename}: {document.action} ({document.reason})")
