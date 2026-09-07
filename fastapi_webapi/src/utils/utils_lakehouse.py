@@ -18,7 +18,7 @@ import polars as pl
 
 from config.settings import settings
 
-AVAILABLE_TABLES = ("ACDOCA", "BSAD", "BSEG", "BUT000", "CEPCT", "SKAT")
+AVAILABLE_TABLES = ("ACDOCA", "BSAD", "BSEG", "BUT000", "CEPCT", "EKKO", "SKAT")
 
 _storage_options: dict[str, str] | None = None
 

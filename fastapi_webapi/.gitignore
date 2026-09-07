@@ -48,6 +48,7 @@ Thumbs.db
 *.egg-info
 *.egg-info/
 *.xlsx
+*.csv
 *.lp
 *.ilp
 *.mps

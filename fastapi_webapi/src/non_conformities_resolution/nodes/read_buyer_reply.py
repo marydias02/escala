@@ -14,9 +14,9 @@ from non_conformities_resolution.resolution_rules import (
 )
 from utils.utils_db import normalize_key
 
-# PO codes are always exactly 10 numeric digits (fct_purchase_orders.po_code is
-# VARCHAR(10)), so a PO reference in free text is matched as a run of exactly
-# 10 digits — no ordinary word can match this by accident.
+# PO codes are always exactly 10 numeric digits (SAP's EKKO.EBELN is CHAR(10)),
+# so a PO reference in free text is matched as a run of exactly 10 digits — no
+# ordinary word can match this by accident.
 _PO_PATTERN = re.compile(r"\b\d{10}\b")
 
 _BYPASS_KEYWORDS = ("bypass",)
