@@ -43,6 +43,8 @@ from invoice_extraction.decisions import (
     INBOX,
     INGEST,
     MANUAL,
+    NOT_CHECKED,
+    PO_ALERT_NOT_CHECKED,
     REPLY,
     REPLY_TEXT_COPY,
     REPLY_TEXT_NO_PDF,
@@ -421,6 +423,11 @@ class TestMissingPos:
 
 
 class TestBuildAlertsList:
+    """`build_alerts_list` takes the document's own decision, so these build it
+    with `decide_document` rather than by hand — the pairing of an action with
+    its PO answer is exactly what the alerts must agree with.
+    """
+
     def test_a_clean_document_raises_no_alerts(self):
         result = PipelineResult(
             filename="doc.pdf",
@@ -428,7 +435,7 @@ class TestBuildAlertsList:
             classification=classification(),
             validation=validation(alert_fields=True),
         )
-        assert build_alerts_list(result) == []
+        assert build_alerts_list(result, decide_document(result)) == []
 
     def test_alerts_cover_more_fields_than_ingestion_requires(self):
         """supplier_name/document_number/bu_name do not block ingestion but are
@@ -441,14 +448,15 @@ class TestBuildAlertsList:
             validation=validation(),
         )
         assert ingestion_blockers(result.validation) == []
-        assert build_alerts_list(result) == [
+        assert build_alerts_list(result, decide_document(result)) == [
             "Campo em falta: Nome do fornecedor",
             "Campo em falta: Número do documento",
             "Campo em falta: Nome do cliente",
         ]
 
     def test_an_unvalidated_document_says_so(self):
-        assert build_alerts_list(extraction(with_validation=False)) == ["Documento não validado"]
+        result = extraction(with_validation=False)
+        assert build_alerts_list(result, decide_document(result)) == ["Documento não validado"]
 
     def test_alerts_are_reviewer_facing_portuguese_labels(self):
         result = PipelineResult(
@@ -457,12 +465,32 @@ class TestBuildAlertsList:
             classification=classification(),
             validation=validation(total_amount=None),
         )
-        assert "Campo em falta: Valor total" in build_alerts_list(result)
+        assert "Campo em falta: Valor total" in build_alerts_list(result, decide_document(result))
 
     def test_the_po_alert_agrees_with_the_routing(self, requires_po):
-        """Same `missing_pos` call, so an alert and an action cannot disagree."""
-        alerts = build_alerts_list(extraction(po_list=[]))
+        """One `missing_pos` call, carried on the decision, so an alert and an
+        action cannot disagree.
+        """
+        result = extraction(po_list=[])
+        alerts = build_alerts_list(result, decide_document(result))
         assert "Fornecedor requer nota de encomenda e nenhuma foi encontrada" in alerts
+
+    def test_a_document_that_never_reached_the_po_check_says_so(self):
+        """A blocked document routes to MANUAL without the PO lookups running,
+        so the reviewer is told the check never ran rather than reading its
+        silence as "no PO problem".
+        """
+        result = PipelineResult(
+            filename="doc.pdf",
+            status="validated",
+            classification=classification(),
+            validation=validation(alert_fields=True, total_amount=None),
+        )
+        decision = decide_document(result)
+
+        assert decision.action == MANUAL
+        assert decision.po_problems == NOT_CHECKED
+        assert PO_ALERT_NOT_CHECKED in build_alerts_list(result, decision)
 
 
 # --------------------------------------------------------------------------- #

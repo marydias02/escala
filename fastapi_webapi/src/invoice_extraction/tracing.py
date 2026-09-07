@@ -476,7 +476,6 @@ def decision_summary(decision) -> dict:
         "reason": decision.reason,
         "reply_lines": decision.reply_lines,
         "should_reply": decision.should_reply,
-        "treasury_lines": decision.treasury_lines,
         "should_forward_to_treasury": decision.should_forward_to_treasury,
         "intent": (
             {

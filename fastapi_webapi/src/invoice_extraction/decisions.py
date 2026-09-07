@@ -28,8 +28,10 @@ The full case matrix lives in `DOCUMENT_RULES` and `decide_email` below so the
 business rules can be read without reading the pipeline.
 """
 
+from __future__ import annotations
+
 from dataclasses import dataclass, field, replace
-from typing import Final, Literal, Optional
+from typing import Final, Literal
 
 from loguru import logger
 
@@ -58,19 +60,15 @@ from invoice_extraction.tools.po_confirmation import (
 # gets exactly one action — what to do with that piece of paper. An EMAIL can
 # warrant several at once: a reply to the supplier for one document AND a
 # treasury forward for another.
-#
-# Each string is written once, as a `Final` constant, and the Literal is built
-# from those constants — so the names and the type cannot drift apart. `Final` is
-# what makes a constant usable inside `Literal[...]`; a plain assignment is not.
 
-INGEST: Final = "Ingerir em SAP" #Ingest in SAP
-REPLY: Final = "Retornado ao Fornecedor" #Sent back to Supplier
-TREASURY: Final = "Encaminhar para Tesouraria" #Forward to Treasury
-INBOX: Final = "Manter na Caixa de Entrada" #Keep in Inbox
-MANUAL: Final = "Validação Manual" #Manual Validation
+INGEST: Final = "Ingerir em SAP"  # Ingest in SAP
+REPLY: Final = "Retornado ao Fornecedor"  # Sent back to Supplier
+TREASURY: Final = "Encaminhar para Tesouraria"  # Forward to Treasury
+INBOX: Final = "Manter na Caixa de Entrada"  # Keep in Inbox
+MANUAL: Final = "Validação Manual"  # Manual Validation
 # A duplicate whose original is in the same email: not booked, not chased, but
 # still recorded, so the audit trail shows the copy arrived.
-IGNORE: Final = "Ignorar (tem original)" #Ignore (original exists)
+IGNORE: Final = "Ignorar (tem original)"  # Ignore (original exists)
 
 # What reaches `fct_documents.action`.
 DocumentAction = Literal[
@@ -82,10 +80,10 @@ DocumentAction = Literal[
     IGNORE,
 ]
 
-EMAIL_ARCHIVE: Final = "Arquivar" #Archive
-EMAIL_INBOX: Final = "Manter na Caixa de Entrada" #Keep in Inbox
-EMAIL_REPLY: Final = "Retornado ao Fornecedor" #Reply to Supplier
-EMAIL_TREASURY: Final = "Encaminhar para Tesouraria" #Forward to Treasury
+EMAIL_ARCHIVE: Final = "Arquivar"  # Archive
+EMAIL_INBOX: Final = "Manter na Caixa de Entrada"  # Keep in Inbox
+EMAIL_REPLY: Final = "Retornado ao Fornecedor"  # Reply to Supplier
+EMAIL_TREASURY: Final = "Encaminhar para Tesouraria"  # Forward to Treasury
 
 EmailAction = Literal[
     EMAIL_ARCHIVE,
@@ -96,25 +94,20 @@ EmailAction = Literal[
 
 # How the per-document actions roll up into the email's own. Ordered, and read in
 # order, so the resulting list runs from most to least consequential.
-#
-# ARCHIVE is deliberately absent: it is not "at least one" like the others but
-# "all of them", and is handled separately in `decide_email`.
+
 EMAIL_ACTION_RULES: Final = (
     (EMAIL_REPLY, (REPLY,)),
     (EMAIL_TREASURY, (TREASURY,)),
     (EMAIL_INBOX, (INBOX, MANUAL)),
 )
 
-# An email whose documents are ALL in this set is finished — nothing is owed to
-# anyone, so it leaves the inbox.
+# An email whose documents are ALL in this set is finished
 _ARCHIVABLE: Final = (INGEST, IGNORE)
 
-# Document actions that send something outward, and so are what the thread
-# escalation suppresses.
+# Document actions that send something outward
 _OUTBOUND: Final = (REPLY, TREASURY)
 
-# The process lifecycle — a SEPARATE axis from the actions above. `actions` says
-# what the email warrants; status says whether anyone still owes it something.
+# The process lifecycle — `actions` says what the email warrants; status says whether anyone still owes
 EMAIL_STATUS_OPEN: Final = "Aberto"
 EMAIL_STATUS_CLOSED: Final = "Fechado"
 EMAIL_STATUS_ACTION_REQUIRED: Final = "Requer Ação"
@@ -133,10 +126,6 @@ REPLY_TEXT_NO_PDF = "o formato do ficheiro enviado não é aceite"
 REPLY_TEXT_PROFORMA = "o documento enviado é proforma"
 REPLY_TEXT_COPY = "o documento enviado é duplicado"
 REPLY_TEXT_NO_PO = "o documento não ter nota de encomenda"
-
-# TREASURY's equivalent of REPLY_TEXT_*: the one reason a document reaches
-# TREASURY (C4, an ordinary receipt), so there is only one line.
-REPLY_TEXT_TREASURY = "Recibo encaminhado para tesouraria"
 
 # Full supplier-facing letter. One "Motivo" line per distinct reason (see
 # `_dedupe_lines_for`), so a single email can list several problems without
@@ -173,7 +162,7 @@ _INVOICE_LIKE = ("invoice", "credit_note", "debit_note")
 # gate decides whether a document is good enough for SAP. Deliberately not an LLM
 # judgement: this rule is auditable and testable.
 
-# Every field here must be present AND clear MIN_CONFIDENCE. 
+# Every field here must be present AND clear MIN_CONFIDENCE.
 REQUIRED_FIELDS = (
     "supplier_vat",
     "bu_vat",
@@ -184,15 +173,14 @@ REQUIRED_FIELDS = (
     "currency",
 )
 
-def _field_problems(
-    validation: ValidationReport, field_labels: dict[str, str]
-) -> list[tuple[str, str, Optional[float]]]:
+
+def _field_problems(validation: ValidationReport, field_labels: dict[str, str]) -> list[tuple[str, str, float | None]]:
     """(field_name, label, confidence) for every missing or low-confidence field.
 
     confidence is None for a missing field, so callers can tell the two cases
     apart without re-deriving which one they're in.
     """
-    problems: list[tuple[str, str, Optional[float]]] = []
+    problems: list[tuple[str, str, float | None]] = []
     for name, label in field_labels.items():
         checked = getattr(validation, name, None)
         if checked is None:
@@ -202,7 +190,7 @@ def _field_problems(
     return problems
 
 
-def ingestion_blockers(validation: Optional[ValidationReport]) -> list[str]:
+def ingestion_blockers(validation: ValidationReport | None) -> list[str]:
     """Why this extraction is not safe to ingest. Empty list == good to go.
 
     Returns reasons rather than a bool so the blocking field(s) can be named in
@@ -212,29 +200,37 @@ def ingestion_blockers(validation: Optional[ValidationReport]) -> list[str]:
         return ["no validation report"]
 
     blockers = [
-        f"{name} missing" if confidence is None
-        else f"{name} confidence {confidence:.2f} < {MIN_CONFIDENCE}"
-        for name, _label, confidence in _field_problems(
-            validation, {name: name for name in REQUIRED_FIELDS}
-        )
+        f"{name} missing" if confidence is None else f"{name} confidence {confidence:.2f} < {MIN_CONFIDENCE}"
+        for name, _label, confidence in _field_problems(validation, {name: name for name in REQUIRED_FIELDS})
     ]
 
-    # supplier_id/bu_id are filled by nodes.validate.resolve_registry_ids. 
+    # supplier_id/bu_id are filled by nodes.validate.resolve_registry_ids.
     # Null means - "not found in registry"
-    if validation.supplier_id is None and (
-        validation.supplier_vat is not None or validation.supplier_name is not None
-    ):
+    if validation.supplier_id is None and (validation.supplier_vat is not None or validation.supplier_name is not None):
         blockers.append("supplier_id not found in registry")
 
-    if validation.bu_id is None and (
-        validation.bu_vat is not None or validation.bu_name is not None
-    ):
+    if validation.bu_id is None and (validation.bu_vat is not None or validation.bu_name is not None):
         blockers.append("bu_id not found in registry")
 
     return blockers
 
 
-def missing_pos(validation: Optional[ValidationReport]) -> Optional[list[str]]:
+# "The PO hurdle was never reached", as distinct from `missing_pos`'s own None
+# ("checked, nothing wrong"). A plain string so it reads as itself in a trace.
+# It can never collide with a real PO problem: `normalize_key` strips spaces.
+NOT_CHECKED: Final = "not checked"
+
+# The alert a NOT_CHECKED document carries. Such a document always goes to
+# manual validation, so the reviewer is told the PO check never ran rather than
+# being left to read the silence as "no PO problem".
+PO_ALERT_NOT_CHECKED: Final = "Falha na validação de existência de pedido de compra"
+
+# What `DocumentDecision.po_problems` can hold: `missing_pos`'s answer, or
+# NOT_CHECKED when it was never asked.
+PoProblems = list[str] | None | Literal["not checked"]
+
+
+def missing_pos(validation: ValidationReport | None) -> list[str] | None:
     """The PO problem on this document, if any. One source of truth for routing
     and alerts.
 
@@ -283,15 +279,12 @@ def missing_pos(validation: Optional[ValidationReport]) -> Optional[list[str]]:
         if is_financial == FINANCIAL:
             pos = [po.value for po in validation.po_list if po.value]
             logger.info(
-                f"Ignoring PO(s) {pos} on a financial supplier ({supplier_vat}) — "
-                "likely something else read as a PO"
+                f"Ignoring PO(s) {pos} on a financial supplier ({supplier_vat}) — likely something else read as a PO"
             )
             return None
 
         unknown = [
-            po.value
-            for po in validation.po_list
-            if po.value and not po_exists.invoke({"po_reference": po.value})
+            po.value for po in validation.po_list if po.value and not po_exists.invoke({"po_reference": po.value})
         ]
         return unknown or None
     except Exception as exc:  # noqa: BLE001 - never fail routing on a PO lookup
@@ -317,39 +310,41 @@ _ALERT_FIELD_LABELS = {
 }
 
 
-def build_alerts_list(result: PipelineResult) -> list[str]:
+def build_alerts_list(result: PipelineResult, decision: DocumentDecision) -> list[str]:
     """Alerts for one document: missing/low-confidence fields, PO checks.
 
     Written to `fct_documents.alerts_list`, so entries are short, human-readable
     Portuguese strings for a reviewer, not machine codes.
+
+    `decision` is this document's own routing decision, and is where the PO
+    answer comes from — the very check that routed it, so an alert and an action
+    cannot disagree, and the lookups behind it run once per document rather than
+    twice.
     """
     validation = result.validation
     if validation is None:
         return ["Documento não validado"]
 
     alerts = [
-        f"Campo em falta: {label}" if confidence is None
-        else f"Confiança baixa: {label} ({confidence:.2f})"
+        f"Campo em falta: {label}" if confidence is None else f"Confiança baixa: {label} ({confidence:.2f})"
         for _name, label, confidence in _field_problems(validation, _ALERT_FIELD_LABELS)
     ]
 
-    # Same check that routes the document, so an alert and its action can never
-    # disagree.
-    pos = missing_pos(validation)
-    if pos == []:
+    # Tested before the truthiness checks below: NOT_CHECKED is a str, so it
+    # would otherwise be truthy and get iterated character by character.
+    pos = decision.po_problems
+    if pos == NOT_CHECKED:
+        alerts.append(PO_ALERT_NOT_CHECKED)
+    elif pos == []:
         alerts.append("Fornecedor requer nota de encomenda e nenhuma foi encontrada")
     elif pos:
         alerts.extend(f"Nota de encomenda não encontrada: {po}" for po in pos)
 
-    # supplier_id/bu_id are filled by nodes.validate.resolve_registry_ids, from a VAT/name lookup 
-    if validation.supplier_id is None and (
-        validation.supplier_vat is not None or validation.supplier_name is not None
-    ):
+    # supplier_id/bu_id are filled by nodes.validate.resolve_registry_ids, from a VAT/name lookup
+    if validation.supplier_id is None and (validation.supplier_vat is not None or validation.supplier_name is not None):
         alerts.append("Fornecedor não identificado no registo")
 
-    if validation.bu_id is None and (
-        validation.bu_vat is not None or validation.bu_name is not None
-    ):
+    if validation.bu_id is None and (validation.bu_vat is not None or validation.bu_name is not None):
         alerts.append("Cliente não identificado no registo")
 
     return alerts
@@ -362,12 +357,21 @@ class DocumentDecision:
     `reply_text` is set only when `action` is REPLY, and is what the supplier is
     told. `reason` is internal and always set — it is what shows up in logs and
     in the process summary.
+
+    `po_problems` is the `missing_pos` answer for this document, carried so
+    `build_alerts_list` reports the same PO problems that routed it without
+    re-running the lookups (a Postgres query plus one lakehouse scan per PO).
+    `NOT_CHECKED` when routing never reached the PO hurdle — an earlier one
+    stopped it. Such a document is always MANUAL, and carries
+    `PO_ALERT_NOT_CHECKED` so the reviewer knows the check never ran rather than
+    reading its silence as "no PO problem".
     """
 
     filename: str
     action: DocumentAction
     reason: str
-    reply_text: Optional[str] = None
+    reply_text: str | None = None
+    po_problems: PoProblems = NOT_CHECKED
 
 
 @dataclass
@@ -391,8 +395,7 @@ class EmailDecision:
     reason: str
     documents: list[DocumentDecision] = field(default_factory=list)
     reply_lines: list[str] = field(default_factory=list)
-    treasury_lines: list[str] = field(default_factory=list)
-    intent: Optional[EmailIntent] = None
+    intent: EmailIntent | None = None
     thread_escalated: bool = False
     out_of_scope: bool = False
 
@@ -423,11 +426,7 @@ class EmailDecision:
         Closed wins over escalation, out_of_scope included. An email that IS
         outstanding on an escalated thread is "Requer Ação" rather than "Aberto".
         """
-        if (
-            EMAIL_ARCHIVE in self.actions
-            or self.actions == [EMAIL_TREASURY]
-            or self.out_of_scope
-        ):
+        if EMAIL_ARCHIVE in self.actions or self.actions == [EMAIL_TREASURY] or self.out_of_scope:
             return EMAIL_STATUS_CLOSED
         if self.thread_escalated:
             return EMAIL_STATUS_ACTION_REQUIRED
@@ -435,9 +434,9 @@ class EmailDecision:
 
     @property
     def treasury_body(self) -> str:
-        """The single email sent to treasury. Fixed wording — C4 (ordinary
-        receipt) is the only action that reaches TREASURY, so there is only one
-        reason and nothing to slot in.
+        """The single email sent to treasury. Fixed wording, the same for every
+        email — treasury gets the forwarded receipts themselves, so there is no
+        per-document reason to slot in.
         """
         return TREASURY_LETTER
 
@@ -500,6 +499,9 @@ def _ingest_or_escalate(result: PipelineResult, label: str) -> DocumentDecision:
 
     `label` names the document in the reason (e.g. "invoice (original)",
     "receipt (condominio)").
+
+    The two early returns leave `po_problems` at NOT_CHECKED: the PO lookups are
+    never run for them, so there is no answer to carry.
     """
     if result.status != "validated":
         return DocumentDecision(
@@ -516,6 +518,8 @@ def _ingest_or_escalate(result: PipelineResult, label: str) -> DocumentDecision:
             reason=f"{label} not confident: {'; '.join(blockers)}",
         )
 
+    # Run once, here, and carried on every decision below — `build_alerts_list`
+    # reads it back rather than repeating the lookups.
     pos = missing_pos(result.validation)
     if pos == []:
         return DocumentDecision(
@@ -523,24 +527,27 @@ def _ingest_or_escalate(result: PipelineResult, label: str) -> DocumentDecision:
             action=REPLY,
             reason=f"{label} has no PO and the supplier requires one",
             reply_text=REPLY_TEXT_NO_PO,
+            po_problems=pos,
         )
     if pos:
         return DocumentDecision(
             filename=result.filename,
             action=MANUAL,
             reason=f"{label} has PO(s) not found in the PO list: {', '.join(pos)}",
+            po_problems=pos,
         )
 
     return DocumentDecision(
         filename=result.filename,
         action=INGEST,
         reason=f"{label} validated",
+        po_problems=pos,
     )
 
 
 def decide_document(
     result: PipelineResult,
-    original_keys: Optional[set[tuple[str, str]]] = None,
+    original_keys: set[tuple[str, str]] | None = None,
 ) -> DocumentDecision:
     """Route ONE document. The per-type/per-state matrix, in full.
 
@@ -603,10 +610,7 @@ def decide_document(
             return DocumentDecision(
                 filename=result.filename,
                 action=IGNORE,
-                reason=(
-                    f"{doc_type} is {state}; original with document number "
-                    f"{raw} is in this email"
-                ),
+                reason=(f"{doc_type} is {state}; original with document number {raw} is in this email"),
             )
 
     # --- B: invoice-like documents ----------------------------------------
@@ -648,12 +652,12 @@ def decide_document(
         if exception is not None:
             return _ingest_or_escalate(result, f"receipt ({exception.value})")
 
-        # C4 — an ordinary receipt is not ours to book; treasury owns it.
+        # C4 — an ordinary receipt is not ours to book; treasury owns it. No
+        # `reply_text`: the treasury letter is fixed wording, with no reason slot.
         return DocumentDecision(
             filename=result.filename,
             action=TREASURY,
             reason="receipt with no exception",
-            reply_text=REPLY_TEXT_TREASURY,
         )
 
     # --- C5: 'other' — shipping docs, POs, bank statements, ... -----------
@@ -673,6 +677,10 @@ def _dedupe_lines_for(decisions: list[DocumentDecision], action: DocumentAction)
     """Distinct reply_text values among documents with the given action, in
     first-seen order. Two proformas in one email still yield one reason, not
     the same sentence twice.
+
+    Only REPLY carries reply_text today — the treasury letter is fixed wording —
+    but the action stays a parameter so a second reasoned letter needs no change
+    here.
     """
     lines: list[str] = []
     for decision in decisions:
@@ -681,21 +689,16 @@ def _dedupe_lines_for(decisions: list[DocumentDecision], action: DocumentAction)
     return lines
 
 
-def _thread_escalated(thread_message_count: Optional[int]) -> bool:
+def _thread_escalated(thread_message_count: int | None) -> bool:
     """Whether this email is deep enough into its thread to stop chasing.
 
     None when Graph gave us no conversationId — an email we cannot place in a
     thread is treated as the first of one.
     """
-    return (
-        thread_message_count is not None
-        and thread_message_count >= THREAD_ESCALATION_COUNT
-    )
+    return thread_message_count is not None and thread_message_count >= THREAD_ESCALATION_COUNT
 
 
-def _downgrade_to_inbox(
-    decisions: list[DocumentDecision], thread_message_count: Optional[int]
-) -> list[DocumentDecision]:
+def _downgrade_to_inbox(decisions: list[DocumentDecision], thread_message_count: int | None) -> list[DocumentDecision]:
     """On a thread's Nth message, park what would be sent outward.
 
     N rounds of asking the supplier — or of forwarding to treasury — have not
@@ -711,10 +714,7 @@ def _downgrade_to_inbox(
         replace(
             decision,
             action=INBOX,
-            reason=(
-                f"{decision.reason}; thread on message "
-                f"{thread_message_count}, not chased further"
-            ),
+            reason=(f"{decision.reason}; thread on message {thread_message_count}, not chased further"),
             reply_text=None,
         )
         if decision.action in _OUTBOUND
@@ -772,8 +772,8 @@ def _email_reason(decisions: list[DocumentDecision]) -> str:
 def decide_email(
     ingestion: EmailIngestionResult,
     extractions: list[PipelineResult],
-    intent: Optional[EmailIntent] = None,
-    thread_message_count: Optional[int] = None,
+    intent: EmailIntent | None = None,
+    thread_message_count: int | None = None,
 ) -> EmailDecision:
     """Decide one email: per-document actions plus the single reply, if any.
 
@@ -908,7 +908,6 @@ def decide_email(
         reason=_email_reason(decisions),
         documents=decisions,
         reply_lines=_dedupe_lines_for(decisions, REPLY),
-        treasury_lines=_dedupe_lines_for(decisions, TREASURY),
         thread_escalated=escalated,
     )
 
@@ -923,7 +922,7 @@ def decide_email(
 _SETTLED_DOCUMENT_ACTIONS: Final = (INBOX, REPLY, TREASURY, IGNORE)
 
 
-def _document_is_settled(action: Optional[str], status: Optional[str]) -> bool:
+def _document_is_settled(action: str | None, status: str | None) -> bool:
     """Whether one prior document has nothing left owing on it."""
     if action == INGEST:
         return status == DOC_STATUS_BOOKED
@@ -931,16 +930,16 @@ def _document_is_settled(action: Optional[str], status: Optional[str]) -> bool:
 
 
 def close_prior_process(
-    email_action: Optional[list[str]],
-    documents: list[tuple[Optional[str], Optional[str]]],
+    email_action: list[str] | None,
+    documents: list[tuple[str | None, str | None]],
 ) -> bool:
     """Whether an earlier, still-`Aberto` process is closed by a newer email in
     its thread
 
-    - REPLY alone, or REPLY + TREASURY  -> closed. 
+    - REPLY alone, or REPLY + TREASURY  -> closed.
     - REPLY + INBOX                     -> closed only if every document is
       settled (`_document_is_settled`)
-    - anything without REPLY            -> untouched. 
+    - anything without REPLY            -> untouched.
 
     `documents` is (action, status) per `fct_documents` row of the earlier
     process. Pure: the caller does the reading and the writing.
@@ -955,7 +954,7 @@ def close_prior_process(
 
 
 def close_process_after_manual_send(
-    documents: list[tuple[Optional[str], Optional[str]]],
+    documents: list[tuple[str | None, str | None]],
 ) -> bool:
     """Whether a process is finished once a human has sent one of its documents
     to SAP"""
