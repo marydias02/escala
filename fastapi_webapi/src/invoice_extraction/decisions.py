@@ -55,6 +55,7 @@ from invoice_extraction.tools.po_confirmation import (
     po_exists,
     supplier_is_financial,
 )
+from invoice_extraction.tools.vat_registry import supplier_preferred_language
 
 # Two vocabularies, because the layers answer different questions. A DOCUMENT
 # gets exactly one action — what to do with that piece of paper. An EMAIL can
@@ -118,39 +119,59 @@ EmailStatus = Literal[
     EMAIL_STATUS_ACTION_REQUIRED,
 ]
 
-# Reply wording, in Portuguese, per reason. Only reasons that can produce a
-# REPLY appear here. Each is the "Motivo" clause slotted into REPLY_LETTER_TEMPLATE
-# below — a fragment, not a standalone sentence, so it must read naturally after
-# "pelo facto de".
-REPLY_TEXT_NO_PDF = "o formato do ficheiro enviado não é aceite"
-REPLY_TEXT_PROFORMA = "o documento enviado é proforma"
-REPLY_TEXT_COPY = "o documento enviado é duplicado"
-REPLY_TEXT_NO_PO = "o documento não ter nota de encomenda"
+# The two languages a supplier reply is written in - fallback to default
+REPLY_LANGUAGE_PT: Final = "pt"
+REPLY_LANGUAGE_EN: Final = "en"
+DEFAULT_REPLY_LANGUAGE: Final = REPLY_LANGUAGE_EN
 
-# Full supplier-facing letter. One "Motivo" line per distinct reason (see
-# `_dedupe_lines_for`), so a single email can list several problems without
-# repeating the greeting/sign-off for each.
-REPLY_LETTER_TEMPLATE = """Exmos. Senhores,
+# Reply wording per reason, keyed by language. Each is the "Motivo" clause slotted into
+# REPLY_LETTER_TEMPLATES below — so it must read naturally after "pelo facto de"
+# "due to the fact that"
+
+REPLY_TEXT_NO_PDF = {
+    REPLY_LANGUAGE_PT: "o formato do ficheiro enviado não é aceite",
+    REPLY_LANGUAGE_EN: "the format of the file sent is not accepted",
+}
+REPLY_TEXT_PROFORMA = {
+    REPLY_LANGUAGE_PT: "o documento enviado é proforma",
+    REPLY_LANGUAGE_EN: "the document sent is a proforma",
+}
+REPLY_TEXT_COPY = {
+    REPLY_LANGUAGE_PT: "o documento enviado é duplicado",
+    REPLY_LANGUAGE_EN: "the document sent is a duplicate",
+}
+REPLY_TEXT_NO_PO = {
+    REPLY_LANGUAGE_PT: "o documento não ter nota de encomenda",
+    REPLY_LANGUAGE_EN: "the document carries no purchase order",
+}
+
+# Full supplier-facing letter, per language. One "Motivo" line per distinct reason
+REPLY_LETTER_TEMPLATES = {
+    REPLY_LANGUAGE_PT: """Exmos. Senhores,
 
 O documento enviado não pode ser aceite pelo facto de {reasons}.
 
 Ficamos a aguardar o envio do documento original em formato PDF, com os dados da empresa corretos.
 
-Obrigado"""
+Obrigado""",
+    REPLY_LANGUAGE_EN: """Dear Sir or Madam,
 
-# Full treasury-facing letter. Reasons are always the same (C4 is the only
-# document action that reaches TREASURY), so there is nothing to slot in.
+The document sent cannot be accepted due to the fact that {reasons}.
+
+We look forward to receiving the original document in PDF format, with the correct company details.
+
+Thank you""",
+}
+
+# Full treasury-facing letter. Always Portuguese: this goes to our own treasury
+# team, not to the supplier, so the supplier's language does not apply.
 TREASURY_LETTER = """Exmos. Senhores,
 
 Seguem em anexo recibos para processamento.
 
 Obrigado"""
 
-# Document types routed by the B-cases below. Kept in sync with
-# `extraction_pipeline.EXTRACTABLE_TYPES` by intent, not by import, because this
-# module asks a different question (what to DO) than the gate (what to extract).
-# The two are not identical: the gate also extracts exception receipts, which are
-# routed by the C-cases here.
+# Document types routed by the B-cases below.
 _INVOICE_LIKE = ("invoice", "credit_note", "debit_note")
 
 # --------------------------------------------------------------------------- #
@@ -159,8 +180,7 @@ _INVOICE_LIKE = ("invoice", "credit_note", "debit_note")
 
 # `status == "validated"` only means the three stages ran without raising. It says
 # nothing about whether the numbers are trustworthy, so a second, deterministic
-# gate decides whether a document is good enough for SAP. Deliberately not an LLM
-# judgement: this rule is auditable and testable.
+# gate decides whether a document is good enough for SAP. Auditable and testable.
 
 # Every field here must be present AND clear MIN_CONFIDENCE.
 REQUIRED_FIELDS = (
@@ -216,13 +236,10 @@ def ingestion_blockers(validation: ValidationReport | None) -> list[str]:
 
 
 # "The PO hurdle was never reached", as distinct from `missing_pos`'s own None
-# ("checked, nothing wrong"). A plain string so it reads as itself in a trace.
-# It can never collide with a real PO problem: `normalize_key` strips spaces.
+# ("checked, nothing wrong").
 NOT_CHECKED: Final = "not checked"
 
-# The alert a NOT_CHECKED document carries. Such a document always goes to
-# manual validation, so the reviewer is told the PO check never ran rather than
-# being left to read the silence as "no PO problem".
+# The alert a NOT_CHECKED document carries. Always goes to manual validation
 PO_ALERT_NOT_CHECKED: Final = "Falha na validação de existência de pedido de compra"
 
 # What `DocumentDecision.po_problems` can hold: `missing_pos`'s answer, or
@@ -293,9 +310,7 @@ def missing_pos(validation: ValidationReport | None) -> list[str] | None:
 
 
 # Every ValidationReport field except supplier_id/bu_id (checked separately,
-# below — a missing id means "not found in the registry", not "low confidence")
-# and notes/po_list (handled separately too). Portuguese labels since
-# alerts_list is reviewer-facing.
+# below — Portuguese labels since alerts_list is reviewer-facing.
 _ALERT_FIELD_LABELS = {
     "supplier_name": "Nome do fornecedor",
     "supplier_vat": "NIF do fornecedor",
@@ -355,7 +370,9 @@ class DocumentDecision:
     """What to do with one document, and why.
 
     `reply_text` is set only when `action` is REPLY, and is what the supplier is
-    told. `reason` is internal and always set — it is what shows up in logs and
+    told, as `{language: text}` — the language is an email-level decision
+    (`reply_language`), so a document carries every wording and none of the
+    choice. `reason` is internal and always set — it is what shows up in logs and
     in the process summary.
 
     `po_problems` is the `missing_pos` answer for this document, carried so
@@ -370,7 +387,7 @@ class DocumentDecision:
     filename: str
     action: DocumentAction
     reason: str
-    reply_text: str | None = None
+    reply_text: dict[str, str] | None = None
     po_problems: PoProblems = NOT_CHECKED
 
 
@@ -389,15 +406,20 @@ class EmailDecision:
     from `actions` — an escalated email looks exactly like an ordinary inbox one
     — so it is carried here for `status`.
 
-    `out_of_scope` says the email carried no document and is not invoice-related."""
+    `out_of_scope` says the email carried no document and is not invoice-related.
+
+    `reply_lines` holds each reason as its full `{language: text}` mapping, and
+    `language` is the one the letter is actually written in — see
+    `reply_language`."""
 
     actions: list[EmailAction]
     reason: str
     documents: list[DocumentDecision] = field(default_factory=list)
-    reply_lines: list[str] = field(default_factory=list)
+    reply_lines: list[dict[str, str]] = field(default_factory=list)
     intent: EmailIntent | None = None
     thread_escalated: bool = False
     out_of_scope: bool = False
+    language: str = DEFAULT_REPLY_LANGUAGE
 
     @property
     def should_reply(self) -> bool:
@@ -409,11 +431,17 @@ class EmailDecision:
 
     @property
     def reply_body(self) -> str:
-        """The single reply sent to the supplier: REPLY_LETTER_TEMPLATE with one
-        "Motivo" clause per distinct reason, joined so the sentence still reads
-        naturally whether there is one problem or several.
+        """The single reply sent to the supplier, in `language`: that language's
+        letter with one "Motivo" clause per distinct reason, joined so the
+        sentence still reads naturally whether there is one problem or several.
+
+        Every reason is written in the letter's own language, so a reason with no
+        wording for it falls back to the default rather than mixing languages
+        inside one sentence.
         """
-        return REPLY_LETTER_TEMPLATE.format(reasons="; ".join(self.reply_lines))
+        template = REPLY_LETTER_TEMPLATES[self.language]
+        reasons = [line.get(self.language, line[DEFAULT_REPLY_LANGUAGE]) for line in self.reply_lines]
+        return template.format(reasons="; ".join(reasons))
 
     @property
     def should_forward_to_treasury(self) -> bool:
@@ -673,20 +701,67 @@ def decide_document(
 # --------------------------------------------------------------------------- #
 
 
-def _dedupe_lines_for(decisions: list[DocumentDecision], action: DocumentAction) -> list[str]:
+def _dedupe_lines_for(decisions: list[DocumentDecision], action: DocumentAction) -> list[dict[str, str]]:
     """Distinct reply_text values among documents with the given action, in
     first-seen order. Two proformas in one email still yield one reason, not
     the same sentence twice.
+
+    Deduped on the whole `{language: text}` mapping, so the reasons survive
+    until `reply_body` knows what language to write them in.
 
     Only REPLY carries reply_text today — the treasury letter is fixed wording —
     but the action stays a parameter so a second reasoned letter needs no change
     here.
     """
-    lines: list[str] = []
+    lines: list[dict[str, str]] = []
     for decision in decisions:
         if decision.action == action and decision.reply_text and decision.reply_text not in lines:
             lines.append(decision.reply_text)
     return lines
+
+
+def _spoken(confident) -> str | None:
+    """A `Confident[str]` language code as pt/en, or None for anything else.
+
+    Confidence is not gated on: an unusable answer falls back either way, so a
+    low-confidence "pt" still beats no evidence.
+    """
+    if confident is None or not confident.value:
+        return None
+    code = confident.value.strip().lower()
+    return code if code in (REPLY_LANGUAGE_PT, REPLY_LANGUAGE_EN) else None
+
+
+def reply_language(decisions: list[DocumentDecision], extractions: list[PipelineResult]) -> str:
+    """What language to write this email's reply in. THE language rule.
+
+    Only the documents that DROVE the reply get a say, and the FIRST of those to
+    answer wins — one email gets one reply, so something must settle it.
+
+    Per document: `dim_suppliers.preferred_language` (the supplier told us, and
+    is asked only when `resolve_registry_ids` identified them), then the
+    document's own language read at classification — which is what covers
+    proformas and duplicates, neither of which reaches the registry lookup.
+
+    Anything else falls back to DEFAULT_REPLY_LANGUAGE: pt and en are the only
+    two letters we have, so a French supplier gets the default one.
+    """
+    replying = {decision.filename for decision in decisions if decision.action == REPLY}
+
+    for result in extractions:
+        if result.filename not in replying:
+            continue
+
+        supplier_id = result.validation.supplier_id if result.validation else None
+        preferred = supplier_preferred_language(supplier_id.value if supplier_id else None)
+        if preferred in (REPLY_LANGUAGE_PT, REPLY_LANGUAGE_EN):
+            return preferred
+
+        read = _spoken(result.classification.language if result.classification else None)
+        if read:
+            return read
+
+    return DEFAULT_REPLY_LANGUAGE
 
 
 def _thread_escalated(thread_message_count: int | None) -> bool:
@@ -803,6 +878,9 @@ def decide_email(
     outward — the A1/A2 reply below, and any document reaching REPLY or TREASURY.
     It is also recorded on every decision as `thread_escalated`, which is what
     turns an otherwise-open status into "Requer Ação".
+
+    The reply's language is settled last, from the documents that drove it (or
+    the body, for A1/A2) — see `reply_language`.
     """
     escalated = _thread_escalated(thread_message_count)
 
@@ -832,8 +910,7 @@ def decide_email(
             reason = "email had attachments but none was a PDF"
         else:
             # A5 — an attachment reported "chunked" yet produced no filenames, so
-            # there was nothing to extract. Defensive: a splitter bug, not a
-            # supplier problem.
+            # there was nothing to extract - Defensive, assume splitter bug.
             return EmailDecision(
                 actions=[EMAIL_INBOX],
                 reason="PDFs reported but no documents extracted",
@@ -842,8 +919,7 @@ def decide_email(
 
         # Only an invoice-related email with NO link is the supplier's mistake.
         # An invoice-related email WITH a link means the document exists and we
-        # must fetch it — leaving it in the inbox is correct for now, though such
-        # emails arguably deserve their own "fetch from portal" action later.
+        # must fetch manually fetch it
         if intent is None:
             return EmailDecision(
                 actions=[EMAIL_INBOX],
@@ -867,11 +943,13 @@ def decide_email(
                     thread_escalated=escalated,
                 )
 
+            # No document was read, so the body is the only language evidence.
             return EmailDecision(
                 actions=[EMAIL_REPLY],
                 reason=f"{reason}; body is invoice-related with no link",
                 reply_lines=[REPLY_TEXT_NO_PDF],
                 intent=intent,
+                language=_spoken(intent.language) or DEFAULT_REPLY_LANGUAGE,
             )
 
         if is_invoice and has_link:
@@ -882,9 +960,7 @@ def decide_email(
                 thread_escalated=escalated,
             )
 
-        # Out of scope: no document, and the body is not about one. The pipeline
-        # has nothing further to do, so the process is finished even though the
-        # email stays in the inbox for a human to read.
+        # Out of scope: no document, and the body is not about one.
         return EmailDecision(
             actions=[EMAIL_INBOX],
             reason=f"{reason}; body is not invoice-related",
@@ -903,12 +979,15 @@ def decide_email(
         thread_message_count,
     )
 
+    # Decided after `_downgrade_to_inbox`, so an escalated email — which sends
+    # nothing — settles on the default without any lookup.
     return EmailDecision(
         actions=roll_up_actions(decisions),
         reason=_email_reason(decisions),
         documents=decisions,
         reply_lines=_dedupe_lines_for(decisions, REPLY),
         thread_escalated=escalated,
+        language=reply_language(decisions, extractions),
     )
 
 

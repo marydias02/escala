@@ -46,6 +46,19 @@ If applicable, include document_exception:
 
 Return NULL if any of these apply. It is safer to return NULL when unsure.
 
+LANGUAGE
+
+Report the language the document is written in (language) as a lowercase ISO
+639-1 code — 'pt', 'en', 'es', 'fr', and so on. Report what you actually read: a
+document in French is 'fr', not the nearest of the more common ones.
+
+Judge the document's own wording — headings, field labels, line-item
+descriptions, terms and conditions. Ignore the supplier's name and address, the
+currency, and any legally mandated bilingual boilerplate: a Portuguese invoice
+carrying an English tax note is 'pt'.
+
+Return null when the document carries too little text to tell.
+
 DOCUMENT NUMBER
 
 Also read document_number: the document's OWN identifying number, as assigned by
@@ -122,6 +135,8 @@ Classify the accounting nature of the document (document_type) and its
 legal state (document_state) when explicitly visible.
 
 If the document can be applied in any of the document_exception, include that field. If not, leave empty.
+
+Report the language the document is written in (language).
 
 Also read document_number — the document's own number assigned by the supplier.
 Read it whatever the document's type or state.

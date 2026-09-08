@@ -4,6 +4,10 @@ Clients are business units (`dim_business_units`); there is no separate clients
 table. Each tool checks BOTH VATs against ONE registry — that is what lets the
 model spot a supplier/client swap, so do not narrow it to one VAT per table.
 
+`supplier_preferred_language` is the exception to the shape above: it is keyed on
+`supplier_id` rather than a VAT, and is not a `@tool` — the model is never asked
+what language to reply in.
+
 A lookup that cannot be answered returns False rather than raising: these run on
 the routing critical path, and an unreachable database must not stop an email
 from being processed. False is also what an empty table returns, which is the
@@ -70,3 +74,31 @@ def verify_supplier_nif(client_vat: str, supplier_vat: str) -> tuple[bool, bool]
         True, True if the client and supplier are in the list of known suppliers, otherwise False
     """
     return _both_in("dim_suppliers", client_vat, supplier_vat)
+
+
+def supplier_preferred_language(supplier_id: str | None) -> str | None:
+    """The supplier's preferred reply language, as a lowercase ISO 639-1 code.
+
+    Keyed on `supplier_id`, which `nodes.validate.resolve_registry_ids` fills
+    only on a registry match — so an id in hand already means the supplier is
+    identified, and this is a straight primary-key read rather than a second
+    attempt at matching them.
+
+    None when there is no id, no preference recorded against it, or the lookup
+    failed. `decisions.reply_language` treats the three alike: none of them says
+    anything about what language to write in, so it falls back to the document.
+    """
+    if not supplier_id:
+        return None
+
+    try:
+        rows = select_sync(
+            "SELECT preferred_language FROM dim_suppliers WHERE supplier_id = $1 LIMIT 1",
+            [str(supplier_id)],
+        )
+    except Exception as exc:  # noqa: BLE001 - a DB blip must not break routing
+        logger.warning(f"supplier_preferred_language({supplier_id}) failed, treating as unknown: {exc!r}")
+        return None
+
+    language = rows[0]["preferred_language"] if rows else None
+    return language.strip().lower() if language else None

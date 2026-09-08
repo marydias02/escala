@@ -704,10 +704,11 @@ def print_email_summary(results: list[EmailProcessingResult]) -> None:
         marker = " + ".join(_ACTION_MARKERS.get(action, action) for action in decision.actions)
         print(f"  {marker}  {result.source} — {decision.reason}")
 
-        # The reply that would go out, and each document's own action. The
-        # treasury forward has no per-document reasons — its letter is fixed.
+        # The reply that would go out, in the language it goes out in, and each
+        # document's own action. The treasury forward has no per-document
+        # reasons — its letter is fixed.
         for line in decision.reply_lines:
-            print(f"            ↳ {line}")
+            print(f"            ↳ [{decision.language}] {line.get(decision.language, line)}")
         for document in decision.documents:
             print(f"            · {document.filename}: {document.action} ({document.reason})")
 
