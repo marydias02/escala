@@ -1,6 +1,5 @@
 import re
 import unicodedata
-from typing import Optional
 
 from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, ToolMessage
@@ -36,7 +35,7 @@ _WORD_BREAK = re.compile(r"[^a-z0-9]+")
 MAX_TOOL_ROUNDS = 3
 
 
-# Confidence stamped on a party resolved by fuzzy name matching 
+# Confidence stamped on a party resolved by fuzzy name matching
 FUZZY_MATCH_CONFIDENCE = min(round(MIN_CONFIDENCE + 0.1, 2), 1)
 
 # Cents, to absorb float error on amounts the model returns as floats.
@@ -51,6 +50,7 @@ SHAPE_REQUEST = HumanMessage(
     )
 )
 
+
 def _normalize_name(name: str) -> str:
     """Lowercase, accent-stripped, punctuation-normalized form of a company name.
 
@@ -61,11 +61,12 @@ def _normalize_name(name: str) -> str:
     tight = _INNER_PUNCTUATION.sub("", without_accents.lower())
     return _WORD_BREAK.sub(" ", tight).strip()
 
+
 def _reconcile_amounts(report: ValidationReport) -> ValidationReport:
     """Apply `base + vat = total`, deterministically — the LLM reads, it does not compute.
 
     One missing amount is derived from the other two.
-    Three that disagree are left as is and total_amount's confidence is 
+    Three that disagree are left as is and total_amount's confidence is
     dropped below MIN_CONFIDENCE so the gate stops it and the reviewer knows where to look.
     """
     base, vat, total = report.base_amount, report.vat_amount, report.total_amount
@@ -104,17 +105,13 @@ def _reconcile_amounts(report: ValidationReport) -> ValidationReport:
     )
 
 
-def _noted(
-    report: ValidationReport, field: str, checked: Checked[float], note: str
-) -> ValidationReport:
+def _noted(report: ValidationReport, field: str, checked: Checked[float], note: str) -> ValidationReport:
     """Set one field and append the note explaining it, for the reviewer."""
     logger.info(note)
-    return report.model_copy(
-        update={field: checked, "notes": f"{report.notes.strip()} {note}".strip()}
-    )
+    return report.model_copy(update={field: checked, "notes": f"{report.notes.strip()} {note}".strip()})
 
 
-def _best_name_match(table: str, name: str) -> Optional[tuple[dict, float]]:
+def _best_name_match(table: str, id_column: str, name: str) -> tuple[dict, float] | None:
     """The `table` row whose name best matches `name`, paired with its match
     confidence — or None below NAME_MATCH_THRESHOLD.
 
@@ -123,7 +120,7 @@ def _best_name_match(table: str, name: str) -> Optional[tuple[dict, float]]:
 
     A tie breaks on plain Levenshtein `ratio`. If still tied, break on first row and log
     """
-    rows = select_sync(f"SELECT * FROM {table}", [])
+    rows = select_sync(f"SELECT {id_column}, name, vat FROM {table}", [])
     if not rows:
         return None
 
@@ -142,9 +139,7 @@ def _best_name_match(table: str, name: str) -> Optional[tuple[dict, float]]:
     if len(best) == 1:
         return best[0], confidence
 
-    best_by_ratio = sorted(
-        best, key=lambda row: fuzz.ratio(target, _normalize_name(row["name"])), reverse=True
-    )
+    best_by_ratio = sorted(best, key=lambda row: fuzz.ratio(target, _normalize_name(row["name"])), reverse=True)
     top_ratio = fuzz.ratio(target, _normalize_name(best_by_ratio[0]["name"]))
     tied = [row for row in best_by_ratio if fuzz.ratio(target, _normalize_name(row["name"])) == top_ratio]
 
@@ -157,9 +152,7 @@ def _best_name_match(table: str, name: str) -> Optional[tuple[dict, float]]:
     return tied[0], confidence
 
 
-def _find_party(
-    table: str, vat: Optional[str], name: Optional[str]
-) -> Optional[tuple[dict, float]]:
+def _find_party(table: str, id_column: str, vat: str | None, name: str | None) -> tuple[dict, float] | None:
     """One row from `table` matching `vat`, or failing that the closest `name`
     match above NAME_MATCH_THRESHOLD, paired with the confidence the match
     deserves. None if neither hits.
@@ -171,21 +164,19 @@ def _find_party(
     normalized_vat = normalize_key(vat)
     if normalized_vat:
         rows = select_sync(
-            f"SELECT * FROM {table} WHERE {normalize_sql('vat')} = $1 LIMIT 1",
+            f"SELECT {id_column}, name, vat FROM {table} WHERE {normalize_sql('vat')} = $1 LIMIT 1",
             [normalized_vat],
         )
         if rows:
             return rows[0], 1.0
 
     if name:
-        return _best_name_match(table, name)
+        return _best_name_match(table, id_column, name)
 
     return None
 
 
-def _resolve_party(
-    report: ValidationReport, prefix: str, table: str, id_column: str
-) -> ValidationReport:
+def _resolve_party(report: ValidationReport, prefix: str, table: str, id_column: str) -> ValidationReport:
     """Fill `{prefix}_id` and overwrite `{prefix}_name`/`{prefix}_vat` with the
     registry's own values.
 
@@ -198,7 +189,7 @@ def _resolve_party(
     vat = getattr(report, f"{prefix}_vat")
     name = getattr(report, f"{prefix}_name")
 
-    found = _find_party(table, vat.value if vat else None, name.value if name else None)
+    found = _find_party(table, id_column, vat.value if vat else None, name.value if name else None)
     if found is None:
         return report
     row, confidence = found
@@ -215,7 +206,7 @@ def _resolve_party(
 def resolve_registry_ids(report: ValidationReport) -> ValidationReport:
     """Fill supplier_id/bu_id from the SAP master data, deterministically.
 
-    VAT-first, name-fallback — the LLM cannot derive registry id, 
+    VAT-first, name-fallback — the LLM cannot derive registry id,
     and registry is source of truth for the name and VAT
 
     Never raises. A failed lookup just leaves that party's id/name/vat as they were.
@@ -260,8 +251,8 @@ def _run_tool_calls(response: AIMessage) -> list[ToolMessage]:
 def validate_document(
     llm: BaseChatModel,
     invoice: InvoiceData,
-    parsed_text: Optional[str] = None,
-    document_number: Optional[str] = None,
+    parsed_text: str | None = None,
+    document_number: str | None = None,
 ) -> ValidationReport:
     """Validate extracted invoice data, using the registry tools, into a ValidationReport.
 
@@ -273,7 +264,7 @@ def validate_document(
       2. Shaping pass — the whole conversation is replayed through
                         `with_structured_output` to produce the report.
       3. Registry phase — supplier and bu information is fetched from the db
-                        according to their vat and/or name 
+                        according to their vat and/or name
 
     `document_number` comes from the CLASSIFICATION stage, not from `invoice` —
     it is read there so duplicates can be matched before extraction runs. It is
@@ -281,9 +272,7 @@ def validate_document(
     """
     messages: list[BaseMessage] = [
         VALIDATION_SYSTEM_MESSAGE,
-        build_validation_human_message(
-            invoice, parsed_text=parsed_text, document_number=document_number
-        ),
+        build_validation_human_message(invoice, parsed_text=parsed_text, document_number=document_number),
     ]
 
     llm_with_tools = llm.bind_tools(VALIDATION_TOOLS)
@@ -316,17 +305,14 @@ def validate_document(
                 {
                     "rounds": rounds,
                     "max_rounds": MAX_TOOL_ROUNDS,
-                    "hit_cap": rounds == MAX_TOOL_ROUNDS
-                    and bool(getattr(response, "tool_calls", None)),
+                    "hit_cap": rounds == MAX_TOOL_ROUNDS and bool(getattr(response, "tool_calls", None)),
                 }
             )
 
         structured_llm = llm.with_structured_output(ValidationReport)
 
         with span(STAGE_VALIDATION_SHAPING, "LLM") as shaping_span:
-            report = invoke_with_retry(
-                structured_llm, [*messages, SHAPE_REQUEST], stage="validation (shaping)"
-            )
+            report = invoke_with_retry(structured_llm, [*messages, SHAPE_REQUEST], stage="validation (shaping)")
             report = _reconcile_amounts(report)
             shaping_span.set_outputs(validation_summary(report))
 

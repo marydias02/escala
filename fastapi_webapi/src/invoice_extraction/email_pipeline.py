@@ -25,6 +25,7 @@ import asyncio
 import json
 import time
 import uuid
+from collections import defaultdict
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -35,6 +36,7 @@ from invoice_extraction.config import (
     DOC_STATUS_CREATED,
     DOC_STATUS_FAILED,
     DOC_STATUS_IGNORED,
+    EMAIL_MAX_WORKERS,
     ENABLE_TRACING,
     EXTRACTION_MAX_WORKERS,
     INGEST_LIMIT,
@@ -82,7 +84,11 @@ from invoice_extraction.invoice_utils.email_sender import (
     reply_to_supplier,
 )
 from invoice_extraction.invoice_utils.outlook_loader import fetch_inbox_emails
-from invoice_extraction.invoice_utils.reporting import print_pipeline_result
+from invoice_extraction.invoice_utils.reporting import (
+    buffered_output,
+    install_buffering,
+    print_pipeline_result,
+)
 from invoice_extraction.models import DocumentClassification, EmailIntent, LoadedEmail, ValidationReport
 from invoice_extraction.nodes import classify_email_intent
 from invoice_extraction.tracing import (
@@ -549,7 +555,8 @@ class EmailPipeline:
             set_trace_tags(email=source, model=self.extraction.llm_factory.openai_model)
 
             # --- INGEST ---------------------------------------------------------
-            ingestion = self.ingestion.run(email, output_root)
+            # Threaded: sync and LLM-bound, so it would otherwise pin the loop.
+            ingestion = await asyncio.to_thread(self.ingestion.run, email, output_root)
 
             # A failed email yields no fresh PDFs. Bundle and decide, but write
             # nothing — no body classification either, since nothing could be read.
@@ -573,8 +580,8 @@ class EmailPipeline:
 
             # --- DECIDE ---------------------------------------------------------
             # No usable PDF (A1/A2) is the only case the body can change, so the
-            # extra LLM call is confined to it.
-            intent = self._classify_body(email, ingestion) if not extractions else None
+            # extra LLM call is confined to it — threaded, since it blocks.
+            intent = await asyncio.to_thread(self._classify_body, email, ingestion) if not extractions else None
 
             # A span of its own even though it is pure, LLM-free business logic:
             # the routing rules are the part most likely to be questioned, and
@@ -626,40 +633,58 @@ class EmailPipeline:
 
             return result
 
-    async def run_batch(
-        self,
-        emails: list[LoadedEmail],
-        output_root: Path = PROCESSED_EMAILS_DIR,
-    ) -> list[EmailProcessingResult]:
-        """Run several emails, isolating failures so one bad email cannot kill the run."""
-        results: list[EmailProcessingResult] = []
+    async def _run_safe(self, email: LoadedEmail, output_root: Path) -> EmailProcessingResult:
+        """`run`, but a raised exception becomes a `failed` result instead of propagating."""
+        source = email.message_id or email.subject
 
-        for email in emails:
-            source = email.message_id or email.subject
+        # Buffered so concurrent emails print as blocks, not interleaved lines.
+        with buffered_output():
             print(f"\n{'=' * 70}\n📧 {email.subject}\n{'=' * 70}")
             started = time.perf_counter()
+
             try:
                 result = await self.run(email, output_root)
             except Exception as exc:  # noqa: BLE001 - keep the batch alive, inspect after
                 message = f"{type(exc).__name__}: {exc}"
                 print(f"  ❌ Failed: {message}")
                 failed = EmailIngestionResult(source=source, status="failed", message=message)
-                results.append(
-                    EmailProcessingResult(
-                        source=source,
-                        ingestion=failed,
-                        decision=decide_email(failed, []),
-                    )
+                return EmailProcessingResult(
+                    source=source,
+                    ingestion=failed,
+                    decision=decide_email(failed, []),
                 )
-                continue
 
             print(
                 f"  ⏱️  {time.perf_counter() - started:.1f}s "
                 f"({len(result.extractions)} docs, {EXTRACTION_MAX_WORKERS} workers)"
             )
-            results.append(result)
+            return result
 
-        return results
+    async def run_batch(
+        self,
+        emails: list[LoadedEmail],
+        output_root: Path = PROCESSED_EMAILS_DIR,
+        max_workers: int = EMAIL_MAX_WORKERS,
+    ) -> list[EmailProcessingResult]:
+        """Run emails concurrently, serializing those that share a thread.
+
+        Emails on one thread contend on `thread_message_count` (a read-then-write
+        `count(*) + 1`) and on `close_prior_processes`, so the thread — not the
+        email — is the unit of concurrency: groups run in parallel, members of a
+        group in order. Results come back in the caller's original order.
+        """
+        groups: dict[str, list[tuple[int, LoadedEmail]]] = defaultdict(list)
+        for index, email in enumerate(emails):
+            groups[email.thread_id or email.message_id or email.subject].append((index, email))
+
+        semaphore = asyncio.Semaphore(max_workers)
+
+        async def run_group(group: list[tuple[int, LoadedEmail]]) -> list[tuple[int, EmailProcessingResult]]:
+            async with semaphore:
+                return [(index, await self._run_safe(email, output_root)) for index, email in group]
+
+        grouped = await asyncio.gather(*(run_group(g) for g in groups.values()))
+        return [result for _index, result in sorted((pair for group in grouped for pair in group))]
 
 
 def create_pipeline(llm_factory: LLMFactory | None = None) -> EmailPipeline:
@@ -703,6 +728,8 @@ def print_email_summary(results: list[EmailProcessingResult]) -> None:
 
 
 async def main() -> None:
+    install_buffering()
+
     if ENABLE_TRACING:
         setup_tracing(experiment_name=MLFLOW_EXPERIMENT)
     else:
@@ -719,11 +746,13 @@ async def main() -> None:
         if INGEST_LIMIT is not None:
             emails = emails[:INGEST_LIMIT]
 
-        print(f"Processing {len(emails)} email(s) from the inbox")
+        print(f"Processing {len(emails)} email(s) from the inbox, {EMAIL_MAX_WORKERS} thread(s) at a time")
         print(f"Output root: {PROCESSED_EMAILS_DIR}")
 
         pipeline = create_pipeline()
+        batch_started = time.perf_counter()
         results = await pipeline.run_batch(emails, PROCESSED_EMAILS_DIR)
+        batch_elapsed = time.perf_counter() - batch_started
 
         # Per-document detail (reused reporter).
         for result in results:
@@ -733,6 +762,13 @@ async def main() -> None:
         # Ingestion tally (reused), then the new email-level decisions.
         print_summary([r.ingestion for r in results])
         print_email_summary(results)
+
+        # Wall time, since per-email times overlap and cannot be summed.
+        documents = sum(len(r.extractions) for r in results)
+        print(
+            f"\n⏱️  Batch: {batch_elapsed:.1f}s for {len(results)} email(s), {documents} document(s) "
+            f"({EMAIL_MAX_WORKERS} email x {EXTRACTION_MAX_WORKERS} doc workers)"
+        )
     finally:
         # Traces export asynchronously, so flush before the process exits.
         flush_traces()
