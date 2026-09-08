@@ -19,8 +19,7 @@ FETCH_LIMIT = 1
 
 
 async def main() -> None:
-    logger.info("Signing in to Microsoft Graph (device code)...")
-    logger.info(f"Fetching up to {FETCH_LIMIT} message(s) from your own inbox")
+    logger.info(f"Fetching up to {FETCH_LIMIT} message(s) from the inbox")
 
     emails = await fetch_inbox_emails(limit=FETCH_LIMIT)
 

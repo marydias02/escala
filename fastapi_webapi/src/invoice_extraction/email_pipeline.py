@@ -26,7 +26,6 @@ import json
 import time
 import uuid
 from dataclasses import dataclass, field
-from datetime import datetime
 from pathlib import Path
 
 from config.settings import settings
@@ -37,6 +36,7 @@ from invoice_extraction.config import (
     DOC_STATUS_FAILED,
     DOC_STATUS_IGNORED,
     ENABLE_TRACING,
+    EXTRACTION_MAX_WORKERS,
     INGEST_LIMIT,
     MANIFEST_NAME,
     MLFLOW_EXPERIMENT,
@@ -70,6 +70,7 @@ from invoice_extraction.extraction_pipeline import (
 from invoice_extraction.ingestion_pipeline import (
     EmailIngestionResult,
     IngestionPipeline,
+    parse_reception_date,
     print_summary,
 )
 from invoice_extraction.ingestion_pipeline import (
@@ -208,21 +209,6 @@ def build_document_content(validation: ValidationReport | None) -> dict:
     content: dict = {name: _checked_to_dict(getattr(validation, name)) for name in _CONTENT_FIELDS}
     content["po_list"] = [_checked_to_dict(po) for po in validation.po_list]
     return content
-
-
-def parse_reception_date(value: str | None) -> datetime | None:
-    """Parse the manifest's ISO-8601 reception date to a datetime, or None.
-
-    `fct_processes.reception_date` is a timestamptz; asyncpg maps a datetime
-    straight through. A malformed/empty string becomes NULL (the column is
-    nullable) rather than failing the insert.
-    """
-    if not value:
-        return None
-    try:
-        return datetime.fromisoformat(value)
-    except ValueError:
-        return None
 
 
 # --------------------------------------------------------------------------- #
@@ -579,7 +565,7 @@ class EmailPipeline:
 
             # --- EXTRACT (this email's own PDFs only) ---------------------------
             pdf_paths = _produced_pdf_paths(ingestion)
-            extractions = self.extraction.run_batch(pdf_paths)
+            extractions = await self.extraction.run_batch(pdf_paths)
 
             # Counted once, here, because it both routes the email and is stored
             # with it — two counts could disagree if a sibling lands in between.
@@ -667,7 +653,10 @@ class EmailPipeline:
                 )
                 continue
 
-            print(f"  ⏱️  {time.perf_counter() - started:.1f}s")
+            print(
+                f"  ⏱️  {time.perf_counter() - started:.1f}s "
+                f"({len(result.extractions)} docs, {EXTRACTION_MAX_WORKERS} workers)"
+            )
             results.append(result)
 
         return results

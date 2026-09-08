@@ -5,6 +5,7 @@ document. Email ingestion and multi-document splitting are handled upstream by
 `ingestion_pipeline`, which writes those files under `PROCESSED_EMAILS_DIR`.
 """
 
+import asyncio
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal, Optional
@@ -12,7 +13,7 @@ from typing import Literal, Optional
 from langchain_core.language_models import BaseChatModel
 
 from config.settings import settings
-from invoice_extraction.config import PARSER_KWARGS, PROCESSED_EMAILS_DIR
+from invoice_extraction.config import EXTRACTION_MAX_WORKERS, PARSER_KWARGS, PROCESSED_EMAILS_DIR
 from invoice_extraction.invoice_utils.documents import load_document
 from invoice_extraction.invoice_utils.pdf_parser import build_attachment_evidence
 from invoice_extraction.models import (
@@ -191,29 +192,38 @@ class ExtractionPipeline:
                 message="ok",
             )
 
-    def run_batch(self, pdf_paths: list[Path]) -> list[PipelineResult]:
-        """Run several documents, isolating failures so one bad file cannot kill the batch."""
-        results: list[PipelineResult] = []
+    def _run_safe(self, pdf_path: Path) -> PipelineResult:
+        """`run`, but a raised exception becomes a `failed` result instead of propagating."""
+        try:
+            return self.run(pdf_path)
+        except Exception as exc:  # noqa: BLE001 - keep the batch alive, inspect after
+            message = f"{type(exc).__name__}: {exc}"
+            print(f"❌ Failed {pdf_path.name}: {message}")
+            return PipelineResult(
+                filename=pdf_path.name,
+                status="failed",
+                message=message,
+            )
 
-        for pdf_path in pdf_paths:
-            pdf_path = Path(pdf_path)
-            try:
-                result = self.run(pdf_path)
-            except Exception as exc:  # noqa: BLE001 - keep the batch alive, inspect after
-                message = f"{type(exc).__name__}: {exc}"
-                print(f"❌ Failed {pdf_path.name}: {message}")
-                results.append(
-                    PipelineResult(
-                        filename=pdf_path.name,
-                        status="failed",
-                        message=message,
-                    )
-                )
-                continue
+    async def run_batch(
+        self, pdf_paths: list[Path], max_workers: int = EXTRACTION_MAX_WORKERS
+    ) -> list[PipelineResult]:
+        """Run several documents concurrently, isolating failures so one bad file cannot kill the batch.
 
-            results.append(result)
+        Each document runs on its own thread via `asyncio.to_thread`, bounded by
+        `max_workers` — I/O parallelism over blocking LLM calls, not CPU work.
+        `to_thread` (unlike a bare `ThreadPoolExecutor`) copies contextvars, so
+        each document's MLflow spans still nest under the caller's span instead
+        of opening a detached trace. Order is preserved: `asyncio.gather` returns
+        results in argument order regardless of completion order.
+        """
+        semaphore = asyncio.Semaphore(max_workers)
 
-        return results
+        async def one(pdf_path: Path) -> PipelineResult:
+            async with semaphore:
+                return await asyncio.to_thread(self._run_safe, Path(pdf_path))
+
+        return list(await asyncio.gather(*(one(p) for p in pdf_paths)))
 
 
 def create_pipeline(
@@ -225,7 +235,7 @@ def create_pipeline(
     return ExtractionPipeline(llm_factory=llm_factory)
 
 
-if __name__ == "__main__":
+async def _main() -> None:
     from invoice_extraction.invoice_utils.reporting import print_pipeline_result
 
     pipeline = create_pipeline()
@@ -237,5 +247,9 @@ if __name__ == "__main__":
 
     print(f"Running {len(pdf_paths)} document(s) from {PROCESSED_EMAILS_DIR}\n")
 
-    for result in pipeline.run_batch(pdf_paths):
+    for result in await pipeline.run_batch(pdf_paths):
         print_pipeline_result(result)
+
+
+if __name__ == "__main__":
+    asyncio.run(_main())

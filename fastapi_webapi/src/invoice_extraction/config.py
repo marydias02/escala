@@ -52,6 +52,9 @@ ZIP_CHUNK_SIZE = 64 * 1024
 
 # -- Extraction (Phase 2) --------------------------------------------------
 
+# How many documents within one email are extracted concurrently.
+EXTRACTION_MAX_WORKERS = 3
+
 # Deterministic parser settings, matching the notebook.
 PARSER_KWARGS = {
     "max_pages_text": 10,
