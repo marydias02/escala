@@ -65,6 +65,21 @@ PARSER_KWARGS = {
     "min_font_size": 4,
 }
 
+# -- Scanned documents (vision path) ---------------------------------------
+# A scanned page is one large image XObject covering the sheet. It can contain text,
+# often incorrect. If the scanned coverage is above a treshold, should be read as image
+
+SCANNED_COVERAGE_THRESHOLD = 1.0
+
+# A scanned bundle can open with a clean cover sheet, so look past page 1.
+COVERAGE_SCAN_PAGES = 5
+
+# 72 DPI already reads correctly on the known scans; 110 is margin for finer print.
+RENDER_DPI = 110
+
+# Caps the number of pages sent as images (usually info is at start)
+RENDER_MAX_PAGES = 5
+
 # -- Validation / decisions -------------------------------------------------
 
 # 0.7 keeps only the upper half of the validator's own "0.70-0.89 = probably

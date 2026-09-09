@@ -1,5 +1,7 @@
 from langchain_core.messages import HumanMessage, SystemMessage
 
+from invoice_extraction.invoice_utils.documents import InvoiceDocument
+from invoice_extraction.invoice_utils.page_mode import document_content_parts
 from invoice_extraction.models import DocumentClassification
 
 EXTRACTION_SYSTEM_PROMPT = """
@@ -108,14 +110,18 @@ EXTRACTION_SYSTEM_MESSAGE = SystemMessage(content=EXTRACTION_SYSTEM_PROMPT)
 
 
 def build_extraction_human_message(
-    filename: str,
-    encoded_pdf: str,
+    doc: InvoiceDocument,
     classification: DocumentClassification,
+    *,
+    scanned: bool = False,
 ) -> HumanMessage:
     """Build the extraction HumanMessage for a single, already-classified document.
 
     The confirmed classification (type + state) is passed as known context so
     the model focuses on extracting InvoiceData rather than re-classifying.
+
+    A scanned document is sent as page images rather than as the PDF — see
+    `page_mode.document_content_parts`.
     """
     doc_type = classification.document_type.value
     doc_state = (
@@ -141,13 +147,6 @@ requested structured invoice information into the provided schema, following
 every field description exactly.
 """,
             },
-            {
-                "type": "file",
-                "file": {
-                    "file_data": f"data:application/pdf;base64,{encoded_pdf}",
-                    "filename": filename,
-                    "format": "application/pdf",
-                },
-            },
+            *document_content_parts(doc, scanned=scanned),
         ]
     )
