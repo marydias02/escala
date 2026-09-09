@@ -20,6 +20,7 @@ class ExtractionService:
     def __init__(self):
         self.big_numbers = ExtractionBigNumbers()
         self.documents = DocumentsRepository()
+        self.processes = ProcessesRepository()
         self.business_units = BusinessUnitRepository()
         self.processes = ProcessesRepository()
 

@@ -126,7 +126,12 @@ def layout(ref_number=None, **_kwargs):
     return html.Div(
         [
             dcc.Store(id="email-detail-ref-number", data=str(ref_number)),
-            html.Div(id="email-detail-content"),
+            dcc.Loading(
+                id="email-detail-loading",
+                type="default",
+                color="var(--primary-color-13)",
+                children=html.Div(id="email-detail-content"),
+            ),
         ]
     )
 
@@ -324,7 +329,7 @@ def _build_email_detail(ref_number):
                                                         dcc.DatePickerSingle(
                                                             id='issue_date',
                                                             date=data_recepcao,
-                                                            className="email_detail__input"
+                                                            className="email_detail__input email_detail__date_picker",
                                                         )
                                                     ],
                                                 ),
@@ -362,7 +367,7 @@ def _build_email_detail(ref_number):
                                                             options=['EUR', 'USD', 'CVE'],
                                                             value=currency,
                                                             clearable=False,
-                                                            className="email_detail__input"
+                                                            className="email_detail__input email_detail__dropdown",
                                                         )
                                                     ],
                                                 ),
@@ -402,8 +407,19 @@ def _build_email_detail(ref_number):
                     className="email_detail__bottom_section",
                     children=[
                         Button("Exportar", icon="lucide:file-down", variant="outline"),
-                        Button("Guardar", id="save-button", icon="lucide:circle-check", variant="outline"),
-                        Button("Enviar para SAP", id="send-sap-button", icon="lucide:send"),
+                        Button(
+                            "Guardar",
+                            id="save-button",
+                            icon="lucide:circle-check",
+                            variant="outline",
+                            disabled=action != "Validação Manual",
+                        ),
+                        Button(
+                            "Enviar para SAP",
+                            id="send-sap-button",
+                            icon="lucide:send",
+                            disabled=action != "Validação Manual",
+                        ),
                         html.P(id="email-detail-update-status", className="body-sm email_detail__status"),
                     ]
                 ),
@@ -413,7 +429,12 @@ def _build_email_detail(ref_number):
                     children=[
                         Section(
                             title="Conteúdo do Email",
-                            content=html.Div(id="email-detail-drawer-email-content"),
+                            content=dcc.Loading(
+                                id="email-detail-drawer-loading",
+                                type="default",
+                                color="var(--primary-color-13)",
+                                children=html.Div(id="email-detail-drawer-email-content"),
+                            ),
                             open=True,
                         ),
                     ],
