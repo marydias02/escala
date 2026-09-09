@@ -25,7 +25,7 @@ def classify_email_intent(llm: BaseChatModel, subject: str, body: str) -> EmailI
         )
         stage_span.set_outputs(
             {
-                "is_invoice_related": intent.is_invoice_related.value,
+                "is_invoice_delivery": intent.is_invoice_delivery.value,
                 "has_invoice_link": intent.has_invoice_link.value,
             }
         )

@@ -481,7 +481,7 @@ def decision_summary(decision) -> dict:
         "should_forward_to_treasury": decision.should_forward_to_treasury,
         "intent": (
             {
-                "is_invoice_related": decision.intent.is_invoice_related.value,
+                "is_invoice_delivery": decision.intent.is_invoice_delivery.value,
                 "has_invoice_link": decision.intent.has_invoice_link.value,
             }
             if decision.intent is not None

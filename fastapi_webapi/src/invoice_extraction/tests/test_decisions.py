@@ -187,9 +187,9 @@ def ingested(attachment_statuses: tuple[str, ...] = ("chunked",)) -> EmailIngest
     )
 
 
-def intent(is_invoice: bool, has_link: bool, language: str | None = None) -> EmailIntent:
+def intent(is_delivery: bool, has_link: bool, language: str | None = None) -> EmailIntent:
     return EmailIntent(
-        is_invoice_related=confident(is_invoice),
+        is_invoice_delivery=confident(is_delivery),
         has_invoice_link=confident(has_link),
         language=confident(language) if language is not None else None,
     )
@@ -570,13 +570,13 @@ class TestDecideEmailACases:
         assert decision.actions == [EMAIL_INBOX]
         assert "not classified" in decision.reason
 
-    def test_a1_invoice_related_with_no_attachment_gets_a_reply(self):
+    def test_a1_a_delivery_with_no_attachment_gets_a_reply(self):
         decision = decide_email(ingested(()), [], intent=intent(True, False))
         assert decision.actions == [EMAIL_REPLY]
         assert decision.reply_lines == [REPLY_TEXT_NO_PDF]
         assert "no attachments" in decision.reason
 
-    def test_a2_invoice_related_with_no_pdf_gets_a_reply(self):
+    def test_a2_a_delivery_with_no_pdf_gets_a_reply(self):
         decision = decide_email(ingested(("stored",)), [], intent=intent(True, False))
         assert decision.actions == [EMAIL_REPLY]
         assert "none was a PDF" in decision.reason
@@ -589,11 +589,22 @@ class TestDecideEmailACases:
 
 
 class TestOutOfScope:
-    """No document and a body that is not about one: the pipeline ends there."""
+    """No document and a body that delivers none: the pipeline ends there."""
 
-    def test_a_non_invoice_email_is_flagged_out_of_scope(self):
+    def test_a_non_delivery_email_is_flagged_out_of_scope(self):
         decision = decide_email(ingested(()), [], intent=intent(False, False))
         assert decision.out_of_scope is True
+
+    def test_an_email_that_only_mentions_an_invoice_gets_no_reply(self):
+        """A feedback survey naming an invoice is not a supplier mistake.
+
+        Regression: a DNV satisfaction survey quoting an invoice number was
+        classified invoice-related and answered with "the format of the file
+        sent is not accepted". Only a DELIVERY warrants that reply.
+        """
+        decision = decide_email(ingested(()), [], intent=intent(False, False))
+        assert decision.actions == [EMAIL_INBOX]
+        assert decision.should_reply is False
 
     def test_an_out_of_scope_email_is_closed(self):
         decision = decide_email(ingested(()), [], intent=intent(False, False))
@@ -613,8 +624,8 @@ class TestOutOfScope:
         )
         assert decision.status == EMAIL_STATUS_CLOSED
 
-    def test_a_non_invoice_email_with_a_link_is_still_out_of_scope(self):
-        """The link is not the point — the body is not about a document."""
+    def test_a_non_delivery_email_with_a_link_is_still_out_of_scope(self):
+        """The link is not the point — the body is not delivering a document."""
         decision = decide_email(ingested(()), [], intent=intent(False, True))
         assert decision.out_of_scope is True
 

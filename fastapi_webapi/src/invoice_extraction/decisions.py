@@ -406,7 +406,8 @@ class EmailDecision:
     from `actions` — an escalated email looks exactly like an ordinary inbox one
     — so it is carried here for `status`.
 
-    `out_of_scope` says the email carried no document and is not invoice-related.
+    `out_of_scope` says the email carried no document and its body was not
+    delivering one — either unrelated, or merely mentioning an invoice.
 
     `reply_lines` holds each reason as its full `{language: text}` mapping, and
     `language` is the one the letter is actually written in — see
@@ -451,7 +452,7 @@ class EmailDecision:
     def status(self) -> EmailStatus:
         """Whether anyone still owes this email something. THE status rule
 
-        Closed wins over escalation, out_of_scope included. An email that IS
+        Closed wins over escalation, `out_of_scope` included. An email that IS
         outstanding on an escalated thread is "Requer Ação" rather than "Aberto".
         """
         if EMAIL_ARCHIVE in self.actions or self.actions == [EMAIL_TREASURY] or self.out_of_scope:
@@ -917,9 +918,9 @@ def decide_email(
                 thread_escalated=escalated,
             )
 
-        # Only an invoice-related email with NO link is the supplier's mistake.
-        # An invoice-related email WITH a link means the document exists and we
-        # must fetch manually fetch it
+        # Only a delivery attempt with NO link is the supplier's mistake. A
+        # delivery WITH a link means the document exists and we must fetch it
+        # manually. An email that merely mentions an invoice is neither.
         if intent is None:
             return EmailDecision(
                 actions=[EMAIL_INBOX],
@@ -928,15 +929,15 @@ def decide_email(
                 thread_escalated=escalated,
             )
 
-        is_invoice = intent.is_invoice_related.value
+        is_delivery = intent.is_invoice_delivery.value
         has_link = intent.has_invoice_link.value
 
-        if is_invoice and not has_link:
+        if is_delivery and not has_link:
             if escalated:
                 return EmailDecision(
                     actions=[EMAIL_INBOX],
                     reason=(
-                        f"{reason}; body is invoice-related with no link; thread on "
+                        f"{reason}; body delivers a document with no link; thread on "
                         f"message {thread_message_count}, not chased further"
                     ),
                     intent=intent,
@@ -946,24 +947,25 @@ def decide_email(
             # No document was read, so the body is the only language evidence.
             return EmailDecision(
                 actions=[EMAIL_REPLY],
-                reason=f"{reason}; body is invoice-related with no link",
+                reason=f"{reason}; body delivers a document with no link",
                 reply_lines=[REPLY_TEXT_NO_PDF],
                 intent=intent,
                 language=_spoken(intent.language) or DEFAULT_REPLY_LANGUAGE,
             )
 
-        if is_invoice and has_link:
+        if is_delivery and has_link:
             return EmailDecision(
                 actions=[EMAIL_INBOX],
-                reason=f"{reason}; body is invoice-related but links to the document",
+                reason=f"{reason}; body delivers a document but links to it",
                 intent=intent,
                 thread_escalated=escalated,
             )
 
-        # Out of scope: no document, and the body is not about one.
+        # Out of scope: no document, and the body is not delivering one. Covers
+        # both an unrelated email and one that merely mentions an invoice.
         return EmailDecision(
             actions=[EMAIL_INBOX],
-            reason=f"{reason}; body is not invoice-related",
+            reason=f"{reason}; body does not deliver a document",
             intent=intent,
             thread_escalated=escalated,
             out_of_scope=True,

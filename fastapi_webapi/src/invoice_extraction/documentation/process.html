@@ -637,7 +637,7 @@
           <tr><th>Case</th><th>Condition</th><th>Action</th><th>Reason</th></tr>
         </thead>
         <tbody>
-          <tr><td class="case-id">A1</td><td>No attachments at all</td><td><span class="action-pill action-inbox">body decides</span></td><td>reply if invoice-related with no link, else Inbox</td></tr>
+          <tr><td class="case-id">A1</td><td>No attachments at all</td><td><span class="action-pill action-inbox">body decides</span></td><td>reply if the body delivers a document with no link, else Inbox</td></tr>
           <tr><td class="case-id">A2</td><td>Attachments present, none is a PDF</td><td><span class="action-pill action-inbox">body decides</span></td><td>same as A1</td></tr>
           <tr><td class="case-id">A3</td><td>Ingestion itself failed</td><td><span class="action-pill action-inbox">Left in Inbox</span></td><td>nothing was ever read</td></tr>
           <tr><td class="case-id">A4</td><td>Ingestion skipped (already processed)</td><td><span class="action-pill action-inbox">Left in Inbox</span></td><td>earlier run owns the decision</td></tr>
@@ -740,7 +740,7 @@
         <table class="matrix">
           <thead><tr><th>Status</th><th>When</th></tr></thead>
           <tbody>
-            <tr><td><span class="action-pill action-ingest">Fechado</span></td><td>Archived, or the only action is TREASURY, or the email is <code>out_of_scope</code> (no document and the body isn't invoice-related) — closed wins even on an escalated thread.</td></tr>
+            <tr><td><span class="action-pill action-ingest">Fechado</span></td><td>Archived, or the only action is TREASURY, or the email is <code>out_of_scope</code> (no document and the body isn't delivering one) — closed wins even on an escalated thread.</td></tr>
             <tr><td><span class="action-pill action-manual">Requer Ação</span></td><td>Something is still outstanding (REPLY/TREASURY/INBOX) AND the thread has hit <code>THREAD_ESCALATION_COUNT</code> — no further automatic reply will go out, so it is waiting on a human instead of the pipeline.</td></tr>
             <tr><td><span class="action-pill action-inbox">Aberto</span></td><td>Something is still outstanding, thread not escalated — the normal in-progress state.</td></tr>
           </tbody>

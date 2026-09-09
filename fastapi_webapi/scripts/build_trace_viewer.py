@@ -89,7 +89,7 @@ FIELD_LABELS = {
     "reason": "Reason",
     "subject": "Subject",
     "body_chars": "Body Length",
-    "is_invoice_related": "Invoice Related",
+    "is_invoice_delivery": "Delivers Document",
     "has_invoice_link": "Contains Invoice Link",
     "chars": "Characters Extracted",
     "ok": "Succeeded",
