@@ -73,6 +73,9 @@ Examples:
 - Portuguese NIFs:
     if exactly 9 digits are shown without country prefix,
     normalize to PT#########.
+    Only on Portuguese documents — Cabo Verde, Guinea-Bissau, Angola and
+    Mozambique NIFs share the same nine-digit shape. When the document is
+    from another country, or its origin is unclear, keep the digits as shown.
 
 Do not normalize evidence.
 
@@ -90,6 +93,9 @@ block near the totals (e.g. labelled "Basis VAT" or "Base Imponible").
 For Seaco, the Purcher Order number is the number between brackets after Lease number. 
 Example:
 Summary Charges - Lease Number : 182991 (5000284123)
+
+The purchase order can be handwritten in red for some Cabo Verde invoices, 
+in the format (PC_XXXXXXXXXX).
 
 FINAL RULE
 
@@ -117,11 +123,7 @@ def build_extraction_human_message(
         if classification.document_state is not None
         else "original (not explicitly stated)"
     )
-    doc_number = (
-        classification.document_number.value
-        if classification.document_number is not None
-        else "not found"
-    )
+    doc_number = classification.document_number.value if classification.document_number is not None else "not found"
     return HumanMessage(
         content=[
             {

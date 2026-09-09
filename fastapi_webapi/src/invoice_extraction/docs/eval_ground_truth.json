@@ -1,0 +1,218 @@
+[
+  {
+    "pdf": "example_pdfs/149-2026 CA Indosuez Portugal_Lumiso SGPS Unipessoal LDA_Custody Commission excluding tax Q2 2026.pdf",
+    "tags": {
+      "lang": "en",
+      "case": "invoice",
+      "scanned": "no"
+    },
+    "expect": {
+      "should_extract": true,
+      "document_type": "invoice",
+      "document_state": "original",
+      "document_number": "149-2026",
+      "supplier_vat": "LU19578473",
+      "client_vat": "PT511070357",
+      "issue_date": "02-07-2026",
+      "base_amount": 500.00,
+      "vat_amount": 0.00,
+      "total_amount": 500.00,
+      "currency": "EUR",
+      "purchase_order": []
+    }
+  },
+  {
+    "pdf": "example_pdfs/2150768990.pdf",
+    "tags": {
+      "lang": "pt",
+      "case": "invoice",
+      "scanned": "no"
+    },
+    "expect": {
+      "should_extract": true,
+      "document_type": "invoice",
+      "document_state": "original",
+      "document_number": "2150768990",
+      "supplier_vat": "PT500697370",
+      "client_vat": "PT511065906",
+      "issue_date": "30-06-2026",
+      "base_amount": 507.22,
+      "vat_amount": 55.99,
+      "total_amount": 563.21,
+      "currency": "EUR",
+      "purchase_order": []
+    }
+  },
+  {
+    "pdf": "example_pdfs/20260625185316.pdf",
+    "tags": {
+      "lang": "pt",
+      "case": "proforma",
+      "scanned": "yes"
+    },
+    "expect": {
+      "should_extract": false,
+      "document_type": "invoice",
+      "document_state": "proforma",
+      "document_number": "0013108"
+    }
+  },
+  {
+    "pdf": "example_pdfs/4410106415.pdf",
+    "tags": {
+      "lang": "pt",
+      "case": "copia",
+      "scanned": "no"
+    },
+    "expect": {
+      "should_extract": false,
+      "document_type": "invoice",
+      "document_state": "copy",
+      "document_number": "4410106415"
+    }
+  },
+  {
+    "pdf": "example_pdfs/Invoice 229555.pdf",
+    "tags": {
+      "lang": "en",
+      "case": "invoice",
+      "scanned": "partly"
+    },
+    "expect": {
+      "should_extract": true,
+      "document_type": "invoice",
+      "document_state": "original",
+      "document_number": "229555",
+      "supplier_vat": "NL800822274B01",
+      "client_vat": "PT511011911",
+      "issue_date": "02-07-2026",
+      "base_amount": 104.00,
+      "vat_amount": 0.00,
+      "total_amount": 104.00,
+      "currency": "EUR",
+      "purchase_order": [
+        "5000355882"
+      ]
+    }
+  },
+  {
+    "pdf": "example_pdfs/TCL - TERMINAL DE CONTENTORES DE LEIXOES, SA._TCL - VIA ELETRONICA (PDF)_2130 K202601003000000368.pdf",
+    "tags": {
+      "lang": "en",
+      "case": "invoice",
+      "scanned": "no"
+    },
+    "expect": {
+      "should_extract": true,
+      "document_type": "invoice",
+      "document_state": "original",
+      "document_number": "2130 K202601/003000000368",
+      "supplier_vat": "PT503607886",
+      "client_vat": "PT511011911",
+      "issue_date": "23-02-2026",
+      "base_amount": 22634.02,
+      "vat_amount": 0.00,
+      "total_amount": 22634.02,
+      "currency": "EUR",
+      "purchase_order": [
+        "5000341531",
+        "5000341503"
+      ]
+    }
+  },
+  {
+    "pdf": "example_pdfs/616012054_202607_001.pdf",
+    "tags": {
+      "lang": "pt",
+      "case": "receipt_condominio",
+      "scanned": "no"
+    },
+    "expect": {
+      "should_extract": true,
+      "document_type": "receipt",
+      "document_state": "original",
+      "document_exception": "condominio",
+      "document_number": "616/11753",
+      "supplier_vat": "PT510876838",
+      "client_vat": "PT509578888",
+      "issue_date": "17-06-2026",
+      "base_amount": 8.04,
+      "vat_amount": 0.00,
+      "total_amount": 8.04,
+      "currency": "EUR",
+      "purchase_order": []
+    }
+  },
+  {
+    "pdf": "example_pdfs/FF 009 2026 - 004 CASH BOAVISTA_001.pdf",
+    "tags": {
+      "lang": "pt",
+      "case": "inovoice_cve",
+      "scanned": "partly"
+    },
+    "expect": {
+      "should_extract": true,
+      "document_type": "invoice",
+      "document_state": "original",
+      "document_number": "FA3 2026/147",
+      "supplier_vat": "300004001",
+      "client_vat": "217730404",
+      "issue_date": "23-06-2026",
+      "base_amount": 5050.00,
+      "vat_amount": 0.00,
+      "total_amount": 5050.00,
+      "currency": "CVE",
+      "purchase_order": [
+        "4800053075"
+      ]
+    }
+  },
+  {
+    "pdf": "example_pdfs/60610052_15BA_20260619_STEACC260619_135028_001.pdf",
+    "tags": {
+      "lang": "en",
+      "case": "invoice",
+      "scanned": "no"
+    },
+    "expect": {
+      "should_extract": true,
+      "document_type": "invoice",
+      "document_state": "original",
+      "document_number": "60610052-2026",
+      "supplier_vat": "T9020001028682",
+      "client_vat": "PT511011911",
+      "issue_date": "19-06-2026",
+      "base_amount": 123000.00,
+      "vat_amount": 0.00,
+      "total_amount": 123000.00,
+      "currency": "JPY",
+      "purchase_order": [
+        "4500026263"
+      ]
+    }
+  },
+  {
+    "pdf": "example_pdfs/PT_20260630_100329_8691086_INVOICE_001.pdf",
+    "tags": {
+      "lang": "en",
+      "case": "invoice",
+      "scanned": "no"
+    },
+    "expect": {
+      "should_extract": true,
+      "document_type": "invoice",
+      "document_state": "original",
+      "document_number": "8691086",
+      "supplier_vat": "GB713981915",
+      "client_vat": "PT511011911",
+      "issue_date": "30-06-2026",
+      "base_amount": 11310.00,
+      "vat_amount": 0.00,
+      "total_amount": 11310.00,
+      "currency": "USD",
+      "purchase_order": [
+        "5000364195"
+      ]
+    }
+  }
+]
