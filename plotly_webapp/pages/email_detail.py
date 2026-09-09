@@ -407,8 +407,19 @@ def _build_email_detail(ref_number):
                     className="email_detail__bottom_section",
                     children=[
                         Button("Exportar", icon="lucide:file-down", variant="outline"),
-                        Button("Guardar", id="save-button", icon="lucide:circle-check", variant="outline"),
-                        Button("Enviar para SAP", id="send-sap-button", icon="lucide:send"),
+                        Button(
+                            "Guardar",
+                            id="save-button",
+                            icon="lucide:circle-check",
+                            variant="outline",
+                            disabled=action != "Validação Manual",
+                        ),
+                        Button(
+                            "Enviar para SAP",
+                            id="send-sap-button",
+                            icon="lucide:send",
+                            disabled=action != "Validação Manual",
+                        ),
                         html.P(id="email-detail-update-status", className="body-sm email_detail__status"),
                     ]
                 ),
