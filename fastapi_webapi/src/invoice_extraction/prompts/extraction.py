@@ -1,5 +1,7 @@
 from langchain_core.messages import HumanMessage, SystemMessage
 
+from invoice_extraction.invoice_utils.documents import InvoiceDocument
+from invoice_extraction.invoice_utils.page_mode import document_content_parts
 from invoice_extraction.models import DocumentClassification
 
 EXTRACTION_SYSTEM_PROMPT = """
@@ -73,6 +75,9 @@ Examples:
 - Portuguese NIFs:
     if exactly 9 digits are shown without country prefix,
     normalize to PT#########.
+    Only on Portuguese documents — Cabo Verde, Guinea-Bissau, Angola and
+    Mozambique NIFs share the same nine-digit shape. When the document is
+    from another country, or its origin is unclear, keep the digits as shown.
 
 Do not normalize evidence.
 
@@ -91,6 +96,9 @@ For Seaco, the Purcher Order number is the number between brackets after Lease n
 Example:
 Summary Charges - Lease Number : 182991 (5000284123)
 
+The purchase order can be handwritten in red for some Cabo Verde invoices, 
+in the format (PC_XXXXXXXXXX).
+
 FINAL RULE
 
 Accuracy is more important than completeness.
@@ -102,14 +110,18 @@ EXTRACTION_SYSTEM_MESSAGE = SystemMessage(content=EXTRACTION_SYSTEM_PROMPT)
 
 
 def build_extraction_human_message(
-    filename: str,
-    encoded_pdf: str,
+    doc: InvoiceDocument,
     classification: DocumentClassification,
+    *,
+    scanned: bool = False,
 ) -> HumanMessage:
     """Build the extraction HumanMessage for a single, already-classified document.
 
     The confirmed classification (type + state) is passed as known context so
     the model focuses on extracting InvoiceData rather than re-classifying.
+
+    A scanned document is sent as page images rather than as the PDF — see
+    `page_mode.document_content_parts`.
     """
     doc_type = classification.document_type.value
     doc_state = (
@@ -117,11 +129,7 @@ def build_extraction_human_message(
         if classification.document_state is not None
         else "original (not explicitly stated)"
     )
-    doc_number = (
-        classification.document_number.value
-        if classification.document_number is not None
-        else "not found"
-    )
+    doc_number = classification.document_number.value if classification.document_number is not None else "not found"
     return HumanMessage(
         content=[
             {
@@ -139,13 +147,6 @@ requested structured invoice information into the provided schema, following
 every field description exactly.
 """,
             },
-            {
-                "type": "file",
-                "file": {
-                    "file_data": f"data:application/pdf;base64,{encoded_pdf}",
-                    "filename": filename,
-                    "format": "application/pdf",
-                },
-            },
+            *document_content_parts(doc, scanned=scanned),
         ]
     )

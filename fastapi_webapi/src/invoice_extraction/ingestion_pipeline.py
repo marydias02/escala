@@ -14,6 +14,7 @@ import base64
 import re
 import unicodedata
 from dataclasses import dataclass, field
+from datetime import datetime
 from pathlib import Path
 from typing import Literal, Optional
 
@@ -80,12 +81,26 @@ class EmailIngestionResult:
         return [f"{a.filename}: {problem}" for a in self.attachments for problem in a.problems]
 
 
-def sanitize_folder_name(name: str, fallback: str = "email") -> str:
+def parse_reception_date(value: str | None) -> datetime | None:
+    """Parse an ISO-8601 reception date to a datetime, or None.
+
+    `fct_processes.reception_date` is a timestamptz; asyncpg maps a datetime
+    straight through. A malformed/empty string becomes NULL (the column is
+    nullable) rather than failing the insert.
+    """
+    if not value:
+        return None
+    try:
+        return datetime.fromisoformat(value)
+    except ValueError:
+        return None
+
+
+def sanitize_folder_name(name: str, fallback: str = "email", limit: int = MAX_FOLDER_NAME) -> str:
     """Turn an email subject into a safe, bounded directory name.
 
     Subjects carry accents, doubled spaces and characters Windows rejects outright.
-    Normalising here (rather than at write time) keeps the folder name predictable,
-    which matters because its presence is what makes re-runs idempotent.
+    Normalising here (rather than at write time) keeps the folder name predictable.
     """
     name = unicodedata.normalize("NFC", name)
     name = re.sub(INVALID_PATH_CHARS, "_", name)
@@ -94,22 +109,47 @@ def sanitize_folder_name(name: str, fallback: str = "email") -> str:
     # would make the folder we create and the folder we later look for differ.
     name = name.rstrip(". ")
 
-    if len(name) > MAX_FOLDER_NAME:
-        name = name[:MAX_FOLDER_NAME].rstrip(". ")
+    if len(name) > limit:
+        name = name[:limit].rstrip(". ")
 
     return name or fallback
 
 
-def _unique_folder(root: Path, name: str) -> Path:
-    """`root/name`, suffixed `_2`, `_3`... if that name is already taken."""
-    candidate = root / name
-    if not candidate.exists():
-        return candidate
+def email_folder_name(email: LoadedEmail) -> str:
+    """`YYYYMMDD-HHMMSS_subject` for one email, bounded by `MAX_FOLDER_NAME`.
 
-    for suffix in range(2, 1000):
-        candidate = root / f"{name}_{suffix}"
-        if not candidate.exists():
+    The timestamp comes from the email's own reception date, not from now(), so
+    reprocessing one email always produces the same name. It sorts the output
+    directory chronologically and distinguishes same-subject emails by something
+    readable, leaving `_reserve_folder`'s `_2` suffix for the genuine collision
+    of one subject received in one second.
+    """
+    received = parse_reception_date(email.reception_date)
+    if received is None:
+        return sanitize_folder_name(email.subject)
+
+    prefix = received.strftime("%Y%m%d-%H%M%S")
+    # Budget the prefix out of the cap rather than adding it on top.
+    subject = sanitize_folder_name(email.subject, limit=MAX_FOLDER_NAME - len(prefix) - 1)
+    return f"{prefix}_{subject}"
+
+
+def _reserve_folder(root: Path, name: str) -> Path:
+    """`root/name`, suffixed `_2`, `_3`... if taken. Creates the folder to reserve it.
+
+    `mkdir(exist_ok=False)` is one atomic syscall: it either creates the
+    directory or raises `FileExistsError`. Testing `.exists()` first would leave
+    a window in which two concurrent emails both see the name free and then
+    share a folder — overwriting each other's manifest, and with it the
+    `message_id` that outbound replies are addressed to.
+    """
+    for suffix in range(1, 1000):
+        candidate = root / (name if suffix == 1 else f"{name}_{suffix}")
+        try:
+            candidate.mkdir(parents=True, exist_ok=False)
             return candidate
+        except FileExistsError:
+            continue
 
     raise RuntimeError(f"Could not find a free folder name for {name!r} under {root}")
 
@@ -121,14 +161,20 @@ class IngestionPipeline:
 
     # -- attachments -------------------------------------------------------
 
-    def ingest_attachment(self, attachment: EmailAttachment, folder: Path) -> AttachmentResult:
+    def ingest_attachment(self, attachment: EmailAttachment, folder: Path, index: int = 1) -> AttachmentResult:
         """Split one attachment into single-document PDFs, or store it as-is.
 
         Non-PDFs are written untouched: they are counted as annexes but nothing
         here can meaningfully segment them.
+
+        `index` is the attachment's position in the email, prefixed onto every
+        name written. Two attachments called `invoice.pdf` both split to
+        `invoice_001.pdf`, and the second would otherwise overwrite the first.
         """
+        prefix = f"{index:02d}_"
+
         if not attachment.is_pdf:
-            (folder / attachment.filename).write_bytes(attachment.data)
+            (folder / f"{prefix}{attachment.filename}").write_bytes(attachment.data)
             return AttachmentResult(filename=attachment.filename, status="stored", message="not a pdf")
 
         with span(f"ingest:{attachment.filename}", "CHAIN") as attachment_span:
@@ -164,8 +210,9 @@ class IngestionPipeline:
                     print(f"       - {problem}")
 
             splits = split_pdf(pdf_data, attachment.filename, segmentation.documents)
-            for split in splits:
-                (folder / split.filename).write_bytes(split.pdf_bytes)
+            split_filenames = [f"{prefix}{split.filename}" for split in splits]
+            for split, filename in zip(splits, split_filenames):
+                (folder / filename).write_bytes(split.pdf_bytes)
 
             # The boundaries themselves are on the `1-chunking` span; this is the
             # attachment-level roll-up of what was actually written to disk.
@@ -173,7 +220,7 @@ class IngestionPipeline:
                 {
                     "total_pages": total_pages,
                     "repaired": repaired,
-                    "split_filenames": [s.filename for s in splits],
+                    "split_filenames": split_filenames,
                     "problems": problems,
                 }
             )
@@ -183,7 +230,7 @@ class IngestionPipeline:
                 filename=attachment.filename,
                 status="chunked",
                 total_pages=total_pages,
-                split_filenames=[s.filename for s in splits],
+                split_filenames=split_filenames,
                 problems=problems,
                 message=f"{message} (repaired)" if repaired else message,
             )
@@ -195,9 +242,9 @@ class IngestionPipeline:
         folder.mkdir(parents=True, exist_ok=True)
 
         results: list[AttachmentResult] = []
-        for attachment in email.attachments:
+        for index, attachment in enumerate(email.attachments, start=1):
             try:
-                results.append(self.ingest_attachment(attachment, folder))
+                results.append(self.ingest_attachment(attachment, folder, index))
             except Exception as exc:  # noqa: BLE001 - one bad attachment must not lose the email
                 message = f"{type(exc).__name__}: {exc}"
                 print(f"  ❌ {attachment.filename}: {message}")
@@ -227,18 +274,16 @@ class IngestionPipeline:
         email: LoadedEmail,
         output_root: Path = PROCESSED_EMAILS_DIR,
     ) -> EmailIngestionResult:
-        """Ingest one email into `output_root/<sanitised subject>/`.
+        """Ingest one email into `output_root/<reception timestamp>_<subject>/`.
 
         Always ingests — no skip check. Dedup happens once, upstream, in
-        `email_pipeline.main()`, keyed on `message_id`. `_unique_folder`
-        suffixes `_2`/`_3` on a subject collision, which now fires routinely:
-        subjects collide more than filenames did, and every manual reprocess
-        collides by definition.
+        `email_pipeline.main()`, keyed on `message_id`. The timestamp separates
+        the same-subject emails that collide routinely; `_reserve_folder`
+        suffixes `_2`/`_3` for the rest, including every manual reprocess.
         """
         output_root = Path(output_root)
 
-        folder_name = sanitize_folder_name(email.subject)
-        folder = _unique_folder(output_root, folder_name)
+        folder = _reserve_folder(output_root, email_folder_name(email))
         source = email.message_id or email.subject
 
         return self.ingest_email(email, folder, source=source)
