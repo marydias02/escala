@@ -77,6 +77,10 @@ def get_pending_processes():
         reception_date = row.get("reception_date")
         if reception_date:
             row["reception_date"] = reception_date[:16].replace("T", " ")
+            
+        first_email_date = row.get("first_email_date")
+        if first_email_date:
+            row["first_email_date"] = first_email_date[:16].replace("T", " ")
 
     return rows
 

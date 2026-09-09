@@ -334,7 +334,7 @@ class Stepper {
 
     showBoxesCheckbox.addEventListener("change", () => {
       this.pageContainer.classList.toggle(
-        "showDebugBoxes",
+        "pdfjs_showDebugBoxes",
         showBoxesCheckbox.checked
       );
     });
@@ -404,7 +404,7 @@ class Stepper {
         }
         decArgs = this.#c("td");
         const table = this.#c("table");
-        table.classList.add("showText");
+        table.classList.add("pdfjs_showText");
         decArgs.append(table);
         table.append(charCodeRow, fontCharRow, unicodeRow);
       } else if (fn === "constructPath") {
@@ -414,7 +414,7 @@ class Stepper {
         decArgs.append(this.#c("br"));
         decArgs.append(`minMax: ${JSON.stringify(this.#simplifyArgs(minMax))}`);
         decArgs.append(this.#c("br"));
-        decArgs.append(`→ ${opMap[op]}`);
+        decArgs.append(`â†’ ${opMap[op]}`);
       } else if (fn === "restore" && this.indentLevel > 0) {
         this.indentLevel--;
       }
@@ -439,10 +439,10 @@ class Stepper {
   }
 
   setOperatorBBoxes(bboxes, metadata) {
-    let boxesContainer = this.pageContainer.querySelector(".pdfBugGroupsLayer");
+    let boxesContainer = this.pageContainer.querySelector(".pdfjs_pdfBugGroupsLayer");
     if (!boxesContainer) {
       boxesContainer = this.#c("div");
-      boxesContainer.classList.add("pdfBugGroupsLayer");
+      boxesContainer.classList.add("pdfjs_pdfBugGroupsLayer");
       this.pageContainer.append(boxesContainer);
 
       boxesContainer.addEventListener(
@@ -616,9 +616,9 @@ class Stepper {
     }
 
     this.hoverStyle.innerText += `
-      #viewer [data-page-number="${this.pageIndex + 1}"] .pdfBugGroupsLayer [data-idx="${index}"] {
-        background-color: var(--hover-background-color);
-        outline-style: var(--hover-outline-style);
+      #viewer [data-page-number="${this.pageIndex + 1}"] .pdfjs_pdfBugGroupsLayer [data-idx="${index}"] {
+        background-color: var(--pdfjs_hover-background-color);
+        outline-style: var(--pdfjs_hover-outline-style);
       }
     `;
   }
@@ -772,7 +772,7 @@ class PDFBug {
     ui.append(panels);
 
     container.append(ui);
-    container.style.right = "var(--panel-width)";
+    container.style.right = "var(--pdfjs_panel-width)";
 
     // Initialize all the debugging tools.
     for (const tool of this.tools) {

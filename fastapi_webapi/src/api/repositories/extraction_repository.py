@@ -223,6 +223,7 @@ class ProcessesRepository(BaseRepository):
             email_subject,
             email_content,
             reception_date,
+            first_email_date,
             email_status
         FROM (
             SELECT
@@ -234,20 +235,29 @@ class ProcessesRepository(BaseRepository):
                 process_id,
                 thread_id,
                 thread_message_count,
+
+                MAX(reception_date) FILTER (
+                    WHERE thread_message_count = 1
+                ) OVER (
+                    PARTITION BY thread_id
+                ) AS first_email_date,
+
                 ROW_NUMBER() OVER (
                     PARTITION BY thread_id
-                    ORDER BY thread_message_count DESC NULLS LAST, reception_date DESC
+                    ORDER BY thread_message_count DESC NULLS LAST,
+                            reception_date DESC
                 ) AS rn
             FROM {self.table}
-            -- Pre-migration rows have a NULL status and remain pending until
-            -- explicitly closed.
-            WHERE email_status IS NULL OR email_status <> 'Fechado'
+            WHERE email_status IS NULL
+            OR email_status <> 'Fechado'
         ) t
-        LEFT JOIN fct_documents d ON d.process_id = t.process_id
-        WHERE rn = 1 AND (
-            d.process_id IS NULL OR
-            d.document_content IS NULL OR
-            d.document_content = '{{}}'::jsonb
+        LEFT JOIN fct_documents d
+            ON d.process_id = t.process_id
+        WHERE rn = 1
+        AND (
+            d.process_id IS NULL
+            OR d.document_content IS NULL
+            OR d.document_content = '{{}}'::jsonb
         )
         ORDER BY reception_date ASC
         LIMIT $1

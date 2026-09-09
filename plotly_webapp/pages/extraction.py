@@ -98,8 +98,8 @@ documents_col_def = [
 short_documents_col_def = [
     {
         "field": "reception_date",
-        "headerName": "Data de Processamento",
-        "width": 200,
+        "headerName": "Data da Última Comunicação",
+        "width": 240,
     },
     {
         "field": "sender_email",
@@ -109,13 +109,18 @@ short_documents_col_def = [
     {
         "field": "email_subject",
         "headerName": "Assunto do Email",
-        "minWidth": 220,
+        "minWidth": 240,
     },
     {
         "field": "email_status",
         "headerName": "Estado",
-        "width": 180,
+        "width": 160,
         "cellRenderer": "EmailStatus",
+    },
+    {
+        "field": "first_email_date",
+        "headerName": "Data da Primeira Comunicação",
+        "width": 250,
     },
 ]
 
