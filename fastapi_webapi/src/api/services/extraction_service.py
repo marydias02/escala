@@ -1,7 +1,6 @@
 import asyncio
 import json
 from pathlib import Path
-from typing import Optional
 
 from loguru import logger
 
@@ -12,7 +11,7 @@ from api.repositories.extraction_repository import (
     ExtractionBigNumbers,
     ProcessesRepository,
 )
-from invoice_extraction.config import PROCESSED_EMAILS_DIR #temporary, while there is no access to blob storage
+from invoice_extraction.config import PROCESSED_EMAILS_DIR  # temporary, while there is no access to blob storage
 from invoice_extraction.decisions import INGEST, MANUAL, close_process_after_manual_send
 from invoice_extraction.sap_pipeline import STATUS_BOOKED, book_document
 
@@ -38,9 +37,9 @@ class ExtractionService:
     async def list_all_documents(self, limit: int = 100) -> list[dict]:
         df = await self.documents.list_all_documents(limit=limit)
         return df.to_dicts()
-    
-    async def list_pending_processes(self, limit: int = 100) -> list[dict]:
-        df = await self.processes.list_pending_processes(limit=limit)
+
+    async def list_pending_documents(self, limit: int = 100) -> list[dict]:
+        df = await self.documents.list_pending_documents(limit=limit)
         return df.to_dicts()
 
     async def get_document(self, document_id: str) -> dict:
@@ -63,17 +62,18 @@ class ExtractionService:
             "action": row.get("action"),
             "status": row.get("status"),
         }
-#TODO: This method is temporary, while there is no access to blob storage.
-# When blob storage is available, it only needs to retrun the path (no need for Processed Emails dir) and the PDF will be retrieved from blob storage.
-#
-# async def get_document_pdf_stream(self, document_id: str):
-#     blob_key = await self.documents.get_file_path(document_id)
-#     if not blob_key:
-#         raise NotFoundError(f"No PDF available for document {document_id}")
-#     try:
-#         return await blob_client.download_blob(blob_key)  # returns bytes or an async iterator
-#     except BlobNotFoundError:
-#         raise NotFoundError(f"PDF file missing in blob storage for document {document_id}")
+
+    # TODO: This method is temporary, while there is no access to blob storage.
+    # When blob storage is available, it only needs to retrun the path (no need for Processed Emails dir) and the PDF will be retrieved from blob storage.
+    #
+    # async def get_document_pdf_stream(self, document_id: str):
+    #     blob_key = await self.documents.get_file_path(document_id)
+    #     if not blob_key:
+    #         raise NotFoundError(f"No PDF available for document {document_id}")
+    #     try:
+    #         return await blob_client.download_blob(blob_key)  # returns bytes or an async iterator
+    #     except BlobNotFoundError:
+    #         raise NotFoundError(f"PDF file missing in blob storage for document {document_id}")
 
     async def get_document_pdf_path(self, document_id: str) -> Path:
         relative_path = await self.documents.get_file_path(document_id)
@@ -89,15 +89,15 @@ class ExtractionService:
         if not row:
             raise NotFoundError(f"Document with ID {document_id} not found")
         return row
-    
+
     async def alter_document_details(
         self,
         document_id: str,
         alerts_list: list[str],
         document_content: dict,
-        action: Optional[str] = None,
-        status: Optional[str] = None,
-        last_modified_by: Optional[str] = None,
+        action: str | None = None,
+        status: str | None = None,
+        last_modified_by: str | None = None,
     ) -> dict:
         row = await self.documents.get_document(document_id)
         if not row:
@@ -110,7 +110,6 @@ class ExtractionService:
         previous_action = row.get("action")
         action = action or previous_action
         status = status or "Sob Revisão"
-        last_modified_by = last_modified_by
 
         data = {
             "document_id": document_id,
@@ -132,9 +131,7 @@ class ExtractionService:
         sap_booked = False
         process_closed = False
         if previous_action == MANUAL and action == INGEST:
-            sap_booked, process_closed = await self._send_to_sap(
-                document_id, row.get("document_type"), updated_content
-            )
+            sap_booked, process_closed = await self._send_to_sap(document_id, row.get("document_type"), updated_content)
 
         po_list = updated_content.pop("po_list", None) or []
 
@@ -150,7 +147,7 @@ class ExtractionService:
         }
 
     async def _send_to_sap(
-        self, document_id: str, document_type: Optional[str], document_content: dict
+        self, document_id: str, document_type: str | None, document_content: dict
     ) -> tuple[bool, bool]:
         """Book a manually validated document, then close its process if nothing
         else is owed. Returns (booked, process_closed).

@@ -12,6 +12,10 @@ class EmailIntent(BaseModel):
     - was the email trying to deliver an accounting document?
     - did it point at that document with a link instead of attaching it?
 
+    Plus the language it is written in, which is what a reply to this email is
+    written in (see `decisions.reply_language`) — this email's body is the only
+    language evidence there is when no document was read.
+
     Only an invoice-related email with NO link is a supplier mistake worth a
     reply. An invoice-related email WITH a link is a document we must fetch
     ourselves, not one the supplier forgot to send.
@@ -64,4 +68,16 @@ class EmailIntent(BaseModel):
 
     Return False when the body is empty.
     """
+    )
+
+    language: Confident[str] | None = Field(
+        default=None,
+        description="""
+    The language the email is written in, as a lowercase ISO 639-1 code: 'pt',
+    'en', 'es', 'fr', ...
+
+    Judge the body's own wording, not the sender's address or domain.
+
+    Return null for an empty body, or one too short to tell (a bare signature block).
+    """,
     )

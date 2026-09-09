@@ -52,12 +52,33 @@ ZIP_CHUNK_SIZE = 64 * 1024
 
 # -- Extraction (Phase 2) --------------------------------------------------
 
+# How many documents within one email are extracted concurrently.
+EXTRACTION_MAX_WORKERS = 3
+
+# How many email threads run concurrently; multiplies with EXTRACTION_MAX_WORKERS.
+EMAIL_MAX_WORKERS = 3
+
 # Deterministic parser settings, matching the notebook.
 PARSER_KWARGS = {
     "max_pages_text": 10,
     "min_good_chars_per_page": 200,
     "min_font_size": 4,
 }
+
+# -- Scanned documents (vision path) ---------------------------------------
+# A scanned page is one large image XObject covering the sheet. It can contain text,
+# often incorrect. If the scanned coverage is above a treshold, should be read as image
+
+SCANNED_COVERAGE_THRESHOLD = 1.0
+
+# A scanned bundle can open with a clean cover sheet, so look past page 1.
+COVERAGE_SCAN_PAGES = 5
+
+# 72 DPI already reads correctly on the known scans; 110 is margin for finer print.
+RENDER_DPI = 110
+
+# Caps the number of pages sent as images (usually info is at start)
+RENDER_MAX_PAGES = 5
 
 # -- Validation / decisions -------------------------------------------------
 

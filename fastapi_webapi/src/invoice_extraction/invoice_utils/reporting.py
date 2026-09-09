@@ -1,7 +1,55 @@
+import contextlib
+import contextvars
+import io
 import sys
 from typing import Any, Optional
 
 from invoice_extraction.models import DocumentClassification, InvoiceData, ValidationReport
+
+# Set while one email holds the output; None means write straight to the console.
+_buffer: contextvars.ContextVar[io.StringIO | None] = contextvars.ContextVar("output_buffer", default=None)
+
+
+class _Tee:
+    """Stdout proxy routing each write to the buffer its own task/thread owns."""
+
+    def __init__(self, stream):
+        self._stream = stream
+
+    def write(self, text: str) -> int:
+        return (_buffer.get() or self._stream).write(text)
+
+    def flush(self) -> None:
+        self._stream.flush()
+
+    def __getattr__(self, name):
+        return getattr(self._stream, name)
+
+
+def install_buffering() -> None:
+    """Route `print` through the per-task buffer. Idempotent; call once at startup."""
+    if not isinstance(sys.stdout, _Tee):
+        sys.stdout = _Tee(sys.stdout)
+
+
+@contextlib.contextmanager
+def buffered_output():
+    """Collect everything printed inside, then emit it as one contiguous block.
+
+    Concurrent emails would otherwise interleave line by line. `contextvars` are
+    copied into `asyncio.to_thread` workers, so a threaded call's output lands in
+    the buffer of the email that started it.
+    """
+    own = io.StringIO()
+    token = _buffer.set(own)
+    try:
+        yield
+    finally:
+        _buffer.reset(token)
+        text = own.getvalue()
+        if text:
+            # One write, so another email cannot land mid-block.
+            (_buffer.get() or sys.__stdout__).write(text)
 
 # Windows consoles default to cp1252, which cannot encode the status emoji. Fall
 # back to ASCII markers there rather than crashing the whole report.

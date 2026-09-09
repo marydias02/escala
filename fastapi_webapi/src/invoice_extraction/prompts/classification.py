@@ -1,5 +1,8 @@
 from langchain_core.messages import HumanMessage, SystemMessage
 
+from invoice_extraction.invoice_utils.documents import InvoiceDocument
+from invoice_extraction.invoice_utils.page_mode import document_content_parts
+
 CLASSIFICATION_SYSTEM_PROMPT = """
 You are an expert document understanding system specialized in invoices and accounting documents.
 
@@ -45,6 +48,19 @@ If applicable, include document_exception:
 - extract
 
 Return NULL if any of these apply. It is safer to return NULL when unsure.
+
+LANGUAGE
+
+Report the language the document is written in (language) as a lowercase ISO
+639-1 code — 'pt', 'en', 'es', 'fr', and so on. Report what you actually read: a
+document in French is 'fr', not the nearest of the more common ones.
+
+Judge the document's own wording — headings, field labels, line-item
+descriptions, terms and conditions. Ignore the supplier's name and address, the
+currency, and any legally mandated bilingual boilerplate: a Portuguese invoice
+carrying an English tax note is 'pt'.
+
+Return null when the document carries too little text to tell.
 
 DOCUMENT NUMBER
 
@@ -109,8 +125,12 @@ a lower-confidence classification honestly than to guess.
 CLASSIFICATION_SYSTEM_MESSAGE = SystemMessage(content=CLASSIFICATION_SYSTEM_PROMPT)
 
 
-def build_classification_human_message(filename: str, encoded_pdf: str) -> HumanMessage:
-    """Build the classification HumanMessage for a single (already segmented) document."""
+def build_classification_human_message(doc: InvoiceDocument, *, scanned: bool = False) -> HumanMessage:
+    """Build the classification HumanMessage for a single (already segmented) document.
+
+    A scanned document is sent as page images rather than as the PDF — see
+    `page_mode.document_content_parts`.
+    """
     return HumanMessage(
         content=[
             {
@@ -123,6 +143,8 @@ legal state (document_state) when explicitly visible.
 
 If the document can be applied in any of the document_exception, include that field. If not, leave empty.
 
+Report the language the document is written in (language).
+
 Also read document_number — the document's own number assigned by the supplier.
 Read it whatever the document's type or state.
 
@@ -131,13 +153,6 @@ Do NOT extract any other invoice fields (no supplier, client, amounts, VAT, date
 Follow the provided schema exactly.
 """,
             },
-            {
-                "type": "file",
-                "file": {
-                    "file_data": f"data:application/pdf;base64,{encoded_pdf}",
-                    "filename": filename,
-                    "format": "application/pdf",
-                },
-            },
+            *document_content_parts(doc, scanned=scanned),
         ]
     )

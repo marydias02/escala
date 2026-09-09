@@ -1,5 +1,3 @@
-from typing import Optional
-
 from langchain_core.messages import HumanMessage, SystemMessage
 
 from invoice_extraction.models import InvoiceData
@@ -99,7 +97,10 @@ NORMALIZATION
 - Dates -> DD-MM-YYYY
 - Monetary values -> numeric values only
 - Portuguese NIFs: if exactly 9 digits are shown without country prefix,
-  normalize to PT#########.
+  normalize to PT#########. Apply this ONLY when the document is Portuguese.
+  Nine digits alone are not evidence of that — Cabo Verde, Guinea-Bissau,
+  Angola and Mozambique NIFs have the same shape. When the document is from
+  another country, or its origin is unclear, keep the digits exactly as shown.
 
 NOTES
 
@@ -126,8 +127,8 @@ VALIDATION_SYSTEM_MESSAGE = SystemMessage(content=VALIDATION_SYSTEM_PROMPT)
 
 def build_validation_human_message(
     extraction: InvoiceData,
-    parsed_text: Optional[str] = None,
-    document_number: Optional[str] = None,
+    parsed_text: str | None = None,
+    document_number: str | None = None,
 ) -> HumanMessage:
     """Build the validation message for a single, already-extracted document.
 

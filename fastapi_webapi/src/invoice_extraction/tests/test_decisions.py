@@ -32,6 +32,7 @@ from invoice_extraction.config import (
     THREAD_ESCALATION_COUNT,
 )
 from invoice_extraction.decisions import (
+    DEFAULT_REPLY_LANGUAGE,
     EMAIL_ARCHIVE,
     EMAIL_INBOX,
     EMAIL_REPLY,
@@ -43,6 +44,8 @@ from invoice_extraction.decisions import (
     INBOX,
     INGEST,
     MANUAL,
+    NOT_CHECKED,
+    PO_ALERT_NOT_CHECKED,
     REPLY,
     REPLY_TEXT_COPY,
     REPLY_TEXT_NO_PDF,
@@ -92,15 +95,20 @@ def classification(
     state: str | None = "original",
     number: str | None = "FT 2024/1",
     exception: str | None = None,
+    language: str | None = None,
 ) -> DocumentClassification:
     """A classification. `state=None` means the document printed no state at all,
     which `_state_of` reads as "original".
+
+    `language=None` is a document whose language could not be read — the case
+    that falls back rather than deciding anything.
     """
     return DocumentClassification(
         document_type=confident(document_type),
         document_state=confident(state) if state is not None else None,
         document_number=confident(number) if number is not None else None,
         document_exception=confident(exception) if exception is not None else None,
+        language=confident(language) if language is not None else None,
     )
 
 
@@ -157,11 +165,12 @@ def extraction(
     po_list: list[str] | None = None,
     with_validation: bool = True,
     message: str = "",
+    language: str | None = None,
 ) -> PipelineResult:
     return PipelineResult(
         filename=filename,
         status=status,
-        classification=classification(document_type, state, number, exception),
+        classification=classification(document_type, state, number, exception, language),
         validation=validation(confidence, po_list) if with_validation else None,
         message=message,
     )
@@ -178,10 +187,11 @@ def ingested(attachment_statuses: tuple[str, ...] = ("chunked",)) -> EmailIngest
     )
 
 
-def intent(is_invoice: bool, has_link: bool) -> EmailIntent:
+def intent(is_invoice: bool, has_link: bool, language: str | None = None) -> EmailIntent:
     return EmailIntent(
         is_invoice_related=confident(is_invoice),
         has_invoice_link=confident(has_link),
+        language=confident(language) if language is not None else None,
     )
 
 
@@ -211,14 +221,22 @@ def patch_po(monkeypatch, is_financial: int, po_known: bool = True) -> None:
     monkeypatch.setattr(decisions, "po_exists", FakePoTool(po_known))
 
 
+def patch_preferred_language(monkeypatch, language: str | None) -> None:
+    """Patch the registry language lookup, bound in `decisions` for the same
+    reason as `patch_po`."""
+    monkeypatch.setattr(decisions, "supplier_preferred_language", lambda supplier_id: language)
+
+
 @pytest.fixture(autouse=True)
 def no_db(monkeypatch):
-    """Neutral PO answers, so no test touches the database by accident.
+    """Neutral PO and language answers, so no test touches the database by accident.
 
     The default is the case that changes no routing: a financial supplier, which
-    requires no PO. Tests about POs override this.
+    requires no PO, with no recorded language preference. Tests about POs or
+    languages override this.
     """
     patch_po(monkeypatch, FINANCIAL)
+    patch_preferred_language(monkeypatch, None)
 
 
 @pytest.fixture
@@ -421,6 +439,11 @@ class TestMissingPos:
 
 
 class TestBuildAlertsList:
+    """`build_alerts_list` takes the document's own decision, so these build it
+    with `decide_document` rather than by hand — the pairing of an action with
+    its PO answer is exactly what the alerts must agree with.
+    """
+
     def test_a_clean_document_raises_no_alerts(self):
         result = PipelineResult(
             filename="doc.pdf",
@@ -428,7 +451,7 @@ class TestBuildAlertsList:
             classification=classification(),
             validation=validation(alert_fields=True),
         )
-        assert build_alerts_list(result) == []
+        assert build_alerts_list(result, decide_document(result)) == []
 
     def test_alerts_cover_more_fields_than_ingestion_requires(self):
         """supplier_name/document_number/bu_name do not block ingestion but are
@@ -441,14 +464,15 @@ class TestBuildAlertsList:
             validation=validation(),
         )
         assert ingestion_blockers(result.validation) == []
-        assert build_alerts_list(result) == [
+        assert build_alerts_list(result, decide_document(result)) == [
             "Campo em falta: Nome do fornecedor",
             "Campo em falta: Número do documento",
             "Campo em falta: Nome do cliente",
         ]
 
     def test_an_unvalidated_document_says_so(self):
-        assert build_alerts_list(extraction(with_validation=False)) == ["Documento não validado"]
+        result = extraction(with_validation=False)
+        assert build_alerts_list(result, decide_document(result)) == ["Documento não validado"]
 
     def test_alerts_are_reviewer_facing_portuguese_labels(self):
         result = PipelineResult(
@@ -457,12 +481,32 @@ class TestBuildAlertsList:
             classification=classification(),
             validation=validation(total_amount=None),
         )
-        assert "Campo em falta: Valor total" in build_alerts_list(result)
+        assert "Campo em falta: Valor total" in build_alerts_list(result, decide_document(result))
 
     def test_the_po_alert_agrees_with_the_routing(self, requires_po):
-        """Same `missing_pos` call, so an alert and an action cannot disagree."""
-        alerts = build_alerts_list(extraction(po_list=[]))
+        """One `missing_pos` call, carried on the decision, so an alert and an
+        action cannot disagree.
+        """
+        result = extraction(po_list=[])
+        alerts = build_alerts_list(result, decide_document(result))
         assert "Fornecedor requer nota de encomenda e nenhuma foi encontrada" in alerts
+
+    def test_a_document_that_never_reached_the_po_check_says_so(self):
+        """A blocked document routes to MANUAL without the PO lookups running,
+        so the reviewer is told the check never ran rather than reading its
+        silence as "no PO problem".
+        """
+        result = PipelineResult(
+            filename="doc.pdf",
+            status="validated",
+            classification=classification(),
+            validation=validation(alert_fields=True, total_amount=None),
+        )
+        decision = decide_document(result)
+
+        assert decision.action == MANUAL
+        assert decision.po_problems == NOT_CHECKED
+        assert PO_ALERT_NOT_CHECKED in build_alerts_list(result, decision)
 
 
 # --------------------------------------------------------------------------- #
@@ -619,11 +663,95 @@ class TestDecideEmailWithDocuments:
 
     def test_the_reply_body_lists_every_distinct_reason(self):
         extractions = [
-            extraction(filename="a.pdf", state="proforma", number="FT 1"),
+            extraction(filename="a.pdf", state="proforma", number="FT 1", language="pt"),
             extraction(filename="b.pdf", state="copy", number="FT 2"),
         ]
         body = decide_email(ingested(), extractions).reply_body
-        assert REPLY_TEXT_PROFORMA in body and REPLY_TEXT_COPY in body
+        assert REPLY_TEXT_PROFORMA["pt"] in body and REPLY_TEXT_COPY["pt"] in body
+
+
+class TestReplyLanguage:
+    """Which of the two letters the supplier gets, and why."""
+
+    def test_the_registry_preference_wins(self, monkeypatch):
+        """The supplier told us, so the document's own language does not matter."""
+        patch_preferred_language(monkeypatch, "pt")
+        decision = decide_email(ingested(), [extraction(state="proforma", language="en")])
+        assert decision.language == "pt"
+
+    def test_the_document_language_decides_an_unidentified_supplier(self):
+        decision = decide_email(ingested(), [extraction(state="proforma", language="pt")])
+        assert decision.language == "pt"
+        assert REPLY_TEXT_PROFORMA["pt"] in decision.reply_body
+
+    def test_an_english_document_gets_the_english_letter(self):
+        decision = decide_email(ingested(), [extraction(state="proforma", language="en")])
+        assert decision.language == "en"
+        assert REPLY_TEXT_PROFORMA["en"] in decision.reply_body
+
+    def test_an_unreadable_language_falls_back(self):
+        decision = decide_email(ingested(), [extraction(state="proforma", language=None)])
+        assert decision.language == DEFAULT_REPLY_LANGUAGE
+
+    def test_a_third_language_falls_back_rather_than_guessing(self):
+        """We have no French letter, so a French supplier gets the default one."""
+        decision = decide_email(ingested(), [extraction(state="proforma", language="fr")])
+        assert decision.language == DEFAULT_REPLY_LANGUAGE
+
+    def test_only_the_documents_driving_the_reply_have_a_say(self):
+        """A booked invoice is not what the letter is about."""
+        extractions = [
+            extraction(filename="booked.pdf", number="FT 1", language="en"),
+            extraction(filename="proforma.pdf", state="proforma", number="FT 2", language="pt"),
+        ]
+        assert decide_email(ingested(), extractions).language == "pt"
+
+    def test_the_first_replying_document_settles_a_disagreement(self):
+        extractions = [
+            extraction(filename="a.pdf", state="proforma", number="FT 1", language="en"),
+            extraction(filename="b.pdf", state="copy", number="FT 2", language="pt"),
+        ]
+        assert decide_email(ingested(), extractions).language == "en"
+
+    def test_every_reason_is_written_in_the_letters_language(self):
+        """One language per letter — a reason never keeps its own."""
+        extractions = [
+            extraction(filename="a.pdf", state="proforma", number="FT 1", language="en"),
+            extraction(filename="b.pdf", state="copy", number="FT 2", language="pt"),
+        ]
+        body = decide_email(ingested(), extractions).reply_body
+        assert REPLY_TEXT_PROFORMA["en"] in body and REPLY_TEXT_COPY["en"] in body
+        assert REPLY_TEXT_COPY["pt"] not in body
+
+    def test_a_no_po_reply_uses_the_identified_suppliers_language(self, monkeypatch, requires_po):
+        """The one reply path that reaches the registry: the supplier IS identified."""
+        patch_preferred_language(monkeypatch, "en")
+        decision = decide_email(ingested(), [extraction(po_list=[])])
+        assert decision.language == "en"
+        assert REPLY_TEXT_NO_PO["en"] in decision.reply_body
+
+    def test_the_email_body_decides_when_no_document_was_read(self):
+        decision = decide_email(ingested(()), [], intent=intent(True, False, language="pt"))
+        assert decision.language == "pt"
+        assert REPLY_TEXT_NO_PDF["pt"] in decision.reply_body
+
+    def test_an_unreadable_body_language_falls_back(self):
+        decision = decide_email(ingested(()), [], intent=intent(True, False))
+        assert decision.language == DEFAULT_REPLY_LANGUAGE
+
+    def test_an_escalated_email_never_asks_the_registry(self, monkeypatch):
+        """Nothing is sent, so no lookup is worth a database round trip."""
+
+        def boom(supplier_id):
+            raise AssertionError("registry consulted for an email that sends nothing")
+
+        monkeypatch.setattr(decisions, "supplier_preferred_language", boom)
+        decision = decide_email(
+            ingested(),
+            [extraction(state="proforma", language="pt")],
+            thread_message_count=THREAD_ESCALATION_COUNT,
+        )
+        assert decision.actions == [EMAIL_INBOX]
 
 
 class TestThreadEscalation:

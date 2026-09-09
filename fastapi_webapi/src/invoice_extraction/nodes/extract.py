@@ -11,22 +11,25 @@ def extract_document(
     llm: BaseChatModel,
     doc: InvoiceDocument,
     classification: DocumentClassification,
+    *,
+    scanned: bool = False,
 ) -> InvoiceData:
     """Extract InvoiceData from a document already classified as an invoice-like Original.
 
     The confirmed classification is passed into the prompt as context so the
     model does not re-classify.
+
+    `scanned` routes the document to the vision path — see `classify_document`.
     """
     structured_llm = llm.with_structured_output(InvoiceData)
-    human_message = build_extraction_human_message(
-        doc.filename, doc.encoded_pdf, classification
-    )
+    human_message = build_extraction_human_message(doc, classification, scanned=scanned)
 
     with span(STAGE_EXTRACTION, "LLM") as stage_span:
         stage_span.set_inputs(
             {
                 "filename": doc.filename,
                 "document_type": classification.document_type.value,
+                "input_mode": "image" if scanned else "pdf",
             }
         )
         invoice_data = invoke_with_retry(

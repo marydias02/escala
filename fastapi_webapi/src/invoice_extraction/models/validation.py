@@ -1,5 +1,3 @@
-from typing import List, Optional
-
 from pydantic import BaseModel, Field, model_validator
 
 from invoice_extraction.models.common import Checked, drop_empty_confident_fields
@@ -20,12 +18,12 @@ class ValidationReport(BaseModel):
     Return null for any field you cannot confirm or correct.
     """
 
-    supplier_name: Optional[Checked[str]] = Field(
+    supplier_name: Checked[str] | None = Field(
         default=None,
         description="Validated name of the company issuing the invoice (the seller).",
     )
 
-    supplier_id: Optional[Checked[str]] = Field(
+    supplier_id: Checked[str] | None = Field(
         default=None,
         description=(
             "Internal registry id of the supplier. This is NOT present in the document "
@@ -34,17 +32,21 @@ class ValidationReport(BaseModel):
         ),
     )
 
-    supplier_vat: Optional[Checked[str]] = Field(
+    supplier_vat: Checked[str] | None = Field(
         default=None,
-        description="Validated VAT/NIF of the supplier. Portuguese NIFs normalized to PT#########.",
+        description=(
+            "Validated VAT/NIF of the supplier. Normalize to PT######### only on Portuguese "
+            "documents — other Lusophone countries use the same nine-digit shape, so keep "
+            "their digits unprefixed."
+        ),
     )
 
-    document_number: Optional[Checked[str]] = Field(
+    document_number: Checked[str] | None = Field(
         default=None,
         description="Validated document number (invoice/receipt number) assigned by the supplier.",
     )
 
-    bu_name: Optional[Checked[str]] = Field(
+    bu_name: Checked[str] | None = Field(
         default=None,
         description=(
             "Validated name of the billed party (business unit). This is the CLIENT — "
@@ -52,7 +54,7 @@ class ValidationReport(BaseModel):
         ),
     )
 
-    bu_id: Optional[Checked[str]] = Field(
+    bu_id: Checked[str] | None = Field(
         default=None,
         description=(
             "Internal registry id of the billed business unit. This is NOT present in the "
@@ -61,40 +63,41 @@ class ValidationReport(BaseModel):
         ),
     )
 
-    bu_vat: Optional[Checked[str]] = Field(
+    bu_vat: Checked[str] | None = Field(
         default=None,
         description=(
             "Validated VAT/NIF of the billed party. This is the CLIENT VAT — it corresponds "
-            "to `client_vat` in the extracted data. Portuguese NIFs normalized to PT#########."
+            "to `client_vat` in the extracted data. Normalize to PT######### only on "
+            "Portuguese documents — see `supplier_vat`."
         ),
     )
 
-    issue_date: Optional[Checked[str]] = Field(
+    issue_date: Checked[str] | None = Field(
         default=None,
         description="Validated invoice issue date, normalized to DD-MM-YYYY.",
     )
 
-    base_amount: Optional[Checked[float]] = Field(
+    base_amount: Checked[float] | None = Field(
         default=None,
         description="Validated net amount before VAT.",
     )
 
-    vat_amount: Optional[Checked[float]] = Field(
+    vat_amount: Checked[float] | None = Field(
         default=None,
         description="Validated total VAT amount (absolute monetary value, not a rate).",
     )
 
-    total_amount: Optional[Checked[float]] = Field(
+    total_amount: Checked[float] | None = Field(
         default=None,
         description="Validated final payable amount including VAT.",
     )
 
-    currency: Optional[Checked[str]] = Field(
+    currency: Checked[str] | None = Field(
         default=None,
         description="Validated ISO 4217 currency code (EUR, USD, GBP, ...).",
     )
 
-    po_list: List[Checked[str]] = Field(
+    po_list: list[Checked[str]] = Field(
         default_factory=list,
         description=(
             "Validated purchase order references. Corresponds to `purchase_order` in the "
