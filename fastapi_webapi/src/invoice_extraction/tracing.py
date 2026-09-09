@@ -415,6 +415,7 @@ def classification_summary(classification) -> dict:
         "document_state": field(classification.document_state),
         "document_number": field(classification.document_number),
         "document_exception": field(classification.document_exception),
+        "language": field(classification.language),
     }
 
 
@@ -475,8 +476,8 @@ def decision_summary(decision) -> dict:
         "email_status": decision.status,
         "reason": decision.reason,
         "reply_lines": decision.reply_lines,
+        "reply_language": decision.language,
         "should_reply": decision.should_reply,
-        "treasury_lines": decision.treasury_lines,
         "should_forward_to_treasury": decision.should_forward_to_treasury,
         "intent": (
             {

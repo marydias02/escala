@@ -1,5 +1,3 @@
-from typing import List, Optional
-
 from pydantic import BaseModel, Field, model_validator
 
 from invoice_extraction.models.common import Confident, drop_empty_confident_fields
@@ -15,7 +13,7 @@ class InvoiceData(BaseModel):
     Prefer null whenever multiple values could match.
     """
 
-    supplier_name: Optional[Confident[str]] = Field(
+    supplier_name: Confident[str] | None = Field(
         default=None,
         description="""
         Legal or commercial name of the company issuing the invoice.
@@ -38,7 +36,7 @@ class InvoiceData(BaseModel):
         """,
     )
 
-    supplier_vat: Optional[Confident[str]] = Field(
+    supplier_vat: Confident[str] | None = Field(
         default=None,
         description="""
         Tax identification number (VAT/NIF/BRN) of the supplier.
@@ -58,11 +56,16 @@ class InvoiceData(BaseModel):
 
         PT#########
 
+        Apply this only when the document itself is Portuguese. Cabo Verde,
+        Guinea-Bissau, Angola and Mozambique NIFs are also nine digits, so the
+        shape alone proves nothing — on those documents keep the digits exactly
+        as shown.
+
         Do not invent prefixes for other countries.
         """,
     )
 
-    client_name: Optional[Confident[str]] = Field(
+    client_name: Confident[str] | None = Field(
         default=None,
         description="""
         Company or person receiving the invoice.
@@ -79,7 +82,7 @@ class InvoiceData(BaseModel):
         """,
     )
 
-    client_vat: Optional[Confident[str]] = Field(
+    client_vat: Confident[str] | None = Field(
         default=None,
         description="""
         VAT number of the customer.
@@ -99,7 +102,7 @@ class InvoiceData(BaseModel):
     # a proforma or a copy is gated out, yet its number is exactly what decides
     # whether the same email already carried the original.
 
-    purchase_order: List[Confident[str]] = Field(
+    purchase_order: list[Confident[str]] = Field(
         default_factory=list,
         description="""
         All purchase order numbers or references found in the invoice.
@@ -109,7 +112,7 @@ class InvoiceData(BaseModel):
         """,
     )
 
-    issue_date: Optional[Confident[str]] = Field(
+    issue_date: Confident[str] | None = Field(
         default=None,
         description="""
         Invoice issue date.
@@ -136,7 +139,7 @@ class InvoiceData(BaseModel):
         """,
     )
 
-    base_amount: Optional[Confident[float]] = Field(
+    base_amount: Confident[float] | None = Field(
         default=None,
         description="""
         Net amount before VAT (the taxable base).
@@ -164,12 +167,12 @@ class InvoiceData(BaseModel):
         """,
     )
 
-    vat_amount: Optional[Confident[float]] = Field(
+    vat_amount: Confident[float] | None = Field(
         default=None,
         description="""
         Total VAT amount charged on the invoice.
 
-        This is an absolute monetary amount.
+        This is an absolute monetary amount.  
 
         Examples:
 
@@ -184,10 +187,14 @@ class InvoiceData(BaseModel):
         6
 
         Those are VAT rates, not VAT amounts.
+
+        Only extract an amount explicitly labelled as VAT (IVA, VAT, Tax).
+        An unlabelled column sitting between a net value and the total is
+        not VAT. If nothing is labelled as VAT, return null.
         """,
     )
 
-    total_amount: Optional[Confident[float]] = Field(
+    total_amount: Confident[float] | None = Field(
         default=None,
         description="""
         Final payable amount including VAT.
@@ -208,7 +215,7 @@ class InvoiceData(BaseModel):
         """,
     )
 
-    currency: Optional[Confident[str]] = Field(
+    currency: Confident[str] | None = Field(
         default=None,
         description="""
         Currency code of the invoice.

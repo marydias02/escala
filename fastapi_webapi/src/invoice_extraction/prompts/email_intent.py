@@ -7,13 +7,15 @@ You are given the subject and plain-text body of ONE email. That email produced 
 usable PDF document — it either had no attachments at all, or its attachments were
 not PDFs.
 
-Answer TWO independent questions about it:
+Answer THREE independent questions about it:
 
 1. is_invoice_related — was the email trying to deliver, or asking about, an
    accounting document (invoice, credit note, debit note, receipt)?
 
 2. has_invoice_link — does the email point at that document with a link or portal
    instead of attaching it?
+
+3. language — what language is the email written in?
 
 WHY THIS MATTERS
 
@@ -42,6 +44,19 @@ RULES
   "recibo", "nota de crédito", "nota de débito", "em anexo", "segue em anexo" as
   strong invoice-related signals, and "consulte a sua fatura em", "disponível no
   portal", "download your invoice", "acesse aqui" as strong link signals.
+
+LANGUAGE
+
+Report the language the body is written in as a lowercase ISO 639-1 code — 'pt',
+'en', 'es', 'fr', and so on. Report what you actually read: an email in French is
+'fr', not the nearest of the more common ones.
+
+Judge the body's own wording. Ignore the sender's address and domain, the
+currency, and any quoted text below the reply — a Portuguese reply above a quoted
+English thread is 'pt'.
+
+Return null when the body is empty, or too short to tell: a
+signature block alone, or a subject line with nothing under it.
 
 CONFIDENCE
 
@@ -73,8 +88,9 @@ def build_email_intent_human_message(subject: str, body: str) -> HumanMessage:
     """Build the email-intent HumanMessage from one email's subject and body."""
     return HumanMessage(
         content=f"""
-Analyze this email. Decide (1) whether it concerns an accounting document, and
-(2) whether it links to that document rather than attaching it.
+Analyze this email. Decide (1) whether it concerns an accounting document,
+(2) whether it links to that document rather than attaching it, and (3) what
+language it is written in.
 
 Follow the provided schema exactly.
 

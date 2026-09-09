@@ -5,15 +5,22 @@ document. Email ingestion and multi-document splitting are handled upstream by
 `ingestion_pipeline`, which writes those files under `PROCESSED_EMAILS_DIR`.
 """
 
+import asyncio
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Literal, Optional
+from typing import Literal
 
 from langchain_core.language_models import BaseChatModel
 
 from config.settings import settings
-from invoice_extraction.config import PARSER_KWARGS, PROCESSED_EMAILS_DIR
+from invoice_extraction.config import (
+    EXTRACTION_MAX_WORKERS,
+    PARSER_KWARGS,
+    PROCESSED_EMAILS_DIR,
+    RENDER_DPI,
+)
 from invoice_extraction.invoice_utils.documents import load_document
+from invoice_extraction.invoice_utils.page_mode import is_scanned_pdf
 from invoice_extraction.invoice_utils.pdf_parser import build_attachment_evidence
 from invoice_extraction.models import (
     DocumentClassification,
@@ -22,7 +29,7 @@ from invoice_extraction.models import (
     document_number_of,
 )
 from invoice_extraction.nodes import classify_document, extract_document, validate_document
-from invoice_extraction.tracing import STAGE_PARSING, span
+from invoice_extraction.tracing import STAGE_PARSING, set_trace_tags, span
 from utils.llm_factory import LLMFactory
 
 # Document types worth extracting on their own. Anything else is an accounting
@@ -42,9 +49,9 @@ class PipelineResult:
 
     filename: str
     status: Literal["validated", "skipped", "failed"]
-    classification: Optional[DocumentClassification] = None
-    invoice_data: Optional[InvoiceData] = None
-    validation: Optional[ValidationReport] = None
+    classification: DocumentClassification | None = None
+    invoice_data: InvoiceData | None = None
+    validation: ValidationReport | None = None
     message: str = ""
 
 
@@ -54,10 +61,7 @@ def _is_original(classification: DocumentClassification) -> bool:
     Real documents rarely print the word "Original", so only an explicit copy /
     proforma / cancelled counts as non-original.
     """
-    return (
-        classification.document_state is None
-        or classification.document_state.value == "original"
-    )
+    return classification.document_state is None or classification.document_state.value == "original"
 
 
 def _is_exception_receipt(classification: DocumentClassification) -> bool:
@@ -66,10 +70,7 @@ def _is_exception_receipt(classification: DocumentClassification) -> bool:
     These are booked in SAP like invoices (cases C1-C3 in `decisions`), so they
     need their amounts read even though the type is not invoice-like.
     """
-    return (
-        classification.document_type.value == "receipt"
-        and classification.document_exception is not None
-    )
+    return classification.document_type.value == "receipt" and classification.document_exception is not None
 
 
 def should_extract(classification: DocumentClassification) -> bool:
@@ -82,9 +83,7 @@ def should_extract(classification: DocumentClassification) -> bool:
     if _is_exception_receipt(classification):
         return True
 
-    return classification.document_type.value in EXTRACTABLE_TYPES and _is_original(
-        classification
-    )
+    return classification.document_type.value in EXTRACTABLE_TYPES and _is_original(classification)
 
 
 def _gate_message(classification: DocumentClassification) -> str:
@@ -97,16 +96,12 @@ def _gate_message(classification: DocumentClassification) -> str:
     if doc_type not in EXTRACTABLE_TYPES:
         return "document not invoice"
 
-    state = (
-        classification.document_state.value
-        if classification.document_state is not None
-        else "no state"
-    )
+    state = classification.document_state.value if classification.document_state is not None else "no state"
     return f"document is invoice, but it is {state}"
 
 
 class ExtractionPipeline:
-    def __init__(self, llm_factory: LLMFactory, llm: Optional[BaseChatModel] = None):
+    def __init__(self, llm_factory: LLMFactory, llm: BaseChatModel | None = None):
         self.llm_factory = llm_factory
         # One chat model reused across all three stages; each node applies its own
         # structured-output / tool binding on top.
@@ -117,13 +112,26 @@ class ExtractionPipeline:
         pdf_path = Path(pdf_path)
         doc = load_document(pdf_path)
 
+        # Scan's embedded text layer is the scanner's own OCR
+        # classification and extraction get page images instead of the PDF
+        scanned, coverage = is_scanned_pdf(pdf_path)
+
         with span(f"extract:{doc.filename}", "CHAIN") as document_span:
-            document_span.set_inputs({"filename": doc.filename, "path": str(pdf_path)})
+            document_span.set_inputs(
+                {
+                    "filename": doc.filename,
+                    "path": str(pdf_path),
+                    "input_mode": "image" if scanned else "pdf",
+                    "image_coverage": round(coverage, 2),
+                    "render_dpi": RENDER_DPI if scanned else None,
+                }
+            )
+            set_trace_tags(input_mode="image" if scanned else "pdf")
 
             # --- CLASSIFICATION -----------------------------------------------
             # The `2-classification` span (and its summary) is created inside the
             # node itself, so nothing is recorded here.
-            classification = classify_document(self.llm, doc)
+            classification = classify_document(self.llm, doc, scanned=scanned)
 
             # --- GATE ---------------------------------------------------------
             if not should_extract(classification):
@@ -138,7 +146,7 @@ class ExtractionPipeline:
                 )
 
             # --- EXTRACTION ---------------------------------------------------
-            invoice_data = extract_document(self.llm, doc, classification)
+            invoice_data = extract_document(self.llm, doc, classification, scanned=scanned)
 
             # --- PARSING (deterministic, no LLM) ------------------------------
             # Feeds the validator ground truth to check the extraction against.
@@ -148,7 +156,7 @@ class ExtractionPipeline:
             # root cause of a low-confidence result.
             with span(STAGE_PARSING, "PARSER") as parse_span:
                 try:
-                    evidence = build_attachment_evidence(pdf_path, **PARSER_KWARGS)
+                    evidence = build_attachment_evidence(pdf_path, scanned=scanned, **PARSER_KWARGS)
                     parsed_text = evidence.get("extracted_text") or None
                 except Exception as exc:  # noqa: BLE001 - validation still works without it
                     print(f"⚠️  Could not parse {doc.filename}: {type(exc).__name__}: {exc}")
@@ -158,6 +166,7 @@ class ExtractionPipeline:
                     parse_span.set_outputs(
                         {
                             "ok": True,
+                            "source": evidence.get("source"),
                             "chars": len(parsed_text) if parsed_text else 0,
                             "text": parsed_text,
                         }
@@ -191,33 +200,38 @@ class ExtractionPipeline:
                 message="ok",
             )
 
-    def run_batch(self, pdf_paths: list[Path]) -> list[PipelineResult]:
-        """Run several documents, isolating failures so one bad file cannot kill the batch."""
-        results: list[PipelineResult] = []
+    def _run_safe(self, pdf_path: Path) -> PipelineResult:
+        """`run`, but a raised exception becomes a `failed` result instead of propagating."""
+        try:
+            return self.run(pdf_path)
+        except Exception as exc:  # noqa: BLE001 - keep the batch alive, inspect after
+            message = f"{type(exc).__name__}: {exc}"
+            print(f"❌ Failed {pdf_path.name}: {message}")
+            return PipelineResult(
+                filename=pdf_path.name,
+                status="failed",
+                message=message,
+            )
 
-        for pdf_path in pdf_paths:
-            pdf_path = Path(pdf_path)
-            try:
-                result = self.run(pdf_path)
-            except Exception as exc:  # noqa: BLE001 - keep the batch alive, inspect after
-                message = f"{type(exc).__name__}: {exc}"
-                print(f"❌ Failed {pdf_path.name}: {message}")
-                results.append(
-                    PipelineResult(
-                        filename=pdf_path.name,
-                        status="failed",
-                        message=message,
-                    )
-                )
-                continue
+    async def run_batch(self, pdf_paths: list[Path], max_workers: int = EXTRACTION_MAX_WORKERS) -> list[PipelineResult]:
+        """Run several documents concurrently, isolating failures so one bad file cannot kill the batch.
 
-            results.append(result)
+        Each document runs on its own thread via `asyncio.to_thread`, bounded by
+        `max_workers` — I/O parallelism over blocking LLM calls, not CPU work.
+        `to_thread` copies contextvars, so tracing is correct. Order is preserved:
+        `asyncio.gather` returns results in argument.
+        """
+        semaphore = asyncio.Semaphore(max_workers)
 
-        return results
+        async def one(pdf_path: Path) -> PipelineResult:
+            async with semaphore:
+                return await asyncio.to_thread(self._run_safe, Path(pdf_path))
+
+        return list(await asyncio.gather(*(one(p) for p in pdf_paths)))
 
 
 def create_pipeline(
-    llm_factory: Optional[LLMFactory] = None,
+    llm_factory: LLMFactory | None = None,
 ) -> ExtractionPipeline:
     if llm_factory is None:
         llm_factory = LLMFactory.from_settings(settings)
@@ -225,7 +239,7 @@ def create_pipeline(
     return ExtractionPipeline(llm_factory=llm_factory)
 
 
-if __name__ == "__main__":
+async def _main() -> None:
     from invoice_extraction.invoice_utils.reporting import print_pipeline_result
 
     pipeline = create_pipeline()
@@ -237,5 +251,9 @@ if __name__ == "__main__":
 
     print(f"Running {len(pdf_paths)} document(s) from {PROCESSED_EMAILS_DIR}\n")
 
-    for result in pipeline.run_batch(pdf_paths):
+    for result in await pipeline.run_batch(pdf_paths):
         print_pipeline_result(result)
+
+
+if __name__ == "__main__":
+    asyncio.run(_main())

@@ -98,6 +98,19 @@ class DocumentClassification(BaseModel):
     """,
     )
 
+    language: Optional[Confident[str]] = Field(
+        default=None,
+        description="""
+    The language the document is written in, as a lowercase ISO 639-1 code:
+    'pt', 'en', 'es', 'fr', ...
+
+    Judge the document's own wording — headings, labels, terms and conditions —
+    not the supplier's name or address, and not the currency.
+
+    Return null when the document carries too little text to tell.
+    """,
+    )
+
     document_exception: Optional[
         Confident[
             Literal[

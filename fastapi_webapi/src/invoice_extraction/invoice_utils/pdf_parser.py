@@ -547,9 +547,12 @@ def pdf_text_first_pages_best_effort(pdf_path: Path, max_pages: int = 10, min_fo
 
     return text or ""
 
-def pdf_text_per_page(pdf_path: Path, max_pages: int) -> list[str]:
+def pdf_text_per_page(pdf_path: Path, max_pages: int, *, scanned: bool = False) -> list[str]:
     """
     Returns per-page text in layout-preserving form (preferred) with fallback.
+
+    `scanned` discards the embedded text layer in favour of OCR: on a scan that
+    layer is the scanner's own OCR, which can be well-formed and still wrong.
     """
     # Preferred: layout-preserving per page
     try:
@@ -557,6 +560,12 @@ def pdf_text_per_page(pdf_path: Path, max_pages: int) -> list[str]:
         out = []
         for i in range(min(len(doc), max_pages)):
             page = doc.load_page(i)
+
+            if scanned:
+                # The embedded layer is the scanner's OCR — ours is better.
+                out.append(ocr_page(page))
+                continue
+
             words = page.get_text("words") or []
             if words:
                 lines = _group_words_into_lines(words, y_tol=PDF_LAYOUT_LINE_Y_TOL)
@@ -609,12 +618,13 @@ def build_attachment_evidence(
     max_pages_text: int,
     min_good_chars_per_page: int,
     min_font_size: int,
+    scanned: bool = False,
 ) -> dict:
     doc_type = doc_type_label(p)
 
     if p.suffix.lower() == ".pdf":
         # Step 1: extract text as a list — one string per page
-        page_texts = pdf_text_per_page(p, max_pages=max_pages_text)
+        page_texts = pdf_text_per_page(p, max_pages=max_pages_text, scanned=scanned)
 
         # Step 2: score each page by alphanumeric char count
         good_counts = [count_good_chars(t) for t in page_texts]
@@ -653,4 +663,5 @@ def build_attachment_evidence(
         "extracted_text": extracted_text or "",
         "allow_text_only": bool(allow_text_only and (extracted_text or "").strip()),
         "good_score": int(good_score),
+        "source": "ocr" if scanned else "layout",
     }
