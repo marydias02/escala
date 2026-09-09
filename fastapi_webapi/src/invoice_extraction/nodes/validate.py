@@ -68,6 +68,7 @@ def _reconcile_amounts(report: ValidationReport) -> ValidationReport:
     One missing amount is derived from the other two.
     Three that disagree are left as is and total_amount's confidence is
     dropped below MIN_CONFIDENCE so the gate stops it and the reviewer knows where to look.
+    If only total exists, base = total and vat = 0
     """
     base, vat, total = report.base_amount, report.vat_amount, report.total_amount
 
@@ -79,8 +80,7 @@ def _reconcile_amounts(report: ValidationReport) -> ValidationReport:
         confidence = failed_confidence()
         return _noted(
             report,
-            "total_amount",
-            Checked[float](value=total.value, confidence=confidence),
+            {"total_amount": Checked[float](value=total.value, confidence=confidence)},
             f"amounts do not reconcile: {base.value:.2f} + {vat.value:.2f} != "
             f"{total.value:.2f}; kept as read, total_amount confidence {confidence:.2f}",
         )
@@ -91,6 +91,31 @@ def _reconcile_amounts(report: ValidationReport) -> ValidationReport:
         field, value = "total_amount", round(base.value + vat.value, 2)
     elif base is None and total is not None and vat is not None:
         field, value = "base_amount", round(total.value - vat.value, 2)
+    elif base is None and vat is None and total is not None:
+        # A zero total with nothing else read is an empty or unparsed document,
+        # not a zero-VAT one: flagged below MIN_CONFIDENCE instead of derived.
+        if total.value == 0:
+            confidence = failed_confidence()
+            return _noted(
+                report,
+                {
+                    "base_amount": Checked[float](value=0.0, confidence=confidence),
+                    "vat_amount": Checked[float](value=0.0, confidence=confidence),
+                    "total_amount": Checked[float](value=0.0, confidence=confidence),
+                },
+                f"only amount read is a zero total; base/vat set to 0.00 at "
+                f"confidence {confidence:.2f} so the gate stops it",
+            )
+        confidence = total.confidence
+        return _noted(
+            report,
+            {
+                "base_amount": Checked[float](value=total.value, confidence=confidence),
+                "vat_amount": Checked[float](value=0.0, confidence=confidence),
+            },
+            f"base/vat absent; assumed zero-VAT: vat_amount 0.00, "
+            f"base_amount {total.value:.2f} @{confidence:.2f}",
+        )
     else:
         # Two or more missing: one equation cannot fill two unknowns.
         return report
@@ -99,16 +124,15 @@ def _reconcile_amounts(report: ValidationReport) -> ValidationReport:
     confidence = min(f.confidence for f in (base, vat, total) if f is not None)
     return _noted(
         report,
-        field,
-        Checked[float](value=value, confidence=confidence),
+        {field: Checked[float](value=value, confidence=confidence)},
         f"{field} derived as {value:.2f} @{confidence:.2f} (base + vat = total)",
     )
 
 
-def _noted(report: ValidationReport, field: str, checked: Checked[float], note: str) -> ValidationReport:
-    """Set one field and append the note explaining it, for the reviewer."""
+def _noted(report: ValidationReport, fields: dict[str, Checked[float]], note: str) -> ValidationReport:
+    """Set the given fields and append the note explaining them, for the reviewer."""
     logger.info(note)
-    return report.model_copy(update={field: checked, "notes": f"{report.notes.strip()} {note}".strip()})
+    return report.model_copy(update={**fields, "notes": f"{report.notes.strip()} {note}".strip()})
 
 
 def _best_name_match(table: str, id_column: str, name: str) -> tuple[dict, float] | None:
