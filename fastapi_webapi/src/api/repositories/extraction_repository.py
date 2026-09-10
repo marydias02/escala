@@ -110,6 +110,54 @@ class ProcessesRepository(BaseRepository):
         updated = await self.query_scalar(query, parameters=[process_id, EMAIL_STATUS_CLOSED])
         return updated is not None
 
+    async def list_pending_processes(self, limit: int = 100) -> pl.DataFrame:
+        query = f"""
+        SELECT
+            sender_email,
+            email_subject,
+            email_content,
+            reception_date,
+            first_email_date,
+            email_status
+        FROM (
+            SELECT
+                sender_email,
+                email_subject,
+                email_content,
+                reception_date,
+                email_status,
+                process_id,
+                thread_id,
+                thread_message_count,
+
+                MAX(reception_date) FILTER (
+                    WHERE thread_message_count = 1
+                ) OVER (
+                    PARTITION BY thread_id
+                ) AS first_email_date,
+
+                ROW_NUMBER() OVER (
+                    PARTITION BY thread_id
+                    ORDER BY thread_message_count DESC NULLS LAST,
+                            reception_date DESC
+                ) AS rn
+            FROM {self.table}
+            WHERE email_status IS NULL
+            OR email_status <> 'Fechado'
+        ) t
+        LEFT JOIN fct_documents d
+            ON d.process_id = t.process_id
+        WHERE rn = 1
+        AND (
+            d.process_id IS NULL
+            OR d.document_content IS NULL
+            OR d.document_content = '{{}}'::jsonb
+        )
+        ORDER BY reception_date ASC
+        LIMIT $1
+        """
+        return await self.query_df(query, parameters=[limit])
+
 
 class DocumentsRepository(BaseRepository):
     __table_name__ = "fct_documents"
@@ -211,55 +259,3 @@ class DocumentsRepository(BaseRepository):
         params = [data["document_id"], data["alerts_list"], data["document_content"], data["action"], data["status"], data["last_modified_by"]]
 
         return await self.query_dict(query, parameters=params)
-
-
-class ProcessesRepository(BaseRepository):
-    __table_name__ = "fct_processes"
-
-    async def list_pending_processes(self, limit: int = 100) -> pl.DataFrame:
-        query = f"""
-        SELECT
-            sender_email,
-            email_subject,
-            email_content,
-            reception_date,
-            first_email_date,
-            email_status
-        FROM (
-            SELECT
-                sender_email,
-                email_subject,
-                email_content,
-                reception_date,
-                email_status,
-                process_id,
-                thread_id,
-                thread_message_count,
-
-                MAX(reception_date) FILTER (
-                    WHERE thread_message_count = 1
-                ) OVER (
-                    PARTITION BY thread_id
-                ) AS first_email_date,
-
-                ROW_NUMBER() OVER (
-                    PARTITION BY thread_id
-                    ORDER BY thread_message_count DESC NULLS LAST,
-                            reception_date DESC
-                ) AS rn
-            FROM {self.table}
-            WHERE email_status IS NULL
-            OR email_status <> 'Fechado'
-        ) t
-        LEFT JOIN fct_documents d
-            ON d.process_id = t.process_id
-        WHERE rn = 1
-        AND (
-            d.process_id IS NULL
-            OR d.document_content IS NULL
-            OR d.document_content = '{{}}'::jsonb
-        )
-        ORDER BY reception_date ASC
-        LIMIT $1
-        """
-        return await self.query_df(query, parameters=[limit])
