@@ -13,24 +13,33 @@ structured accounting documents. It is organized as two pipelines composed by on
   Fetches emails from the inbox (`invoice_utils/outlook_loader.py`), uses an LLM to find document
   boundaries inside each PDF attachment (an attachment can contain several distinct accounting
   documents back to back), splits it into one PDF per document, and writes `email_content.json` +
-  the split PDFs to `docs/processed_emails/<email subject>/`. Deterministic page-count validation
-  checks the LLM's segmentation before it's trusted. Dedup happens once, upstream in
-  `email_pipeline.main()`, keyed on `message_id` — the loader is told which messages to skip so it
-  never re-downloads attachments for an email already in the database.
+  the split PDFs to `docs/processed_emails/<YYYYMMDD-HHMMSS>_<email subject>/` — the timestamp
+  is the email's own reception date, so reprocessing one email always yields the same folder.
+  That folder is working storage: the orchestrator uploads it to blob storage and then deletes
+  it. Deterministic page-count validation checks the LLM's segmentation before it's trusted.
+  Dedup happens once, upstream in `email_pipeline.main()`, keyed on `message_id` — the loader is
+  told which messages to skip so it never re-downloads attachments for an email already in the
+  database.
 
-- **Extraction** (`extraction_pipeline.py`) — `CLASSIFY → EXTRACT → VALIDATE`
-  Runs on one already-split PDF at a time. Classifies the document type/state/number, decides
-  (deterministically) whether it's worth extracting, pulls out the structured fields, and
-  cross-checks them against a parsed-text baseline to produce a `ValidationReport` with a
-  confidence score per field. Validation also resolves `supplier_id`/`bu_id` against the SAP
-  master data (`dim_suppliers` / `dim_business_units`) — VAT-first, name-fallback — so routing can
-  tell a genuine registry miss from a low-confidence read.
+- **Extraction** (`extraction_pipeline.py`) — `CLASSIFY → GATE → EXTRACT → PARSE → VALIDATE`
+  Runs on one already-split PDF at a time. Detects up front whether the PDF is a scan
+  (`invoice_utils/page_mode.py`) — if so the LLM stages get rendered page images instead of the
+  PDF, since a scan's text layer is the scanner's own OCR. Then it classifies the document
+  type/state/number, decides (deterministically) whether it's worth extracting, pulls out the
+  structured fields, and cross-checks them against a parsed-text baseline to produce a
+  `ValidationReport` with a confidence score per field. Validation also resolves
+  `supplier_id`/`bu_id` against the SAP master data (`dim_suppliers` / `dim_business_units`) —
+  VAT-first, name-fallback — so routing can tell a genuine registry miss from a low-confidence
+  read.
 
 - **Orchestration** (`email_pipeline.py`) — ties the two together per email: ingest → extract
   each PDF the email produced → make one email-level routing decision (`decisions.py`, aware of
-  thread position — see below) → persist `fct_processes` / `fct_documents` /
-  `fct_document_first_action` rows to Postgres, then send the supplier reply / treasury forward
-  those decisions call for.
+  thread position — see below) → upload the email's folder to Azure Blob Storage
+  (`utils/blob_storage.py`) → persist `fct_processes` / `fct_documents` /
+  `fct_document_first_action` rows to Postgres, then send the supplier reply / treasury forward /
+  archive move those decisions call for, and finally close any earlier process on the same thread
+  that this email settles. The local working folder is deleted once the blob holds it. Emails run
+  concurrently, grouped by thread so members of one thread stay in order.
 
 - **SAP booking** (`sap_pipeline.py`) — a separate, standalone pipeline: bulk-books every
   `fct_documents` row at `action = "Ingerir em SAP", status = "Criado"`, regardless of which
@@ -46,18 +55,21 @@ an **email** can warrant several `EmailAction`s at once (Reply to supplier / For
 Keep in Inbox / Archive), rolled up from its documents' actions. Documents are matched against the
 other originals in the same email by `(document_type, document_number)` so a duplicate/proforma is
 filed away rather than acted on twice, and a document from a supplier whose `is_financial` flag
-requires one is checked for a resolvable purchase order before being booked. A separate lifecycle
-axis, `email_status` (Aberto / Fechado / Requer Ação), tracks whether anyone still owes the email
-something — an email whose thread has run `THREAD_ESCALATION_COUNT` messages deep without
-converging stops being chased automatically and is flagged `Requer Ação` for a human instead. See
-[process.html](process.html) for the full case matrix.
+requires one is checked for a resolvable purchase order before being booked. Supplier replies are
+written in Portuguese or English, chosen from `dim_suppliers.preferred_language` and falling back
+to the language read off the document at classification. A separate lifecycle axis, `email_status`
+(Aberto / Fechado / Requer Ação), tracks whether anyone still owes the email something — an email
+whose thread has run `THREAD_ESCALATION_COUNT` messages deep without converging stops being chased
+automatically and is flagged `Requer Ação` for a human instead. A third layer,
+`close_prior_process`, looks backwards: a supplier answering on a thread is what an earlier
+`Retornado ao Fornecedor` process was waiting for, so that process is closed rather than left
+`Aberto` forever. See [process.html](process.html) for the full case matrix.
 
 SAP booking is intentionally **not** part of `email_pipeline` — see `sap_pipeline.py` below.
 
 
 ## Missing (NEXT STEPS)
 
-- Saving intermediate emails after ingestion in client folder
 - Sending information to SAP - `sap_pipeline.py` still calls the `book_in_sap` stub; needs a real
   SAP integration, plus something to trigger the pipeline on a schedule (no cron/scheduler exists
   in this repo yet)
@@ -67,24 +79,28 @@ SAP booking is intentionally **not** part of `email_pipeline` — see `sap_pipel
 
 ```
 invoice_extraction/
-├── config.py                  # Tunable constants: paths, limits, MIN_CONFIDENCE, parser kwargs
+├── config.py                   # Tunable constants: paths, limits, MIN_CONFIDENCE, parser/scan kwargs
 ├── decisions.py                # Routing rules — the business logic, THE place to change them
-├── email_pipeline.py           # Orchestrator: ingest + extract + decide + persist, per email
+├── email_pipeline.py           # Orchestrator: ingest + extract + decide + upload + persist, per email
 ├── sap_pipeline.py             # Standalone: bulk-book every action=Ingerir em SAP, status=Criado row
 ├── ingestion_pipeline.py       # Phase 1: LOAD -> SEGMENT -> SPLIT -> PERSIST
-├── extraction_pipeline.py      # Phase 2: CLASSIFY -> EXTRACT -> VALIDATE
+├── extraction_pipeline.py      # Phase 2: CLASSIFY -> GATE -> EXTRACT -> PARSE -> VALIDATE
 ├── tracing.py                  # MLflow tracing setup (dev instrumentation, no-op if unset)
 ├── nodes/                      # One LLM call per pipeline stage (segment, classify, extract, validate, classify_email)
 ├── prompts/                    # Prompt templates for each node
 ├── models/                     # Pydantic schemas (InvoiceData, ValidationReport, EmailContent, ...)
-├── invoice_utils/               # Outlook/Graph loader, PDF splitting/parsing, email sender, reporting
+├── invoice_utils/              # Graph loader, PDF splitting/parsing/OCR, scan detection, senders, reporting
 ├── tools/                      # LLM tools (VAT/PO registry lookups) bound during validation
-├── docs/                       # Sample/test data — original emails, processed output, split PDFs
+├── eval/                       # MLflow GenAI evaluation: dataset, predict fn, per-field scorers
+├── docs/                       # Sample/test data + eval_ground_truth.json; pipeline working folders
 ├── documentation/              # This folder
 ├── notebooks/                  # Exploratory notebooks
-├── tests/                      # Unit tests (decisions.py routing cases, etc.)
+├── tests/                      # Unit tests (decisions.py routing cases, blob/lakehouse access checks)
 └── output/                     # Batch run artifacts
 ```
+
+Outside the module: `utils/blob_storage.py` (Azure Blob upload/download for processed emails),
+`utils/utils_db.py` (Postgres helpers), `utils/llm_factory.py`, and `scripts/build_trace_viewer.py`.
 
 ## Running the trace viewer
 
@@ -116,3 +132,22 @@ mlflow server --backend-store-uri sqlite:///mlflow.db --default-artifact-root ./
 Then set `MLFLOW_TRACKING_URI=http://127.0.0.1:5000` in `.env`. With tracing off (unset URI), the
 pipelines run unchanged — tracing is dev instrumentation only and never blocks a run.
 This can later be set to LTPlabs URI (if intended to run acessible to multiple users)
+
+`ENABLE_TRACING` (config.py) is a second, independent master switch: flip it off to run with zero
+tracing overhead without touching the `.env` tracking URI.
+
+## Running the evaluation
+
+`eval/` scores the extraction against a hand-labelled ground truth
+(`docs/eval_ground_truth.json`) using MLflow GenAI evaluation — one scorer per field, plus the
+extraction gate itself. Unlike tracing, this needs a real tracking server: datasets require a
+backend store, so an unset `MLFLOW_TRACKING_URI` is a hard error here.
+
+```powershell
+cd fastapi_webapi
+.venv/Scripts/python.exe -m invoice_extraction.eval.create_dataset
+.venv/Scripts/python.exe -m invoice_extraction.eval.run_evaluation
+```
+
+Each scored row also leaves a full span tree, so a failed field is one click from the prompt that
+produced it.
