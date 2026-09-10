@@ -37,6 +37,9 @@ class DocumentClassification(BaseModel):
     financial information (shipping documents, customs documents, bank statements,
     insurance certificates, purchase orders, etc.).
 
+    Settlement/reconciliation statements (Liquidação, IATA CASS, statement of
+    account) are 'other'.
+
     Do not infer the type from filenames.
     Only use the document contents.
     """
