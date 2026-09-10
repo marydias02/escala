@@ -43,6 +43,9 @@ class InvoiceData(BaseModel):
 
         Usually appears close to the supplier name.
 
+        Value = digits/prefix only. Strip label words like "NIF", "CIF",
+        "VAT No." and separators (e.g. "NIF·A-48084909" -> "A48084909").
+
         Examples:
 
         PT501925350
@@ -88,6 +91,9 @@ class InvoiceData(BaseModel):
         VAT number of the customer.
 
         Usually appears close to the customer name.
+
+        Value = digits/prefix only. Strip label words like "NIF", "CIF",
+        "VAT No." and separators (e.g. "C.I.F. 511011911" -> "511011911").
 
         Normalize Portuguese NIFs to PT######### when only nine digits
         are shown.
