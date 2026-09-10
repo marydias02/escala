@@ -1,7 +1,7 @@
 import asyncio
 import json
-from pathlib import Path
 
+from azure.core.exceptions import ResourceNotFoundError
 from loguru import logger
 
 from api.exceptions import NotFoundError
@@ -11,9 +11,9 @@ from api.repositories.extraction_repository import (
     ExtractionBigNumbers,
     ProcessesRepository,
 )
-from invoice_extraction.config import PROCESSED_EMAILS_DIR  # temporary, while there is no access to blob storage
 from invoice_extraction.decisions import INGEST, MANUAL, close_process_after_manual_send
 from invoice_extraction.sap_pipeline import STATUS_BOOKED, book_document
+from utils.blob_storage import download_document_bytes
 
 
 class ExtractionService:
@@ -63,26 +63,18 @@ class ExtractionService:
             "status": row.get("status"),
         }
 
-    # TODO: This method is temporary, while there is no access to blob storage.
-    # When blob storage is available, it only needs to retrun the path (no need for Processed Emails dir) and the PDF will be retrieved from blob storage.
-    #
-    # async def get_document_pdf_stream(self, document_id: str):
-    #     blob_key = await self.documents.get_file_path(document_id)
-    #     if not blob_key:
-    #         raise NotFoundError(f"No PDF available for document {document_id}")
-    #     try:
-    #         return await blob_client.download_blob(blob_key)  # returns bytes or an async iterator
-    #     except BlobNotFoundError:
-    #         raise NotFoundError(f"PDF file missing in blob storage for document {document_id}")
-
-    async def get_document_pdf_path(self, document_id: str) -> Path:
-        relative_path = await self.documents.get_file_path(document_id)
-        if not relative_path:
+    async def get_document_pdf_bytes(self, document_id: str) -> bytes:
+        blob_key = await self.documents.get_file_path(document_id)
+        if not blob_key:
             raise NotFoundError(f"No PDF available for document {document_id}")
-        full_path = PROCESSED_EMAILS_DIR / relative_path
-        if not full_path.is_file():
-            raise NotFoundError(f"PDF file missing on disk for document {document_id}")
-        return full_path
+        try:
+            return await asyncio.to_thread(download_document_bytes, blob_key)
+        except ResourceNotFoundError:
+            # Documents processed before the blob migration have a local-only path.
+            raise NotFoundError(
+                f"PDF not found in blob storage for document {document_id} (key {blob_key!r}). "
+                "Documents processed before the blob migration are only on the pipeline host."
+            )
 
     async def get_document_email(self, document_id: str) -> dict:
         row = await self.documents.get_document_email(document_id)

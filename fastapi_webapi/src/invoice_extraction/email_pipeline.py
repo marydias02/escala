@@ -23,6 +23,7 @@ after manual review), so SAP booking cannot be an inline step here.
 
 import asyncio
 import json
+import shutil
 import time
 import uuid
 from collections import defaultdict
@@ -102,6 +103,7 @@ from invoice_extraction.tracing import (
 from invoice_extraction.tracing import (
     flush as flush_traces,
 )
+from utils.blob_storage import build_email_prefix, upload_email_folder
 from utils.llm_factory import LLMFactory
 from utils.utils_db import get_pool, insert_row, insert_rows, select, update_column
 
@@ -246,6 +248,20 @@ def _load_manifest(folder: Path | None) -> dict:
         return json.loads((folder / MANIFEST_NAME).read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError):
         return {}
+
+
+def _discard_local_folder(folder: Path | None) -> None:
+    """Delete one email's working folder, now that blob storage holds its artifacts.
+
+    A failure is logged, not raised: the upload and the rows are already correct,
+    so a folder left behind must not fail the email.
+    """
+    if folder is None or not folder.exists():
+        return
+    try:
+        shutil.rmtree(folder)
+    except OSError as exc:
+        print(f"  ⚠️  Could not delete local folder {folder}: {type(exc).__name__}: {exc}")
 
 
 async def _processed_message_ids() -> set[str]:
@@ -450,6 +466,17 @@ class EmailPipeline:
 
         thread_id = manifest.get("thread_id") or None
 
+        # Upload BEFORE any write or send: raising here leaves no row pointing at a
+        # missing blob, and no supplier/treasury email sent for an email we dropped.
+        blob_prefix = None
+        if ingestion.folder:
+            blob_prefix = build_email_prefix(
+                parse_reception_date(manifest.get("reception_date")),
+                ingestion.folder.name,
+            )
+            keys = await asyncio.to_thread(upload_email_folder, ingestion.folder, blob_prefix)
+            print(f"  ☁️  Uploaded {len(keys)} file(s) to {blob_prefix}/")
+
         # Insert the process WITHOUT an id — the DB generates process_id — and read
         # it back to use as the documents' foreign key.
         process_id = await insert_row(
@@ -497,7 +524,7 @@ class EmailPipeline:
                     "document_content": build_document_content(extraction.validation),
                     "alerts_list": build_alerts_list(extraction, decision),
                     "created_by": "pipeline",
-                    "file_path": f"{ingestion.folder.name}/{extraction.filename}" if ingestion.folder else None,
+                    "file_path": f"{blob_prefix}/{extraction.filename}" if blob_prefix else None,
                 }
             )
         # version, created_at/last_modified_at fall to DB defaults. document_id
@@ -628,6 +655,7 @@ class EmailPipeline:
                 await self._persist(result, thread_message_count)
                 # Links the trace to its fct_processes row.
                 set_trace_tags(process_id=result.process_id)
+                _discard_local_folder(ingestion.folder)
             else:
                 print("  💾 WRITE_TO_DB is off — not persisting")
 
