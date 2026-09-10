@@ -145,10 +145,12 @@ def load_email_detail(ref_number):
 
 
 def _build_email_detail(ref_number):
+    document_lookup_failed = False
     try:
         match = get_document_details(str(ref_number))
-    except requests.RequestException:
+    except requests.RequestException as exc:
         match = None
+        document_lookup_failed = getattr(getattr(exc, "response", None), "status_code", None) != 404
 
     if match:
         fields = match.get("fields") or {}
@@ -390,7 +392,10 @@ def _build_email_detail(ref_number):
                               children=[
                                 html.Iframe(
                                     id="document-pdf-viewer",
-                                    src=f"/assets/pdf-viewer.html?file=/pdf/{ref_number}",
+                                    src=(
+                                        f"/assets/pdf-viewer.html?file=/pdf/{ref_number}"
+                                        f"&document_missing={'true' if match is None and not document_lookup_failed else 'false'}"
+                                    ),
                                     style={
                                         "width": "100%",
                                         "height":"100%",
