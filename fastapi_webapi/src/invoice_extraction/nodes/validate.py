@@ -113,8 +113,7 @@ def _reconcile_amounts(report: ValidationReport) -> ValidationReport:
                 "base_amount": Checked[float](value=total.value, confidence=confidence),
                 "vat_amount": Checked[float](value=0.0, confidence=confidence),
             },
-            f"base/vat absent; assumed zero-VAT: vat_amount 0.00, "
-            f"base_amount {total.value:.2f} @{confidence:.2f}",
+            f"base/vat absent; assumed zero-VAT: vat_amount 0.00, base_amount {total.value:.2f} @{confidence:.2f}",
         )
     else:
         # Two or more missing: one equation cannot fill two unknowns.

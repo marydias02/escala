@@ -1,5 +1,6 @@
+from typing import Annotated
+
 from fastapi import Depends
-from typing_extensions import Annotated
 
 from api.services.air_example import AirExampleService
 from api.services.extraction_service import ExtractionService

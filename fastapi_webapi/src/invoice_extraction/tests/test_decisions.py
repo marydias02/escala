@@ -181,8 +181,7 @@ def ingested(attachment_statuses: tuple[str, ...] = ("chunked",)) -> EmailIngest
         source="mail",
         status="ingested",
         attachments=[
-            AttachmentResult(filename=f"a{i}.pdf", status=status)
-            for i, status in enumerate(attachment_statuses)
+            AttachmentResult(filename=f"a{i}.pdf", status=status) for i, status in enumerate(attachment_statuses)
         ],
     )
 
@@ -358,7 +357,7 @@ class TestDecideDocument:
         assert decide_document(extraction(state="copy"), keys).action == REPLY
 
     def test_document_number_matching_ignores_separators_and_case(self):
-        """"FT 2024/1" and "ft-2024-1" are the same document."""
+        """ "FT 2024/1" and "ft-2024-1" are the same document."""
         keys = {("invoice", "ft20241")}
         decision = decide_document(extraction(state="copy", number="ft-2024-1"), keys)
         assert decision.action == IGNORE
@@ -410,9 +409,7 @@ class TestIngestionBlockers:
 
     def test_a_supplier_absent_from_the_registry_blocks_ingestion(self):
         """A null id after `resolve_registry_ids` means "not found", not "not yet looked up"."""
-        assert ingestion_blockers(validation(supplier_id=None)) == [
-            "supplier_id not found in registry"
-        ]
+        assert ingestion_blockers(validation(supplier_id=None)) == ["supplier_id not found in registry"]
 
     def test_a_client_absent_from_the_registry_blocks_ingestion(self):
         assert ingestion_blockers(validation(bu_id=None)) == ["bu_id not found in registry"]
@@ -525,7 +522,7 @@ class TestRollUpActions:
         assert roll_up_actions([document(INGEST), document(IGNORE)]) == [EMAIL_ARCHIVE]
 
     def test_an_email_with_no_documents_falls_back_to_the_inbox(self):
-        """"Nothing to do" is not "everything done"."""
+        """ "Nothing to do" is not "everything done"."""
         assert roll_up_actions([]) == [EMAIL_INBOX]
 
     def test_one_outstanding_document_prevents_archiving(self):
@@ -771,9 +768,7 @@ class TestThreadEscalation:
     BELOW = THREAD_ESCALATION_COUNT - 1
 
     def test_below_the_threshold_the_supplier_is_still_chased(self):
-        decision = decide_email(
-            ingested(), [extraction(state="proforma")], thread_message_count=self.BELOW
-        )
+        decision = decide_email(ingested(), [extraction(state="proforma")], thread_message_count=self.BELOW)
         assert decision.actions == [EMAIL_REPLY]
         assert decision.thread_escalated is False
 
@@ -806,9 +801,7 @@ class TestThreadEscalation:
         assert "not chased further" in decision.documents[0].reason
 
     def test_ingestable_documents_are_untouched_by_escalation(self):
-        decision = decide_email(
-            ingested(), [extraction()], thread_message_count=THREAD_ESCALATION_COUNT
-        )
+        decision = decide_email(ingested(), [extraction()], thread_message_count=THREAD_ESCALATION_COUNT)
         assert decision.documents[0].action == INGEST
         assert decision.actions == [EMAIL_ARCHIVE]
 

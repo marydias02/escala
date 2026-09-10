@@ -1,4 +1,4 @@
-from typing import Any, Optional
+from typing import Any
 
 import polars as pl
 
@@ -96,21 +96,6 @@ class BusinessUnitRepository(BaseRepository):
         return await self.query_scalar(query, parameters=[vat])
 
 
-class ProcessesRepository(BaseRepository):
-    __table_name__ = "fct_processes"
-
-    async def close(self, process_id) -> bool:
-        """Mark a process `Fechado`. False if it was already closed."""
-        query = f"""
-        UPDATE {self.table}
-        SET email_status = $2
-        WHERE process_id = $1 AND email_status IS DISTINCT FROM $2
-        RETURNING process_id
-        """
-        updated = await self.query_scalar(query, parameters=[process_id, EMAIL_STATUS_CLOSED])
-        return updated is not None
-
-
 class DocumentsRepository(BaseRepository):
     __table_name__ = "fct_documents"
 
@@ -125,7 +110,7 @@ class DocumentsRepository(BaseRepository):
         """
         return await self.query_df(query, parameters=[MANUAL, limit])
 
-    async def get_next_priority_document(self, document_id: str) -> Optional[dict]:
+    async def get_next_priority_document(self, document_id: str) -> dict | None:
         query = f"""
         WITH current_document AS (
             SELECT
@@ -164,7 +149,7 @@ class DocumentsRepository(BaseRepository):
         """
         return await self.query_df(query, parameters=[limit])
 
-    async def get_document(self, document_id: str) -> Optional[dict]:
+    async def get_document(self, document_id: str) -> dict | None:
         query = f"""
         SELECT document_id, alerts_list, document_content, document_type, action, status
         FROM {self.table}
@@ -172,7 +157,7 @@ class DocumentsRepository(BaseRepository):
         """
         return await self.query_dict(query, parameters=[document_id])
 
-    async def list_process_document_states(self, process_id) -> list[tuple[Optional[str], Optional[str]]]:
+    async def list_process_document_states(self, process_id) -> list[tuple[str | None, str | None]]:
         """(action, status) for each of a process's documents."""
         query = f"SELECT action, status FROM {self.table} WHERE process_id = $1"
         df = await self.query_df(query, parameters=[process_id])
@@ -184,7 +169,7 @@ class DocumentsRepository(BaseRepository):
         query = f"UPDATE {self.table} SET status = $2 WHERE document_id = $1"
         await self.execute(query, parameters=[document_id, status])
 
-    async def get_document_email(self, document_id: str) -> Optional[dict]:
+    async def get_document_email(self, document_id: str) -> dict | None:
         query = f"""
         SELECT p.sender_email, p.email_subject, p.email_content, p.reception_date
         FROM {self.table} d
@@ -193,14 +178,14 @@ class DocumentsRepository(BaseRepository):
         """
         return await self.query_dict(query, parameters=[document_id])
 
-    async def get_process_id(self, document_id: str) -> Optional[str]:
+    async def get_process_id(self, document_id: str) -> str | None:
         query = f"SELECT process_id FROM {self.table} WHERE document_id = $1"
         return await self.query_scalar(query, parameters=[document_id])
 
-    async def get_file_path(self, document_id: str) -> Optional[str]:
+    async def get_file_path(self, document_id: str) -> str | None:
         query = f"SELECT file_path FROM {self.table} WHERE document_id = $1"
         return await self.query_scalar(query, parameters=[document_id])
-    
+
     async def alter(self, data: dict) -> dict[str, Any]:
         query = f"""
         UPDATE {self.table}
@@ -208,7 +193,14 @@ class DocumentsRepository(BaseRepository):
         WHERE document_id = $1
         RETURNING document_id, alerts_list, document_content, action, status, last_modified_by, last_modified_at;
         """
-        params = [data["document_id"], data["alerts_list"], data["document_content"], data["action"], data["status"], data["last_modified_by"]]
+        params = [
+            data["document_id"],
+            data["alerts_list"],
+            data["document_content"],
+            data["action"],
+            data["status"],
+            data["last_modified_by"],
+        ]
 
         return await self.query_dict(query, parameters=params)
 
@@ -263,3 +255,14 @@ class ProcessesRepository(BaseRepository):
         LIMIT $1
         """
         return await self.query_df(query, parameters=[limit])
+
+    async def close(self, process_id) -> bool:
+        """Mark a process `Fechado`. False if it was already closed."""
+        query = f"""
+        UPDATE {self.table}
+        SET email_status = $2
+        WHERE process_id = $1 AND email_status IS DISTINCT FROM $2
+        RETURNING process_id
+        """
+        updated = await self.query_scalar(query, parameters=[process_id, EMAIL_STATUS_CLOSED])
+        return updated is not None

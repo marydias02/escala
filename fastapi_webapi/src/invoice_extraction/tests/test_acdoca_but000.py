@@ -3,7 +3,7 @@ and the first 10 BUT000 business partners. Run directly (not via pytest) —
 same convention as `lakehouse_access.py` in this folder.
 """
 
-from datetime import date, timedelta
+from datetime import UTC, date, datetime, timedelta
 
 import polars as pl
 from loguru import logger
@@ -12,7 +12,7 @@ from utils.utils_lakehouse import scan_table
 
 
 def _last_month_range() -> tuple[date, date]:
-    first_of_this_month = date.today().replace(day=1)
+    first_of_this_month = datetime.now(UTC).date().replace(day=1)
     last_month_end = first_of_this_month - timedelta(days=1)
     last_month_start = last_month_end.replace(day=1)
     return last_month_start, last_month_end

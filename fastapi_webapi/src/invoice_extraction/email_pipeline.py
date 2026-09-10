@@ -684,7 +684,7 @@ class EmailPipeline:
                 return [(index, await self._run_safe(email, output_root)) for index, email in group]
 
         grouped = await asyncio.gather(*(run_group(g) for g in groups.values()))
-        return [result for _index, result in sorted((pair for group in grouped for pair in group))]
+        return [result for _index, result in sorted(pair for group in grouped for pair in group)]
 
 
 def create_pipeline(llm_factory: LLMFactory | None = None) -> EmailPipeline:

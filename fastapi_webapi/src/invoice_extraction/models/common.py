@@ -1,11 +1,7 @@
-from typing import Generic, TypeVar
-
 from pydantic import BaseModel, Field
 
-T = TypeVar("T")
 
-
-class Confident(BaseModel, Generic[T]):
+class Confident[T](BaseModel):
     """A field value paired with the model's self-reported confidence and evidence.
 
     - value:      the extracted value (typed T)
@@ -25,7 +21,7 @@ class Confident(BaseModel, Generic[T]):
     )
 
 
-class Checked(BaseModel, Generic[T]):
+class Checked[T](BaseModel):
     """A post-validation value paired with the validator's confidence.
 
     Same shape as `Confident` minus `evidence`. The validation stage re-states
@@ -52,8 +48,5 @@ def drop_empty_confident_fields(data):
     than a load-bearing constraint.
     """
     if isinstance(data, dict):
-        return {
-            k: (None if isinstance(v, dict) and v.get("value") in (None, "") else v)
-            for k, v in data.items()
-        }
+        return {k: (None if isinstance(v, dict) and v.get("value") in (None, "") else v) for k, v in data.items()}
     return data
