@@ -36,6 +36,10 @@ INGEST_LIMIT: int | None = 1
 # with no database running, and keeps test runs out of fct_processes.
 WRITE_TO_DB = True
 
+# Actually send the supplier reply, treasury forward and archive move. Off logs
+# what would have been sent, leaving the mailbox untouched.
+EMAIL_ACTIONS = False
+
 # Windows caps a full path at 260 characters by default. Email subjects in the
 # sample set reach 111 characters, so folder names are truncated well short of it.
 MAX_FOLDER_NAME = 80

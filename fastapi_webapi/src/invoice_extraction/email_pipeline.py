@@ -37,6 +37,7 @@ from invoice_extraction.config import (
     DOC_STATUS_CREATED,
     DOC_STATUS_FAILED,
     DOC_STATUS_IGNORED,
+    EMAIL_ACTIONS,
     EMAIL_MAX_WORKERS,
     ENABLE_TRACING,
     EXTRACTION_MAX_WORKERS,
@@ -394,19 +395,28 @@ class EmailPipeline:
         if result.decision.should_reply and result.decision.reply_body:
             sender_email = manifest.get("sender_email", "")
             reply_subject = f"Re: {manifest.get('email_subject', '')}"
-            send_result = await reply_to_supplier(
-                message_id=message_id,
-                subject=reply_subject,
-                comment=result.decision.reply_body,
-            )
-            if send_result.status == "sent":
-                print(f"  📧 Reply sent to supplier {sender_email!r} — subject={reply_subject!r}")
-            else:
+            if not EMAIL_ACTIONS:
                 print(
-                    f"  ⚠️  Reply to supplier {sender_email!r} FAILED ({send_result.error}) — subject={reply_subject!r}"
+                    f"  🚫 EMAIL_ACTIONS off — reply to supplier {sender_email!r} NOT sent "
+                    f"— subject={reply_subject!r}"
                 )
+                sent = False
+            else:
+                send_result = await reply_to_supplier(
+                    message_id=message_id,
+                    subject=reply_subject,
+                    comment=result.decision.reply_body,
+                )
+                sent = send_result.status == "sent"
+                if sent:
+                    print(f"  📧 Reply sent to supplier {sender_email!r} — subject={reply_subject!r}")
+                else:
+                    print(
+                        f"  ⚠️  Reply to supplier {sender_email!r} FAILED "
+                        f"({send_result.error}) — subject={reply_subject!r}"
+                    )
             print(f"            body={result.decision.reply_body!r}")
-            outcome = DOC_STATUS_COMMUNICATED if send_result.status == "sent" else DOC_STATUS_CREATED
+            outcome = DOC_STATUS_COMMUNICATED if sent else DOC_STATUS_CREATED
             for filename, decision in decisions_by_file.items():
                 if decision.action == REPLY:
                     statuses[filename] = outcome
@@ -414,31 +424,43 @@ class EmailPipeline:
         if result.decision.should_forward_to_treasury and result.decision.treasury_body:
             treasury_email = settings.TREASURY_EMAIL or ""
             treasury_subject = f"Documentos para tesouraria - {manifest.get('email_subject', '')}"
-            send_result = await forward_to_treasury(
-                message_id=message_id,
-                to=treasury_email,
-                subject=treasury_subject,
-                comment=result.decision.treasury_body,
-            )
-            if send_result.status == "sent":
-                print(f"  📧 Forwarded to treasury {treasury_email!r} — subject={treasury_subject!r}")
-            else:
+            if not EMAIL_ACTIONS:
                 print(
-                    f"  ⚠️  Forward to treasury {treasury_email!r} FAILED "
-                    f"({send_result.error}) — subject={treasury_subject!r}"
+                    f"  🚫 EMAIL_ACTIONS off — forward to treasury {treasury_email!r} NOT sent "
+                    f"— subject={treasury_subject!r}"
                 )
+                sent = False
+            else:
+                send_result = await forward_to_treasury(
+                    message_id=message_id,
+                    to=treasury_email,
+                    subject=treasury_subject,
+                    comment=result.decision.treasury_body,
+                )
+                sent = send_result.status == "sent"
+                if sent:
+                    print(f"  📧 Forwarded to treasury {treasury_email!r} — subject={treasury_subject!r}")
+                else:
+                    print(
+                        f"  ⚠️  Forward to treasury {treasury_email!r} FAILED "
+                        f"({send_result.error}) — subject={treasury_subject!r}"
+                    )
             print(f"            body={result.decision.treasury_body!r}")
-            outcome = DOC_STATUS_COMMUNICATED if send_result.status == "sent" else DOC_STATUS_CREATED
+            outcome = DOC_STATUS_COMMUNICATED if sent else DOC_STATUS_CREATED
             for filename, decision in decisions_by_file.items():
                 if decision.action == TREASURY:
                     statuses[filename] = outcome
 
         if result.decision.should_archive:
-            send_result = await archive_message(message_id)
-            if send_result.status == "sent":
-                print(f"  📦 Archived message — subject={manifest.get('email_subject', '')!r}")
+            subject = manifest.get("email_subject", "")
+            if not EMAIL_ACTIONS:
+                print(f"  🚫 EMAIL_ACTIONS off — message NOT archived — subject={subject!r}")
             else:
-                print(f"  ⚠️  Archive FAILED ({send_result.error}) — subject={manifest.get('email_subject', '')!r}")
+                send_result = await archive_message(message_id)
+                if send_result.status == "sent":
+                    print(f"  📦 Archived message — subject={subject!r}")
+                else:
+                    print(f"  ⚠️  Archive FAILED ({send_result.error}) — subject={subject!r}")
 
         return statuses
 
@@ -762,6 +784,9 @@ async def main() -> None:
         setup_tracing(experiment_name=MLFLOW_EXPERIMENT)
     else:
         print("ℹ️  ENABLE_TRACING is off — tracing disabled")
+
+    if not EMAIL_ACTIONS:
+        print("ℹ️  EMAIL_ACTIONS is off — replies, forwards and archives are logged only")
 
     # Only open a pool when something will actually be written — the point of
     # WRITE_TO_DB=False is being able to run (and trace) with no database up.
