@@ -38,7 +38,9 @@ class DocumentClassification(BaseModel):
     insurance certificates, purchase orders, etc.).
 
     Settlement/reconciliation statements (Liquidação, IATA CASS, statement of
-    account) are 'other'.
+    account) are to be considered as invoice.
+
+    Documentos úncios de cobrança should be considered invoice
 
     Do not infer the type from filenames.
     Only use the document contents.

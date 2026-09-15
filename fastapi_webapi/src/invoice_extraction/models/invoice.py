@@ -39,7 +39,7 @@ class InvoiceData(BaseModel):
     supplier_vat: Confident[str] | None = Field(
         default=None,
         description="""
-        Tax identification number (VAT/NIF/BRN) of the supplier.
+        Tax identification number (VAT/NIF/NIPC/BRN) of the supplier.
 
         Usually appears close to the supplier name.
 
@@ -218,6 +218,9 @@ class InvoiceData(BaseModel):
         total = base amount.
 
         Do not return intermediate subtotals.
+
+        When invoice has both Preço Total and Total Pagar, consider Preço total as the 
+        corret - Total Pagar deducts retentions, which we do not care. 
         """,
     )
 

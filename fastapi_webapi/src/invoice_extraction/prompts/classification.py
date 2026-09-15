@@ -74,12 +74,9 @@ DOCUMENT NUMBER
 
 Also read document_number: the document's OWN identifying number, as assigned by
 the supplier. Labels include Invoice No, Invoice Number, Fatura N.º, FT,
-Receipt No, Recibo N.º.
+Receipt No, Recibo N.º., NC, Credit Note.
 
-This is the one non-classification value you are asked for, and it is asked for
-here rather than at extraction because a later step must match duplicates
-against their originals BEFORE extraction runs. So read it on EVERY document,
-whatever its type or state — a proforma, a copy and a cancelled document all
+Read it on EVERY document, whatever its type or state — a proforma, a copy and a cancelled document all
 carry a number, and those are precisely the cases the match depends on.
 
 Do NOT return a purchase order number, a supplier/client VAT or NIF, or a date.
