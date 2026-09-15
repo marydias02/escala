@@ -12,6 +12,7 @@ from invoice_extraction.models import InvoiceData, ValidationReport
 from invoice_extraction.models.common import Checked
 from invoice_extraction.prompts import VALIDATION_SYSTEM_MESSAGE, build_validation_human_message
 from invoice_extraction.tools import VALIDATION_TOOLS
+from invoice_extraction.tools.vat_registry import PartyRepository, business_units, suppliers
 from invoice_extraction.tracing import (
     STAGE_VALIDATION,
     STAGE_VALIDATION_REGISTRY,
@@ -20,7 +21,7 @@ from invoice_extraction.tracing import (
     span,
     validation_summary,
 )
-from utils.utils_db import normalize_key, normalize_sql, select_sync
+from utils.utils_db import normalize_key, select_sync
 
 # Below this, two names are considered unrelated rather than a match.
 NAME_MATCH_THRESHOLD = 0.85
@@ -175,23 +176,58 @@ def _best_name_match(table: str, id_column: str, name: str) -> tuple[dict, float
     return tied[0], confidence
 
 
-def _find_party(table: str, id_column: str, vat: str | None, name: str | None) -> tuple[dict, float] | None:
-    """One row from `table` matching `vat`, or failing that the closest `name`
-    match above NAME_MATCH_THRESHOLD, paired with the confidence the match
-    deserves. None if neither hits.
+def _closest_within(rows: list[dict], name: str | None) -> dict:
+    """The row whose name is closest to `name`, among rows a VAT already
+    confirmed. No threshold: every candidate holds the VAT, so one of them is
+    right and the name only says which.
+
+    With no name, or a tie, the smallest id wins so the pick is stable.
+    """
+    if not name:
+        return min(rows, key=lambda row: row["id"])
+
+    target = _normalize_name(name)
+    scored = [(fuzz.token_sort_ratio(target, _normalize_name(row["name"])), row) for row in rows]
+
+    best_score = max(score for score, _row in scored)
+    best = [row for score, row in scored if score == best_score]
+    if len(best) == 1:
+        return best[0]
+
+    by_ratio = sorted(best, key=lambda row: fuzz.ratio(target, _normalize_name(row["name"])), reverse=True)
+    top_ratio = fuzz.ratio(target, _normalize_name(by_ratio[0]["name"]))
+    tied = sorted(
+        (row for row in by_ratio if fuzz.ratio(target, _normalize_name(row["name"])) == top_ratio),
+        key=lambda row: row["id"],
+    )
+
+    if len(tied) > 1:
+        logger.warning(
+            f"{len(tied)} names tied at token_sort={best_score:.0f}/ratio={top_ratio:.0f} "
+            f"for {name!r}; picking the smallest id {tied[0]['id']!r}"
+        )
+
+    return tied[0]
+
+
+def _find_party(
+    repository: PartyRepository, table: str, id_column: str, vat: str | None, name: str | None
+) -> tuple[dict, float] | None:
+    """One party matching `vat`, or failing that the closest `name` match above
+    NAME_MATCH_THRESHOLD, paired with the confidence the match deserves. None if
+    neither hits.
 
     VAT first: it is the unique, normalized key every other lookup in this
-    package already keys on (see `vat_registry.py`, `po_confirmation.py`). Name
-    is the fallback for a document whose VAT was missed or misread.
+    package already keys on (see `vat_registry.py`, `po_confirmation.py`). SAP
+    registers branches and vessels under one company's VAT, so a VAT can return
+    several — `name` picks between them. Name alone is the fallback for a
+    document whose VAT was missed or misread.
     """
     normalized_vat = normalize_key(vat)
     if normalized_vat:
-        rows = select_sync(
-            f"SELECT {id_column}, name, vat FROM {table} WHERE {normalize_sql('vat')} = $1 LIMIT 1",
-            [normalized_vat],
-        )
+        rows = repository.by_vat(normalized_vat)
         if rows:
-            return rows[0], 1.0
+            return _closest_within(rows, name), 1.0
 
     if name:
         return _best_name_match(table, id_column, name)
@@ -199,7 +235,9 @@ def _find_party(table: str, id_column: str, vat: str | None, name: str | None) -
     return None
 
 
-def _resolve_party(report: ValidationReport, prefix: str, table: str, id_column: str) -> ValidationReport:
+def _resolve_party(
+    report: ValidationReport, prefix: str, repository: PartyRepository, table: str, id_column: str
+) -> ValidationReport:
     """Fill `{prefix}_id` and overwrite `{prefix}_name`/`{prefix}_vat` with the
     registry's own values.
 
@@ -212,14 +250,18 @@ def _resolve_party(report: ValidationReport, prefix: str, table: str, id_column:
     vat = getattr(report, f"{prefix}_vat")
     name = getattr(report, f"{prefix}_name")
 
-    found = _find_party(table, id_column, vat.value if vat else None, name.value if name else None)
+    found = _find_party(repository, table, id_column, vat.value if vat else None, name.value if name else None)
     if found is None:
         return report
     row, confidence = found
 
+    # The lakehouse rows are keyed `id`; the name-only fallback still returns
+    # Postgres rows keyed on the table's own id column.
+    party_id = row["id"] if "id" in row else row[id_column]
+
     return report.model_copy(
         update={
-            f"{prefix}_id": Checked[str](value=str(row[id_column]), confidence=confidence),
+            f"{prefix}_id": Checked[str](value=str(party_id), confidence=confidence),
             f"{prefix}_name": Checked[str](value=row["name"], confidence=confidence),
             f"{prefix}_vat": Checked[str](value=row["vat"], confidence=confidence),
         }
@@ -235,9 +277,9 @@ def resolve_registry_ids(report: ValidationReport) -> ValidationReport:
     Never raises. A failed lookup just leaves that party's id/name/vat as they were.
     """
     try:
-        report = _resolve_party(report, "supplier", "dim_suppliers", "supplier_id")
-        report = _resolve_party(report, "bu", "dim_business_units", "bu_id")
-    except Exception as exc:  # noqa: BLE001 - a DB blip must not break validation
+        report = _resolve_party(report, "supplier", suppliers, "dim_suppliers", "supplier_id")
+        report = _resolve_party(report, "bu", business_units, "dim_business_units", "bu_id")
+    except Exception as exc:  # noqa: BLE001 - a lookup blip must not break validation
         logger.warning(f"Registry lookup failed, leaving ids unresolved: {exc!r}")
     return report
 

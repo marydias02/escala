@@ -1,37 +1,91 @@
-"""Party lookups against the SAP master data in Postgres.
+"""Party lookups against the SAP master data in the lakehouse.
 
-Clients are business units (`dim_business_units`); there is no separate clients
-table. Each tool checks BOTH VATs against ONE registry — that is what lets the
-model spot a supplier/client swap, so do not narrow it to one VAT per table.
+Clients are business units (`T001`, SAP's company codes); there is no separate
+clients table. Each tool checks BOTH VATs against ONE registry — that is what
+lets the model spot a supplier/client swap, so do not narrow it to one VAT per
+table.
 
 `supplier_preferred_language` is the exception to the shape above: it is keyed on
 `supplier_id` rather than a VAT, and is not a `@tool` — the model is never asked
 what language to reply in.
 
 A lookup that cannot be answered returns False rather than raising: these run on
-the routing critical path, and an unreachable database must not stop an email
-from being processed. False is also what an empty table returns, which is the
-honest answer while SAP master data has not landed yet.
+the routing critical path, and an unreachable lakehouse must not stop an email
+from being processed.
 """
 
+import polars as pl
 from langchain_core.tools import tool
 from loguru import logger
 
-from utils.utils_db import normalize_key, normalize_sql, select_sync
+from utils.utils_db import normalize_key
+from utils.utils_lakehouse import LakehouseRepository, normalize_expr
+
+# SAP's one-character language keys, as the ISO 639-1 codes the reply rule uses.
+# Anything outside this map is left unanswered, and the document's own language
+# decides instead.
+_SAP_LANGUAGES = {"P": "pt", "E": "en"}
 
 
-def _known_vats(table: str, vats: list[str]) -> set[str]:
-    """The normalized VATs among `vats` that `table` knows about."""
-    query = f"""
-    SELECT {normalize_sql("vat")} AS vat
-    FROM {table}
-    WHERE {normalize_sql("vat")} = ANY($1::text[])
+class PartyRepository(LakehouseRepository):
+    """A SAP table identifying a party, addressable by VAT.
+
+    Subclasses name their id/name/VAT columns, so callers work in `id`/`name`/
+    `vat` terms and stay out of SAP's column naming.
     """
-    return {row["vat"] for row in select_sync(query, [vats])}
+
+    id_column: str = ""
+    name_column: str = ""
+    vat_columns: tuple[str, ...] = ()
+
+    def by_vat(self, vat: str) -> list[dict[str, str]]:
+        """Every party registered under `vat`, as `id`/`name`/`vat` dicts."""
+        return self.rows_by_normalized(
+            self.vat_columns,
+            vat,
+            {
+                "id": pl.col(self.id_column),
+                "name": pl.col(self.name_column),
+                "vat": pl.coalesce([normalize_expr(column).replace("", None) for column in self.vat_columns]),
+            },
+        )
 
 
-def _both_in(table: str, client_vat: str, supplier_vat: str) -> tuple[bool, bool]:
-    """Whether each VAT appears in `table`, in one query."""
+class SupplierRepository(PartyRepository):
+    """SAP vendor master — one row per supplier, keyed on `LIFNR`."""
+
+    __table_name__ = "LFA1"
+
+    id_column = "LIFNR"
+    name_column = "NAME1"
+    # In precedence order: the EU VAT registration, then the domestic tax id
+    # carried by suppliers that have no EU one.
+    vat_columns = ("STCEG", "STCD1")
+
+
+class BusinessUnitRepository(PartyRepository):
+    """SAP company codes — one row per business unit, keyed on `BUKRS`."""
+
+    __table_name__ = "T001"
+
+    id_column = "BUKRS"
+    name_column = "BUTXT"
+    vat_columns = ("STCEG",)
+
+
+class BusinessPartnerRepository(LakehouseRepository):
+    """SAP business partners — one row per partner, keyed on `PARTNER`."""
+
+    __table_name__ = "BUT000"
+
+
+suppliers = SupplierRepository()
+business_units = BusinessUnitRepository()
+_business_partners = BusinessPartnerRepository()
+
+
+def _both_in(repository: LakehouseRepository, client_vat: str, supplier_vat: str) -> tuple[bool, bool]:
+    """Whether each VAT appears in `repository`, in one scan."""
     client = normalize_key(client_vat)
     supplier = normalize_key(supplier_vat)
 
@@ -40,9 +94,9 @@ def _both_in(table: str, client_vat: str, supplier_vat: str) -> tuple[bool, bool
         return False, False
 
     try:
-        known = _known_vats(table, lookup)
-    except Exception as exc:  # noqa: BLE001 - a DB blip must not break routing
-        logger.warning(f"{table} VAT lookup failed, treating both as unknown: {exc!r}")
+        known = repository.known_normalized(repository.vat_columns, lookup)
+    except Exception as exc:  # noqa: BLE001 - a lookup blip must not break routing
+        logger.warning(f"{repository.table} VAT lookup failed, treating both as unknown: {exc!r}")
         return False, False
 
     return client in known, supplier in known
@@ -59,7 +113,7 @@ def verify_client_nif(client_vat: str, supplier_vat: str) -> tuple[bool, bool]:
     Returns:
         True, True if the client and supplier vats are in the list of known clients, otherwise False
     """
-    return _both_in("dim_business_units", client_vat, supplier_vat)
+    return _both_in(business_units, client_vat, supplier_vat)
 
 
 @tool
@@ -73,7 +127,7 @@ def verify_supplier_nif(client_vat: str, supplier_vat: str) -> tuple[bool, bool]
     Returns:
         True, True if the client and supplier are in the list of known suppliers, otherwise False
     """
-    return _both_in("dim_suppliers", client_vat, supplier_vat)
+    return _both_in(suppliers, client_vat, supplier_vat)
 
 
 def supplier_preferred_language(supplier_id: str | None) -> str | None:
@@ -81,24 +135,21 @@ def supplier_preferred_language(supplier_id: str | None) -> str | None:
 
     Keyed on `supplier_id`, which `nodes.validate.resolve_registry_ids` fills
     only on a registry match — so an id in hand already means the supplier is
-    identified, and this is a straight primary-key read rather than a second
-    attempt at matching them.
+    identified, and this is a straight key read rather than a second attempt at
+    matching them. `LIFNR` is `BUT000.PARTNER`, so the id carries over as is.
 
-    None when there is no id, no preference recorded against it, or the lookup
-    failed. `decisions.reply_language` treats the three alike: none of them says
-    anything about what language to write in, so it falls back to the document.
+    None when there is no id, no preference recorded against it, a key outside
+    `_SAP_LANGUAGES`, or a failed lookup. `decisions.reply_language` treats them
+    alike: none says what language to write in, so it falls back to the document.
     """
     if not supplier_id:
         return None
 
     try:
-        rows = select_sync(
-            "SELECT preferred_language FROM dim_suppliers WHERE supplier_id = $1 LIMIT 1",
-            [str(supplier_id)],
-        )
-    except Exception as exc:  # noqa: BLE001 - a DB blip must not break routing
+        row = _business_partners.get_by("PARTNER", str(supplier_id))
+    except Exception as exc:  # noqa: BLE001 - a lookup blip must not break routing
         logger.warning(f"supplier_preferred_language({supplier_id}) failed, treating as unknown: {exc!r}")
         return None
 
-    language = rows[0]["preferred_language"] if rows else None
-    return language.strip().lower() if language else None
+    language = row.get("BU_LANGU") if row else None
+    return _SAP_LANGUAGES.get(language.strip().upper()) if language else None

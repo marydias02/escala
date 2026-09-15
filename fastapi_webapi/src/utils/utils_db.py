@@ -152,11 +152,18 @@ async def insert_rows(
     rows: list[dict[str, Any]],
     *,
     jsonb_columns: Iterable[str] = (),
+    chunk_size: int = 1000,
 ) -> int:
-    """Insert several rows in one transaction. Returns the number of rows written.
+    """Insert several rows, one transaction per `chunk_size`-row batch. Returns the
+    number of rows written.
 
     Every row must have the same column set (they share one prepared statement).
     Rows may omit columns to accept DB-side defaults, as with `insert_row`.
+
+    Chunked rather than one big transaction so a large load (tens of thousands of
+    rows) does not hold a single lock/transaction open for its whole duration --
+    that starves other queries on `table` and leaves a lock behind for however
+    long it takes if the caller is interrupted mid-run.
     """
     if not rows:
         return 0
@@ -166,11 +173,12 @@ async def insert_rows(
     query = f'INSERT INTO {table} ({", ".join(columns)}) VALUES ({placeholders})'
 
     pool = await get_pool()
-    async with pool.acquire() as conn:
-        async with conn.transaction():
-            for row in rows:
-                params = [_encode(col, row[col], jsonb_columns) for col in columns]
-                await conn.execute(query, *params)
+    for start in range(0, len(rows), chunk_size):
+        chunk = rows[start : start + chunk_size]
+        chunk_params = [[_encode(col, row[col], jsonb_columns) for col in columns] for row in chunk]
+        async with pool.acquire() as conn:
+            async with conn.transaction():
+                await conn.executemany(query, chunk_params)
     return len(rows)
 
 

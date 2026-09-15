@@ -12,13 +12,14 @@ synchronous too. If a future async call site needs this, wrap the call in
 `asyncio.to_thread(...)` rather than making the repository itself async.
 """
 
+from collections.abc import Collection
 from typing import Any, Optional
 
 import polars as pl
 
 from config.settings import settings
 
-AVAILABLE_TABLES = ("ACDOCA", "BSAD", "BSEG", "BUT000", "CEPCT", "EKKO", "SKAT")
+AVAILABLE_TABLES = ("ACDOCA", "BSAD", "BSEG", "BUT000", "CEPCT", "EKKO", "LFA1", "SKAT", "T001")
 
 _storage_options: dict[str, str] | None = None
 
@@ -57,6 +58,13 @@ def table_uri(table_name: str) -> str:
 def scan_table(table_name: str) -> pl.LazyFrame:
     """A lazy scan of a SAP table, with filter/column pushdown available to callers."""
     return pl.scan_delta(table_uri(table_name), storage_options=get_storage_options())
+
+
+def normalize_expr(column: str) -> pl.Expr:
+    """Strips non-alphanumerics and uppercases a column, for matching VAT/PO
+    codes whose formatting varies. Nulls stay null.
+    """
+    return pl.col(column).str.replace_all(r"[^A-Za-z0-9]", "").str.to_uppercase()
 
 
 class LakehouseRepository:
@@ -98,3 +106,38 @@ class LakehouseRepository:
     def exists(self, column: str, value: Any) -> bool:
         """Whether any row has `column == value`."""
         return self.scan().filter(pl.col(column) == value).limit(1).collect().height > 0
+
+    def rows_by_normalized(
+        self, columns: Collection[str], value: str, projection: dict[str, pl.Expr]
+    ) -> list[dict[str, Any]]:
+        """Every row whose `columns` coalesce to `value` once normalized,
+        projected to `projection`'s aliases.
+
+        A list because SAP holds one tax registration against several records —
+        branches and vessels of one company share a VAT.
+        """
+        if not columns or not value:
+            return []
+
+        normalized = [normalize_expr(column).replace("", None) for column in columns]
+        return self.scan().filter(pl.coalesce(normalized) == value).select(**projection).collect().to_dicts()
+
+    def known_normalized(self, columns: Collection[str], values: Collection[str]) -> set[str]:
+        """Which already-normalized `values` the table holds, in one scan.
+
+        `columns` in precedence order: each is normalized and blanked to null,
+        then the first non-null is the row's value. A supplier's VAT is STCEG
+        (EU registration), or STCD1 (domestic id) where STCEG is empty.
+        """
+        if not columns or not values:
+            return set()
+
+        normalized = [normalize_expr(column).replace("", None) for column in columns]
+        df = (
+            self.scan()
+            .select(pl.coalesce(normalized).alias("value"))
+            .filter(pl.col("value").is_in(values))
+            .unique()
+            .collect()
+        )
+        return set(df.get_column("value").to_list())
