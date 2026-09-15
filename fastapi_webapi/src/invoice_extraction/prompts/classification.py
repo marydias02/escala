@@ -79,6 +79,15 @@ Receipt No, Recibo N.º., NC, Credit Note.
 Read it on EVERY document, whatever its type or state — a proforma, a copy and a cancelled document all
 carry a number, and those are precisely the cases the match depends on.
 
+When a document prints several numbers, take the one under its own title label
+('Fatura', 'Invoice', 'Recibo'), never an internal reference ('Nº Interno',
+'Ref. Interna'). These often differ only in a leading segment.
+
+Read it complete, including any leading series digits or letters, even when
+separated by a space or set in their own box.
+
+The value must appear verbatim inside the evidence returned for it.
+
 Do NOT return a purchase order number, a supplier/client VAT or NIF, or a date.
 Return null when no such number is visible.
 
