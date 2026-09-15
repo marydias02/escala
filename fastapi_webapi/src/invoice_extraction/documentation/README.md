@@ -55,7 +55,10 @@ an **email** can warrant several `EmailAction`s at once (Reply to supplier / For
 Keep in Inbox / Archive), rolled up from its documents' actions. Documents are matched against the
 other originals in the same email by `(document_type, document_number)` so a duplicate/proforma is
 filed away rather than acted on twice, and a document from a supplier whose `is_financial` flag
-requires one is checked for a resolvable purchase order before being booked. Supplier replies are
+requires one is checked for a purchase order before being booked — both that the PO exists in SAP's
+`EKKO` and that its vendor and company code are the `supplier_id`/`bu_id` we extracted. A PO
+belonging to someone else routes to `Validação Manual`, never back to the supplier: it is our data
+to investigate, not their omission. Supplier replies are
 written in Portuguese or English, chosen from `dim_suppliers.preferred_language` and falling back
 to the language read off the document at classification. A separate lifecycle axis, `email_status`
 (Aberto / Fechado / Requer Ação), tracks whether anyone still owes the email something — an email
@@ -90,7 +93,7 @@ invoice_extraction/
 ├── prompts/                    # Prompt templates for each node
 ├── models/                     # Pydantic schemas (InvoiceData, ValidationReport, EmailContent, ...)
 ├── invoice_utils/              # Graph loader, PDF splitting/parsing/OCR, scan detection, senders, reporting
-├── tools/                      # LLM tools (VAT/PO registry lookups) bound during validation
+├── tools/                      # VAT/PO registry lookups — bound to the LLM in validation, and called directly by decisions.py
 ├── eval/                       # MLflow GenAI evaluation: dataset, predict fn, per-field scorers
 ├── docs/                       # Sample/test data + eval_ground_truth.json; pipeline working folders
 ├── documentation/              # This folder

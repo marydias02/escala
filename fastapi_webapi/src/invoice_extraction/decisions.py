@@ -52,6 +52,7 @@ from invoice_extraction.models import (
 from invoice_extraction.tools.po_confirmation import (
     FINANCIAL,
     FINANCIAL_AND_LOGISTICS,
+    po_conflicts,
     po_exists,
     supplier_is_financial,
 )
@@ -247,6 +248,39 @@ PO_ALERT_NOT_CHECKED: Final = "Falha na validação de existência de pedido de 
 PoProblems = list[str] | None | Literal["not checked"]
 
 
+@dataclass(frozen=True)
+class PartyMismatch:
+    """A PO whose vendor or company code is not the one we extracted.
+
+    `party` is which side disagrees, in the reviewer's own words, and `po_id` /
+    `document_id` are the two ids that failed to meet — carried rather than
+    formatted so the reason line and the Portuguese alert can word the same
+    fact differently.
+    """
+
+    po: str
+    party: Literal["fornecedor", "cliente"]
+    po_id: str | None
+    document_id: str | None
+
+
+PARTY_SUPPLIER: Final = "fornecedor"
+PARTY_BU: Final = "cliente"
+
+
+def _mismatch_summary(mismatches: list[PartyMismatch]) -> str:
+    """The mismatches as one internal line, for the reason and the logs."""
+    return "; ".join(f"{m.po} {m.party} {m.po_id} != {m.document_id}" for m in mismatches)
+
+
+def mismatch_alert(mismatch: PartyMismatch) -> str:
+    """One mismatch as the reviewer-facing Portuguese alert."""
+    return (
+        f"Nota de encomenda com id do {mismatch.party} {mismatch.po_id}, "
+        f"mas extração identificou {mismatch.party} com id {mismatch.document_id}"
+    )
+
+
 def missing_pos(validation: ValidationReport | None) -> list[str] | None:
     """The PO problem on this document, if any. One source of truth for routing
     and alerts.
@@ -309,6 +343,47 @@ def missing_pos(validation: ValidationReport | None) -> list[str] | None:
         return None
 
 
+def mismatched_pos(validation: ValidationReport | None) -> list[PartyMismatch]:
+    """POs that exist but belong to someone else. Empty list == nothing wrong.
+
+    Only asked of POs `missing_pos` already found, so a PO reaching here is
+    known to be in EKKO and the answer can only be about WHOSE it is.
+
+    A supplier or bu we never resolved is not a mismatch: `ingestion_blockers`
+    already stops a document whose party is unknown, so there is no id here to
+    disagree with and nothing to report.
+    """
+    if validation is None or not validation.po_list:
+        return []
+
+    supplier_id = validation.supplier_id.value if validation.supplier_id else None
+    bu_id = validation.bu_id.value if validation.bu_id else None
+    if not supplier_id and not bu_id:
+        return []
+
+    # `po_conflicts` swallows its own lookup errors, but this runs outside the
+    # extraction pipeline's error handling — anything unexpected here would take
+    # down the whole email rather than one document.
+    try:
+        mismatches: list[PartyMismatch] = []
+        for po in validation.po_list:
+            if not po.value:
+                continue
+
+            # One EKKO read answers both parties, and hands back the ids that
+            # disagree so the alert can name them.
+            po_supplier, po_bu = po_conflicts(po.value, supplier_id, bu_id)
+            if supplier_id and po_supplier:
+                mismatches.append(PartyMismatch(po.value, PARTY_SUPPLIER, po_supplier, supplier_id))
+            if bu_id and po_bu:
+                mismatches.append(PartyMismatch(po.value, PARTY_BU, po_bu, bu_id))
+
+        return mismatches
+    except Exception as exc:  # noqa: BLE001 - never fail routing on a PO lookup
+        logger.warning(f"PO ownership check failed for supplier {supplier_id}, skipping it: {exc!r}")
+        return []
+
+
 # Every ValidationReport field except supplier_id/bu_id (checked separately,
 # below — Portuguese labels since alerts_list is reviewer-facing.
 _ALERT_FIELD_LABELS = {
@@ -331,10 +406,10 @@ def build_alerts_list(result: PipelineResult, decision: DocumentDecision) -> lis
     Written to `fct_documents.alerts_list`, so entries are short, human-readable
     Portuguese strings for a reviewer, not machine codes.
 
-    `decision` is this document's own routing decision, and is where the PO
-    answer comes from — the very check that routed it, so an alert and an action
-    cannot disagree, and the lookups behind it run once per document rather than
-    twice.
+    `decision` is this document's own routing decision, and is where both PO
+    answers come from — existence and ownership, the very checks that routed it,
+    so an alert and an action cannot disagree, and the lookups behind them run
+    once per document rather than twice.
     """
     validation = result.validation
     if validation is None:
@@ -354,6 +429,8 @@ def build_alerts_list(result: PipelineResult, decision: DocumentDecision) -> lis
         alerts.append("Fornecedor requer nota de encomenda e nenhuma foi encontrada")
     elif pos:
         alerts.extend(f"Nota de encomenda não encontrada: {po}" for po in pos)
+
+    alerts.extend(mismatch_alert(mismatch) for mismatch in decision.po_mismatches)
 
     # supplier_id/bu_id are filled by nodes.validate.resolve_registry_ids, from a VAT/name lookup
     if validation.supplier_id is None and (validation.supplier_vat is not None or validation.supplier_name is not None):
@@ -382,6 +459,11 @@ class DocumentDecision:
     stopped it. Such a document is always MANUAL, and carries
     `PO_ALERT_NOT_CHECKED` so the reviewer knows the check never ran rather than
     reading its silence as "no PO problem".
+
+    `po_mismatches` is the same idea for `mismatched_pos`: the POs that exist
+    but belong to another party. Empty whenever that check did not run, which is
+    safe here — unlike `po_problems`, a document that never reached it is
+    already being escalated for the reason that stopped it.
     """
 
     filename: str
@@ -389,6 +471,7 @@ class DocumentDecision:
     reason: str
     reply_text: dict[str, str] | None = None
     po_problems: PoProblems = NOT_CHECKED
+    po_mismatches: list[PartyMismatch] = field(default_factory=list)
 
 
 @dataclass
@@ -523,7 +606,8 @@ def _ingest_or_escalate(result: PipelineResult, label: str) -> DocumentDecision:
     the document itself is fine, it is our reading of it that fell short. The PO
     hurdle splits: a document with NO PO from a supplier that requires one is
     the supplier's omission and only the supplier can fix it, so it goes back to
-    them; a PO we cannot find in the PO list is ours to investigate, so a human
+    them; a PO we cannot find in the PO list — or one that exists but belongs to
+    a different supplier or business unit — is ours to investigate, so a human
     gets it.
 
     `label` names the document in the reason (e.g. "invoice (original)",
@@ -564,6 +648,20 @@ def _ingest_or_escalate(result: PipelineResult, label: str) -> DocumentDecision:
             action=MANUAL,
             reason=f"{label} has PO(s) not found in the PO list: {', '.join(pos)}",
             po_problems=pos,
+        )
+
+    # Every PO is known to exist by now, so this asks the remaining question:
+    # whose it is. A PO belonging to another party is our data to investigate,
+    # not the supplier's omission, so it goes to a human like an unknown PO
+    # above — never back to the supplier.
+    mismatches = mismatched_pos(result.validation)
+    if mismatches:
+        return DocumentDecision(
+            filename=result.filename,
+            action=MANUAL,
+            reason=f"{label} has PO(s) belonging to another party: {_mismatch_summary(mismatches)}",
+            po_problems=pos,
+            po_mismatches=mismatches,
         )
 
     return DocumentDecision(

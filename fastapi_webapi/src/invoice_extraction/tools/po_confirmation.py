@@ -14,10 +14,11 @@ lakehouse — the replicated table is the source of truth for what POs exist.
 when the document actually carries a PO, so `decisions.missing_pos` reads the
 flag itself through `supplier_is_financial`.
 
-Only existence is checked today. Confirming that a PO's supplier and business
-unit match the invoice's needs master data the lakehouse does not carry yet:
-EKKO has `LIFNR` (zero-padded vendor number) and `BUKRS` (company code). Need
-supplier and bu master data
+Beyond existence, `po_conflicts` says whether a PO is OURS: EKKO's `LIFNR`
+(vendor) and `BUKRS` (company code) are the keys `LFA1`/`T001` are keyed on, so
+they compare directly against the `supplier_id`/`bu_id` that
+`nodes.validate.resolve_registry_ids` resolved. That catches a PO that exists
+but belongs to a different supplier or business unit.
 
 Nothing here raises: these run on the routing critical path, so an unreachable
 database or lakehouse must not stop an email from being processed. An unanswered
@@ -51,6 +52,45 @@ class PurchaseOrderRepository(LakehouseRepository):
 
 
 _purchase_orders = PurchaseOrderRepository()
+
+
+def _same_party(left: str | None, right: str | None) -> bool:
+    """Whether two SAP party ids are the same, ignoring zero padding."""
+    a, b = normalize_key(left), normalize_key(right)
+    return bool(a and b and a.lstrip("0") == b.lstrip("0"))
+
+
+def po_conflicts(po_reference: str, supplier_id: str | None, bu_id: str | None) -> tuple[str | None, str | None]:
+    """The PO's OWN vendor and company code, each returned only when it
+    contradicts the id we extracted. `(None, None)` == nothing wrong.
+
+    `EKKO.LIFNR`/`BUKRS` are the keys `LFA1`/`T001` are keyed on, so they
+    compare directly against the ids `resolve_registry_ids` resolved. The
+    conflicting id is returned rather than a bool so the reviewer can be told
+    whose PO it actually is.
+
+    Silence means "no evidence of a mismatch": an unknown PO, a blank party on
+    it, or a failed lookup all answer `(None, None)`, since this check only ever
+    escalates.
+    """
+    code = normalize_key(po_reference)
+    if not code:
+        return None, None
+
+    try:
+        row = _purchase_orders.get_by("EBELN", code)
+    except Exception as exc:  # noqa: BLE001 - a lookup blip must not break routing
+        logger.warning(f"po_conflicts({code}) failed, treating the PO as matching: {exc!r}")
+        return None, None
+
+    if row is None:
+        return None, None
+
+    po_supplier, po_bu = normalize_key(row.get("LIFNR")), normalize_key(row.get("BUKRS"))
+    return (
+        po_supplier if po_supplier and not _same_party(po_supplier, supplier_id) else None,
+        po_bu if po_bu and not _same_party(po_bu, bu_id) else None,
+    )
 
 
 def _query_is_financial(vat: str) -> int | None:

@@ -9,8 +9,9 @@ Both layers are covered: `decide_document` (the per-type/per-state matrix) and
 `decide_email` (the roll-up, the A-cases, the thread escalation, and the status
 axis).
 
-`missing_pos` reaches the database through `supplier_is_financial` / `po_exists`,
-so every test that routes an ingestable document patches those two. The autouse
+`missing_pos` and `mismatched_pos` reach the database through
+`supplier_is_financial` / `po_exists` / `po_conflicts`, so every test that routes
+an ingestable document patches those three. The autouse
 `no_db` fixture makes the safe default — supplier requires no PO — apply
 everywhere, so a test only says something about POs when POs are its subject. A
 test that forgot to patch would otherwise hit a real database and pass or fail on
@@ -59,6 +60,7 @@ from invoice_extraction.decisions import (
     decide_document,
     decide_email,
     ingestion_blockers,
+    mismatched_pos,
     missing_pos,
     original_document_keys,
     roll_up_actions,
@@ -208,16 +210,26 @@ class FakePoTool:
         return self.known
 
 
-def patch_po(monkeypatch, is_financial: int, po_known: bool = True) -> None:
+def patch_po(
+    monkeypatch,
+    is_financial: int,
+    po_known: bool = True,
+    conflicts: tuple[str | None, str | None] = (None, None),
+) -> None:
     """Patch the PO lookups AS BOUND IN `decisions`.
 
     `decisions` does `from ... po_confirmation import po_exists,
     supplier_is_financial`, so the names it calls are its own module globals —
     patching `po_confirmation` would leave those references untouched and let the
     call reach the real database.
+
+    `conflicts` is what `po_conflicts` answers for every PO: the PO's own
+    (supplier_id, bu_id) where it disagrees with the document. The default
+    `(None, None)` is "the PO is ours", which changes no routing.
     """
     monkeypatch.setattr(decisions, "supplier_is_financial", lambda vat: is_financial)
     monkeypatch.setattr(decisions, "po_exists", FakePoTool(po_known))
+    monkeypatch.setattr(decisions, "po_conflicts", lambda po, supplier_id, bu_id: conflicts)
 
 
 def patch_preferred_language(monkeypatch, language: str | None) -> None:
@@ -231,8 +243,8 @@ def no_db(monkeypatch):
     """Neutral PO and language answers, so no test touches the database by accident.
 
     The default is the case that changes no routing: a financial supplier, which
-    requires no PO, with no recorded language preference. Tests about POs or
-    languages override this.
+    requires no PO, whose POs are its own, with no recorded language preference.
+    Tests about POs or languages override this.
     """
     patch_po(monkeypatch, FINANCIAL)
     patch_preferred_language(monkeypatch, None)
@@ -242,6 +254,11 @@ def no_db(monkeypatch):
 def requires_po(monkeypatch):
     """A logistics supplier: a PO is required, and every PO carried is checked."""
     patch_po(monkeypatch, LOGISTICS)
+
+
+# The ids `validation()` resolves, and a third that belongs to somebody else.
+OTHER_SUPPLIER = "SUP-9"
+OTHER_BU = "BU-9"
 
 
 # --------------------------------------------------------------------------- #
@@ -345,6 +362,47 @@ class TestDecideDocument:
         monkeypatch.setattr(decisions, "supplier_is_financial", boom)
         assert decide_document(extraction()).action == INGEST
 
+    # --- The PO exists, but is it ours? -------------------------------------
+
+    def test_a_po_belonging_to_another_supplier_goes_to_a_human(self, monkeypatch):
+        """Ours to investigate, not the supplier's omission — so never a REPLY."""
+        patch_po(monkeypatch, LOGISTICS, conflicts=(OTHER_SUPPLIER, None))
+        decision = decide_document(extraction(po_list=["PO-1"]))
+        assert decision.action == MANUAL
+        assert OTHER_SUPPLIER in decision.reason
+
+    def test_a_po_belonging_to_another_bu_goes_to_a_human(self, monkeypatch):
+        """A BU mismatch weighs the same as a supplier one."""
+        patch_po(monkeypatch, LOGISTICS, conflicts=(None, OTHER_BU))
+        decision = decide_document(extraction(po_list=["PO-1"]))
+        assert decision.action == MANUAL
+        assert OTHER_BU in decision.reason
+
+    def test_one_mismatch_among_several_pos_still_escalates(self, monkeypatch):
+        patch_po(monkeypatch, LOGISTICS, conflicts=(OTHER_SUPPLIER, None))
+        assert decide_document(extraction(po_list=["PO-1", "PO-2"])).action == MANUAL
+
+    def test_a_matching_po_is_ingested(self, requires_po):
+        """The default `(None, None)` is "the PO is ours"."""
+        assert decide_document(extraction(po_list=["PO-1"])).action == INGEST
+
+    def test_a_mismatch_lookup_failure_never_blocks_ingestion(self, monkeypatch):
+        """Degraded data misses mismatches; it never reviews every invoice."""
+
+        def boom(po, supplier_id, bu_id):
+            raise RuntimeError("lakehouse down")
+
+        patch_po(monkeypatch, LOGISTICS)
+        monkeypatch.setattr(decisions, "po_conflicts", boom)
+        assert decide_document(extraction(po_list=["PO-1"])).action == INGEST
+
+    def test_an_unknown_po_is_never_also_reported_as_a_mismatch(self, monkeypatch):
+        """`missing_pos` stops it first, so ownership is never asked."""
+        patch_po(monkeypatch, LOGISTICS, po_known=False, conflicts=(OTHER_SUPPLIER, None))
+        decision = decide_document(extraction(po_list=["PO-1"]))
+        assert decision.action == MANUAL
+        assert decision.po_mismatches == []
+
     # --- B0/C0: the duplicate whose original is in the same email -----------
 
     def test_b0_copy_is_filed_away_when_its_original_is_present(self):
@@ -435,6 +493,35 @@ class TestMissingPos:
         assert missing_pos(validation(po_list=["PO-1", "PO-2"])) == ["PO-1", "PO-2"]
 
 
+class TestMismatchedPos:
+    def test_empty_when_there_is_no_report(self):
+        assert mismatched_pos(None) == []
+
+    def test_a_document_with_no_po_has_nothing_to_compare(self):
+        assert mismatched_pos(validation()) == []
+
+    def test_an_unresolved_party_is_not_a_mismatch(self, monkeypatch):
+        """`ingestion_blockers` already stops these, so there is no id to disagree."""
+        patch_po(monkeypatch, LOGISTICS, conflicts=(OTHER_SUPPLIER, OTHER_BU))
+        report = validation(po_list=["PO-1"], supplier_id=None, bu_id=None)
+        assert mismatched_pos(report) == []
+
+    def test_each_mismatch_carries_both_ids(self, monkeypatch):
+        patch_po(monkeypatch, LOGISTICS, conflicts=(OTHER_SUPPLIER, None))
+        mismatch = mismatched_pos(validation(po_list=["PO-1"]))[0]
+        assert (mismatch.po, mismatch.party) == ("PO-1", "fornecedor")
+        assert (mismatch.po_id, mismatch.document_id) == (OTHER_SUPPLIER, "SUP-1")
+
+    def test_both_parties_can_disagree_on_one_po(self, monkeypatch):
+        patch_po(monkeypatch, LOGISTICS, conflicts=(OTHER_SUPPLIER, OTHER_BU))
+        assert len(mismatched_pos(validation(po_list=["PO-1"]))) == 2
+
+    def test_every_po_is_reported_not_just_the_first(self, monkeypatch):
+        patch_po(monkeypatch, LOGISTICS, conflicts=(OTHER_SUPPLIER, None))
+        mismatches = mismatched_pos(validation(po_list=["PO-1", "PO-2"]))
+        assert [m.po for m in mismatches] == ["PO-1", "PO-2"]
+
+
 class TestBuildAlertsList:
     """`build_alerts_list` takes the document's own decision, so these build it
     with `decide_document` rather than by hand — the pairing of an action with
@@ -504,6 +591,23 @@ class TestBuildAlertsList:
         assert decision.action == MANUAL
         assert decision.po_problems == NOT_CHECKED
         assert PO_ALERT_NOT_CHECKED in build_alerts_list(result, decision)
+
+    def test_a_mismatch_alert_names_both_ids(self, monkeypatch):
+        """The reviewer is told whose the PO is AND who we read, so the two can
+        be compared without opening SAP.
+        """
+        patch_po(monkeypatch, LOGISTICS, conflicts=(OTHER_SUPPLIER, None))
+        result = extraction(po_list=["PO-1"])
+        alerts = build_alerts_list(result, decide_document(result))
+        assert (
+            f"Nota de encomenda com id do fornecedor {OTHER_SUPPLIER}, mas extração identificou fornecedor com id SUP-1"
+        ) in alerts
+
+    def test_a_bu_mismatch_alert_is_worded_for_the_client(self, monkeypatch):
+        patch_po(monkeypatch, LOGISTICS, conflicts=(None, OTHER_BU))
+        result = extraction(po_list=["PO-1"])
+        alerts = build_alerts_list(result, decide_document(result))
+        assert f"Nota de encomenda com id do cliente {OTHER_BU}, mas extração identificou cliente com id BU-1" in alerts
 
 
 # --------------------------------------------------------------------------- #
