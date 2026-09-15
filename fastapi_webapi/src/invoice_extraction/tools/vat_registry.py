@@ -19,7 +19,7 @@ from langchain_core.tools import tool
 from loguru import logger
 
 from utils.utils_db import normalize_key
-from utils.utils_lakehouse import LakehouseRepository, normalize_expr
+from utils.utils_lakehouse import LakehouseRepository, normalize_expr, strip_country_prefix_str
 
 # SAP's one-character language keys, as the ISO 639-1 codes the reply rule uses.
 # Anything outside this map is left unanswered, and the document's own language
@@ -38,16 +38,29 @@ class PartyRepository(LakehouseRepository):
     name_column: str = ""
     vat_columns: tuple[str, ...] = ()
 
-    def by_vat(self, vat: str) -> list[dict[str, str]]:
-        """Every party registered under `vat`, as `id`/`name`/`vat` dicts."""
+    def _projection(self) -> dict[str, pl.Expr]:
+        """`id`/`name`/`vat`, so callers stay out of SAP's column naming."""
+        return {
+            "id": pl.col(self.id_column),
+            "name": pl.col(self.name_column),
+            "vat": pl.coalesce([normalize_expr(column).replace("", None) for column in self.vat_columns]),
+        }
+
+    def all_parties(self) -> list[dict[str, str]]:
+        """Every party in the table, as `id`/`name`/`vat` dicts.
+
+        A whole-table read, for matching on name alone.
+        """
+        return self.scan().select(**self._projection()).collect().to_dicts()
+
+    def by_vat(self, vat: str, ignore_country_prefix: bool = False) -> list[dict[str, str]]:
+        """Every party registered under `vat`, as `id`/`name`/`vat` dicts.
+
+        `vat` comes back as SAP holds it, prefix included, even when the match
+        ignored the prefix — the registry is the source of truth for the value.
+        """
         return self.rows_by_normalized(
-            self.vat_columns,
-            vat,
-            {
-                "id": pl.col(self.id_column),
-                "name": pl.col(self.name_column),
-                "vat": pl.coalesce([normalize_expr(column).replace("", None) for column in self.vat_columns]),
-            },
+            self.vat_columns, vat, self._projection(), ignore_country_prefix=ignore_country_prefix
         )
 
 
@@ -84,8 +97,12 @@ business_units = BusinessUnitRepository()
 _business_partners = BusinessPartnerRepository()
 
 
-def _both_in(repository: LakehouseRepository, client_vat: str, supplier_vat: str) -> tuple[bool, bool]:
-    """Whether each VAT appears in `repository`, in one scan."""
+def _both_in(repository: PartyRepository, client_vat: str, supplier_vat: str) -> tuple[bool, bool]:
+    """Whether each VAT appears in `repository`, in one scan.
+
+    A VAT that misses is retried without its country prefix: SAP stores nearly
+    every VAT prefixed, while a document often shows the number alone.
+    """
     client = normalize_key(client_vat)
     supplier = normalize_key(supplier_vat)
 
@@ -95,6 +112,11 @@ def _both_in(repository: LakehouseRepository, client_vat: str, supplier_vat: str
 
     try:
         known = repository.known_normalized(repository.vat_columns, lookup)
+
+        missing = [vat for vat in lookup if vat not in known]
+        if missing:
+            bare = repository.known_normalized(repository.vat_columns, missing, ignore_country_prefix=True)
+            known |= {vat for vat in missing if strip_country_prefix_str(vat) in bare}
     except Exception as exc:  # noqa: BLE001 - a lookup blip must not break routing
         logger.warning(f"{repository.table} VAT lookup failed, treating both as unknown: {exc!r}")
         return False, False

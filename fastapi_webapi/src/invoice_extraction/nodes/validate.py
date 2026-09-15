@@ -21,7 +21,7 @@ from invoice_extraction.tracing import (
     span,
     validation_summary,
 )
-from utils.utils_db import normalize_key, select_sync
+from utils.utils_db import normalize_key
 
 # Below this, two names are considered unrelated rather than a match.
 NAME_MATCH_THRESHOLD = 0.85
@@ -135,16 +135,16 @@ def _noted(report: ValidationReport, fields: dict[str, Checked[float]], note: st
     return report.model_copy(update={**fields, "notes": f"{report.notes.strip()} {note}".strip()})
 
 
-def _best_name_match(table: str, id_column: str, name: str) -> tuple[dict, float] | None:
-    """The `table` row whose name best matches `name`, paired with its match
+def _best_name_match(repository: PartyRepository, name: str) -> tuple[dict, float] | None:
+    """The party whose name best matches `name`, paired with its match
     confidence — or None below NAME_MATCH_THRESHOLD.
 
     Scored with `token_sort_ratio` on normalized names (see `_normalize_name`),
     which tolerates word-order and formatting differences.
 
-    A tie breaks on plain Levenshtein `ratio`. If still tied, break on first row and log
+    A tie breaks on plain Levenshtein `ratio`, then on the smallest id.
     """
-    rows = select_sync(f"SELECT {id_column}, name, vat FROM {table}", [])
+    rows = repository.all_parties()
     if not rows:
         return None
 
@@ -163,17 +163,7 @@ def _best_name_match(table: str, id_column: str, name: str) -> tuple[dict, float
     if len(best) == 1:
         return best[0], confidence
 
-    best_by_ratio = sorted(best, key=lambda row: fuzz.ratio(target, _normalize_name(row["name"])), reverse=True)
-    top_ratio = fuzz.ratio(target, _normalize_name(best_by_ratio[0]["name"]))
-    tied = [row for row in best_by_ratio if fuzz.ratio(target, _normalize_name(row["name"])) == top_ratio]
-
-    if len(tied) > 1:
-        logger.warning(
-            f"{table}: {len(tied)} names tied at token_sort={best_score:.0f}/ratio="
-            f"{top_ratio:.0f} for {name!r}; picking {tied[0]['name']!r}"
-        )
-
-    return tied[0], confidence
+    return _closest_within(best, name), confidence
 
 
 def _closest_within(rows: list[dict], name: str | None) -> dict:
@@ -210,9 +200,7 @@ def _closest_within(rows: list[dict], name: str | None) -> dict:
     return tied[0]
 
 
-def _find_party(
-    repository: PartyRepository, table: str, id_column: str, vat: str | None, name: str | None
-) -> tuple[dict, float] | None:
+def _find_party(repository: PartyRepository, vat: str | None, name: str | None) -> tuple[dict, float] | None:
     """One party matching `vat`, or failing that the closest `name` match above
     NAME_MATCH_THRESHOLD, paired with the confidence the match deserves. None if
     neither hits.
@@ -222,22 +210,26 @@ def _find_party(
     registers branches and vessels under one company's VAT, so a VAT can return
     several — `name` picks between them. Name alone is the fallback for a
     document whose VAT was missed or misread.
+
+    A VAT that misses is retried without its country prefix: SAP stores nearly
+    every VAT prefixed, while a document often shows the number alone. The
+    number still identifies the party, so the retry keeps confidence 1.0.
     """
     normalized_vat = normalize_key(vat)
     if normalized_vat:
         rows = repository.by_vat(normalized_vat)
+        if not rows:
+            rows = repository.by_vat(normalized_vat, ignore_country_prefix=True)
         if rows:
             return _closest_within(rows, name), 1.0
 
     if name:
-        return _best_name_match(table, id_column, name)
+        return _best_name_match(repository, name)
 
     return None
 
 
-def _resolve_party(
-    report: ValidationReport, prefix: str, repository: PartyRepository, table: str, id_column: str
-) -> ValidationReport:
+def _resolve_party(report: ValidationReport, prefix: str, repository: PartyRepository) -> ValidationReport:
     """Fill `{prefix}_id` and overwrite `{prefix}_name`/`{prefix}_vat` with the
     registry's own values.
 
@@ -250,18 +242,14 @@ def _resolve_party(
     vat = getattr(report, f"{prefix}_vat")
     name = getattr(report, f"{prefix}_name")
 
-    found = _find_party(repository, table, id_column, vat.value if vat else None, name.value if name else None)
+    found = _find_party(repository, vat.value if vat else None, name.value if name else None)
     if found is None:
         return report
     row, confidence = found
 
-    # The lakehouse rows are keyed `id`; the name-only fallback still returns
-    # Postgres rows keyed on the table's own id column.
-    party_id = row["id"] if "id" in row else row[id_column]
-
     return report.model_copy(
         update={
-            f"{prefix}_id": Checked[str](value=str(party_id), confidence=confidence),
+            f"{prefix}_id": Checked[str](value=str(row["id"]), confidence=confidence),
             f"{prefix}_name": Checked[str](value=row["name"], confidence=confidence),
             f"{prefix}_vat": Checked[str](value=row["vat"], confidence=confidence),
         }
@@ -277,8 +265,8 @@ def resolve_registry_ids(report: ValidationReport) -> ValidationReport:
     Never raises. A failed lookup just leaves that party's id/name/vat as they were.
     """
     try:
-        report = _resolve_party(report, "supplier", suppliers, "dim_suppliers", "supplier_id")
-        report = _resolve_party(report, "bu", business_units, "dim_business_units", "bu_id")
+        report = _resolve_party(report, "supplier", suppliers)
+        report = _resolve_party(report, "bu", business_units)
     except Exception as exc:  # noqa: BLE001 - a lookup blip must not break validation
         logger.warning(f"Registry lookup failed, leaving ids unresolved: {exc!r}")
     return report

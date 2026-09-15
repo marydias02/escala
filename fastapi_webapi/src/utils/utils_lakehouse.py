@@ -67,6 +67,20 @@ def normalize_expr(column: str) -> pl.Expr:
     return pl.col(column).str.replace_all(r"[^A-Za-z0-9]", "").str.to_uppercase()
 
 
+def strip_country_prefix(value: pl.Expr) -> pl.Expr:
+    """Drops a leading two-letter country code from a normalized VAT.
+
+    SAP stores nearly every VAT prefixed; a document often shows the number
+    alone, which no exact match can reach.
+    """
+    return pl.when(value.str.contains(r"^[A-Z]{2}")).then(value.str.slice(2)).otherwise(value)
+
+
+def strip_country_prefix_str(value: str) -> str:
+    """`strip_country_prefix` for an already-normalized lookup value."""
+    return value[2:] if len(value) > 2 and value[:2].isalpha() else value
+
+
 class LakehouseRepository:
     """Base class for repositories over SAP tables replicated to the lakehouse.
 
@@ -108,10 +122,17 @@ class LakehouseRepository:
         return self.scan().filter(pl.col(column) == value).limit(1).collect().height > 0
 
     def rows_by_normalized(
-        self, columns: Collection[str], value: str, projection: dict[str, pl.Expr]
+        self,
+        columns: Collection[str],
+        value: str,
+        projection: dict[str, pl.Expr],
+        ignore_country_prefix: bool = False,
     ) -> list[dict[str, Any]]:
         """Every row whose `columns` coalesce to `value` once normalized,
         projected to `projection`'s aliases.
+
+        `ignore_country_prefix` compares both sides without their leading
+        country code, for a `value` read off a document that omitted it.
 
         A list because SAP holds one tax registration against several records —
         branches and vessels of one company share a VAT.
@@ -119,25 +140,32 @@ class LakehouseRepository:
         if not columns or not value:
             return []
 
-        normalized = [normalize_expr(column).replace("", None) for column in columns]
-        return self.scan().filter(pl.coalesce(normalized) == value).select(**projection).collect().to_dicts()
+        normalized = pl.coalesce([normalize_expr(column).replace("", None) for column in columns])
+        if ignore_country_prefix:
+            normalized = strip_country_prefix(normalized)
+            value = strip_country_prefix_str(value)
 
-    def known_normalized(self, columns: Collection[str], values: Collection[str]) -> set[str]:
+        return self.scan().filter(normalized == value).select(**projection).collect().to_dicts()
+
+    def known_normalized(
+        self, columns: Collection[str], values: Collection[str], ignore_country_prefix: bool = False
+    ) -> set[str]:
         """Which already-normalized `values` the table holds, in one scan.
 
         `columns` in precedence order: each is normalized and blanked to null,
         then the first non-null is the row's value. A supplier's VAT is STCEG
         (EU registration), or STCD1 (domestic id) where STCEG is empty.
+
+        `ignore_country_prefix` compares both sides without their leading
+        country code, and returns the values in that same bare form.
         """
         if not columns or not values:
             return set()
 
-        normalized = [normalize_expr(column).replace("", None) for column in columns]
-        df = (
-            self.scan()
-            .select(pl.coalesce(normalized).alias("value"))
-            .filter(pl.col("value").is_in(values))
-            .unique()
-            .collect()
-        )
+        normalized = pl.coalesce([normalize_expr(column).replace("", None) for column in columns])
+        if ignore_country_prefix:
+            normalized = strip_country_prefix(normalized)
+            values = [strip_country_prefix_str(value) for value in values]
+
+        df = self.scan().select(normalized.alias("value")).filter(pl.col("value").is_in(values)).unique().collect()
         return set(df.get_column("value").to_list())
