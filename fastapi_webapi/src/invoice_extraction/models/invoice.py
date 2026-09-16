@@ -39,9 +39,12 @@ class InvoiceData(BaseModel):
     supplier_vat: Confident[str] | None = Field(
         default=None,
         description="""
-        Tax identification number (VAT/NIF/BRN) of the supplier.
+        Tax identification number (VAT/NIF/NIPC/BRN/Legal person/Registration) of the supplier.
 
         Usually appears close to the supplier name.
+
+        Value = digits/prefix only. Strip label words like "NIF", "CIF",
+        "VAT No." and separators (e.g. "NIF·A-48084909" -> "A48084909").
 
         Examples:
 
@@ -88,6 +91,9 @@ class InvoiceData(BaseModel):
         VAT number of the customer.
 
         Usually appears close to the customer name.
+
+        Value = digits/prefix only. Strip label words like "NIF", "CIF",
+        "VAT No." and separators (e.g. "C.I.F. 511011911" -> "511011911").
 
         Normalize Portuguese NIFs to PT######### when only nine digits
         are shown.
@@ -212,6 +218,9 @@ class InvoiceData(BaseModel):
         total = base amount.
 
         Do not return intermediate subtotals.
+
+        When invoice has both Preço Total and Total Pagar, consider Preço total as the 
+        corret - Total Pagar deducts retentions, which we do not care. 
         """,
     )
 

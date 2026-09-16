@@ -2,6 +2,7 @@ from typing import Optional
 
 from langchain_core.exceptions import OutputParserException
 from langchain_core.messages import BaseMessage, HumanMessage
+from langchain_core.runnables import Runnable
 from loguru import logger
 from pydantic import ValidationError
 
@@ -20,7 +21,9 @@ JSON_ONLY_NUDGE = HumanMessage(
 )
 
 
-def invoke_with_retry(structured_llm, messages: list[BaseMessage], stage: Optional[str] = None):
+def invoke_with_retry[T](
+    structured_llm: Runnable[list[BaseMessage], T], messages: list[BaseMessage], stage: Optional[str] = None
+) -> T:
     """Invoke a structured-output LLM, retrying once on a parse failure.
 
     Some models reply with prose instead of JSON. A single retry with an explicit

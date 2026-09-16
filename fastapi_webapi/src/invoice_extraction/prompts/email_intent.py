@@ -9,8 +9,9 @@ not PDFs.
 
 Answer THREE independent questions about it:
 
-1. is_invoice_related — was the email trying to deliver, or asking about, an
-   accounting document (invoice, credit note, debit note, receipt)?
+1. is_invoice_delivery — was the email trying to DELIVER an accounting document
+   (invoice, credit note, debit note, receipt)? That is, does the body present
+   itself as sending, or having sent, that document?
 
 2. has_invoice_link — does the email point at that document with a link or portal
    instead of attaching it?
@@ -19,13 +20,29 @@ Answer THREE independent questions about it:
 
 WHY THIS MATTERS
 
-Only an invoice-related email with NO link is treated as a supplier mistake, and
-the supplier is asked to resend the document as a PDF. Every other combination is
+Only a delivery attempt with NO link is treated as a supplier mistake, and the
+supplier is asked to resend the document as a PDF. Every other combination is
 left alone:
 
-- invoice-related WITH a link  -> the document exists, we must fetch it ourselves;
+- a delivery WITH a link  -> the document exists, we must fetch it ourselves;
   the supplier did nothing wrong.
-- not invoice-related          -> nothing to do.
+- not a delivery          -> nothing to do.
+
+DELIVERY IS NOT THE SAME AS TOPIC
+
+Question 1 asks what the email is FOR, not what it mentions. Many emails name an
+invoice without sending one, and replying "please resend the document as a PDF"
+to any of them is wrong and embarrassing:
+
+- a satisfaction survey or feedback request about a past invoice;
+- a payment confirmation, remittance advice or receipt acknowledgement;
+- an account statement or balance summary;
+- a payment reminder or dunning notice;
+- a question about a document we already have.
+
+An invoice number, a date, or an amount in the body is NOT evidence of delivery —
+those appear in every one of the cases above. Answer True only when the email's
+purpose is to get the document to us.
 
 A false positive sends an unwanted email to a supplier. When the body gives no
 clear indication, prefer False.
@@ -40,10 +57,13 @@ RULES
   social-media icons, unsubscribe links and legal boilerplate — those are not the
   document. A link is only relevant when the body presents it as where the
   document can be obtained.
-- The email may be in Portuguese, English or Spanish. Treat "fatura", "factura",
-  "recibo", "nota de crédito", "nota de débito", "em anexo", "segue em anexo" as
-  strong invoice-related signals, and "consulte a sua fatura em", "disponível no
-  portal", "download your invoice", "acesse aqui" as strong link signals.
+- The email may be in Portuguese, English or Spanish. Treat "em anexo", "segue em
+  anexo", "envio a fatura", "please find attached", "adjunto" as strong DELIVERY
+  signals, and "consulte a sua fatura em", "disponível no portal", "download your
+  invoice", "acesse aqui" as strong link signals.
+- The words "fatura", "factura", "recibo", "nota de crédito", "nota de débito"
+  name the document; on their own they establish the topic, not a delivery. Look
+  for what the body says is being DONE with it.
 
 LANGUAGE
 

@@ -32,8 +32,6 @@ def extract_document(
                 "input_mode": "image" if scanned else "pdf",
             }
         )
-        invoice_data = invoke_with_retry(
-            structured_llm, [EXTRACTION_SYSTEM_MESSAGE, human_message], stage="extraction"
-        )
+        invoice_data = invoke_with_retry(structured_llm, [EXTRACTION_SYSTEM_MESSAGE, human_message], stage="extraction")
         stage_span.set_outputs(invoice_data_summary(invoice_data))
         return invoice_data

@@ -32,8 +32,6 @@ def segment_document(
         # `encoded_pdf` is deliberately not an input: it is the base64 of the whole
         # attachment, and the autolog child span already records the prompt.
         stage_span.set_inputs({"filename": filename, "total_pages": total_pages})
-        segmentation = invoke_with_retry(
-            structured_llm, [system_message, human_message], stage="chunking"
-        )
+        segmentation = invoke_with_retry(structured_llm, [system_message, human_message], stage="chunking")
         stage_span.set_outputs(segmentation_summary(segmentation))
         return segmentation

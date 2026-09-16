@@ -57,6 +57,7 @@ Thumbs.db
 #Ignore pdfs
 **/invoice_extraction/docs/*.pdf
 **/invoice_extraction/docs/*
+**/downloads/*
 
 # ...except the evaluation set: the labels and the documents they describe are
 # the eval dataset, and hand-labelling them is work that must survive a clone.

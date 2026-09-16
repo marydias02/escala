@@ -20,12 +20,10 @@ def classify_email_intent(llm: BaseChatModel, subject: str, body: str) -> EmailI
 
     with span(STAGE_EMAIL_INTENT, "LLM") as stage_span:
         stage_span.set_inputs({"subject": subject, "body_chars": len(body or "")})
-        intent = invoke_with_retry(
-            structured_llm, [EMAIL_INTENT_SYSTEM_MESSAGE, human_message], stage="email intent"
-        )
+        intent = invoke_with_retry(structured_llm, [EMAIL_INTENT_SYSTEM_MESSAGE, human_message], stage="email intent")
         stage_span.set_outputs(
             {
-                "is_invoice_related": intent.is_invoice_related.value,
+                "is_invoice_delivery": intent.is_invoice_delivery.value,
                 "has_invoice_link": intent.has_invoice_link.value,
             }
         )

@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Depends
-from fastapi.responses import FileResponse
+from fastapi.responses import Response
 
 from api.dependencies.security import has_authorization_for, openid_connect
 from api.dependencies.services import ExtractionServiceDep
@@ -109,20 +109,17 @@ async def get_document_email(service: ExtractionServiceDep, document_id: str) ->
     result = await service.get_document_email(document_id)
     return DocumentEmailRead.model_validate(result)
 
-
-# TODO: This method is temporary, while there is no access to blob storage.
-# With acess to blob storage, would need a file response from the blob
-# Implementation for blob storage would be like:
+# Previous local-disk implementation, before documents were persisted to blob storage:
 #
 # @router.get("/documents/{document_id}/pdf", summary="Get the source PDF for a document")
-# async def get_document_pdf(service: ExtractionServiceDep, document_id: str) -> StreamingResponse:
+# async def get_document_pdf(service: ExtractionServiceDep, document_id: str) -> FileResponse:
 #     """
-#     The invoice PDF for one document, streamed from blob storage.
+#     The invoice PDF for one document, as stored on disk (local emulation of blob storage).
 #
 #     - **document_id**: Document ID
 #     """
-#     stream = await service.get_document_pdf_stream(document_id)  # blob client .download_blob() -> bytes/iterator
-#     return StreamingResponse(stream, media_type="application/pdf")
+#     path = await service.get_document_pdf_path(document_id)
+#     return FileResponse(path, media_type="application/pdf")
 
 
 @router.get(
@@ -132,12 +129,12 @@ async def get_document_email(service: ExtractionServiceDep, document_id: str) ->
 )
 async def get_document_pdf(service: ExtractionServiceDep, document_id: str) -> FileResponse:
     """
-    The invoice PDF for one document, as stored on disk (local emulation of blob storage).
+    The invoice PDF for one document, retrieved from blob storage.
 
     - **document_id**: Document ID
     """
-    path = await service.get_document_pdf_path(document_id)
-    return FileResponse(path, media_type="application/pdf")
+    content = await service.get_document_pdf_bytes(document_id)
+    return Response(content=content, media_type="application/pdf")
 
 
 # An existence check against no resource in the policy: any valid token may ask.

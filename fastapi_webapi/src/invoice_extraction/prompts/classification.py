@@ -33,6 +33,14 @@ Use 'other' whenever the document is not one of the above, even if it contains
 financial information (shipping documents, customs documents, bank statements,
 insurance certificates, purchase orders, etc.).
 
+Settlement and reconciliation statements are 'other', not invoices. They settle
+a period between two parties instead of billing one sale, yet carry an
+invoice-like layout. Tells: a settled period rather than an issue date
+('Período liquidado', 'Settlement period'); wording like 'Liquidação', 'Acerto
+de contas', 'Statement of account', 'Extrato de conta', 'Self-billing'; lines
+for commissions, incentives or adjustments ('Ajustes'). IATA CASS documents are
+one of these. A title naming a settlement is evidence AGAINST 'invoice'.
+
 Also determine the document state (document_state) ONLY when explicitly visible:
 
 - original
@@ -66,13 +74,19 @@ DOCUMENT NUMBER
 
 Also read document_number: the document's OWN identifying number, as assigned by
 the supplier. Labels include Invoice No, Invoice Number, Fatura N.º, FT,
-Receipt No, Recibo N.º.
+Receipt No, Recibo N.º., NC, Credit Note.
 
-This is the one non-classification value you are asked for, and it is asked for
-here rather than at extraction because a later step must match duplicates
-against their originals BEFORE extraction runs. So read it on EVERY document,
-whatever its type or state — a proforma, a copy and a cancelled document all
+Read it on EVERY document, whatever its type or state — a proforma, a copy and a cancelled document all
 carry a number, and those are precisely the cases the match depends on.
+
+When a document prints several numbers, take the one under its own title label
+('Fatura', 'Invoice', 'Recibo'), never an internal reference ('Nº Interno',
+'Ref. Interna'). These often differ only in a leading segment.
+
+Read it complete, including any leading series digits or letters, even when
+separated by a space or set in their own box.
+
+The value must appear verbatim inside the evidence returned for it.
 
 Do NOT return a purchase order number, a supplier/client VAT or NIF, or a date.
 Return null when no such number is visible.

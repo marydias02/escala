@@ -405,11 +405,27 @@
       </div>
       <div class="flow-arrow">→</div>
       <div class="flow-stage">
+        <span class="stage-tag">Store</span>
+        <h4>Upload to blob</h4>
+        <p>The whole email folder to Azure Blob Storage, before any DB write or send.</p>
+        <code>utils/blob_storage.py</code>
+      </div>
+      <div class="flow-arrow">→</div>
+      <div class="flow-stage">
         <span class="stage-tag">Persist</span>
         <h4>Write to Postgres</h4>
-        <p>One <code>fct_processes</code> row, one <code>fct_documents</code> row per PDF.</p>
+        <p>One <code>fct_processes</code> row, one <code>fct_documents</code> row per PDF, then send &amp; settle.</p>
         <code>email_pipeline.py</code>
       </div>
+    </div>
+    <div class="note-box" style="margin-top: var(--space-4);">
+      <span class="label">Concurrency</span>
+      <code>EmailPipeline.run_batch</code> runs emails concurrently, bounded by
+      <code>EMAIL_MAX_WORKERS</code>, but the unit of concurrency is the <strong>thread</strong>, not the
+      email: emails sharing a Graph <code>conversationId</code> contend on <code>thread_message_count</code>
+      (a read-then-write <code>count(*) + 1</code>) and on <code>close_prior_processes</code>, so they are
+      grouped and run in order while groups run in parallel. Within one email,
+      <code>EXTRACTION_MAX_WORKERS</code> documents extract at once — the two multiply.
     </div>
   </section>
 
@@ -465,7 +481,8 @@
         <h3>Write the manifest</h3>
         <span class="span-name mono">IngestionPipeline.ingest_email</span>
       </div>
-      <p>Writes <code>docs/processed_emails/&lt;sanitized subject&gt;/email_content.json</code> (sender, subject, body, reception date, <code>message_id</code>, <code>thread_id</code>, annex/PDF counts) plus every split PDF. <code>IngestionPipeline.run()</code> always ingests — there is no manifest/skip check at this layer any more. Dedup happens once, upstream, in <code>email_pipeline.main()</code>, keyed on <code>message_id</code> (see §02); a folder name collision (subjects collide more than filenames did, and every manual reprocess collides by definition) is resolved by <code>_unique_folder</code> suffixing <code>_2</code>, <code>_3</code>, ... rather than skipping.</p>
+      <p>Writes <code>docs/processed_emails/&lt;YYYYMMDD-HHMMSS&gt;_&lt;sanitized subject&gt;/email_content.json</code> (sender, subject, body, reception date, <code>message_id</code>, <code>thread_id</code>, annex/PDF counts) plus every split PDF. The timestamp is the email's own <strong>reception</strong> date, not <code>now()</code>, so reprocessing one email always produces the same name; it also sorts the output directory chronologically and separates the same-subject emails that collide routinely. <code>IngestionPipeline.run()</code> always ingests — there is no manifest/skip check at this layer any more. Dedup happens once, upstream, in <code>email_pipeline.main()</code>, keyed on <code>message_id</code> (see §02); a genuine collision (one subject received in one second, and every manual reprocess) is resolved by <code>_reserve_folder</code> suffixing <code>_2</code>, <code>_3</code>, ... rather than skipping. <code>_reserve_folder</code> uses <code>mkdir(exist_ok=False)</code> — one atomic syscall — so two concurrent emails cannot both see a name free and share a folder, overwriting each other's manifest and with it the <code>message_id</code> outbound replies are addressed to.</p>
+      <p class="muted">This folder is working storage, not the record: once <code>_persist</code> has uploaded it to blob storage and written the rows, <code>_discard_local_folder</code> deletes it (see §07).</p>
       <div class="config-ref">
         <span class="label">Config (config.py)</span>
         <code>MAX_FOLDER_NAME = 80</code> — folder names truncated (Windows' 260-char path cap).<br>
@@ -478,11 +495,28 @@
   <section id="sec-04">
     <div class="section-head">
       <span class="section-num">04 — Extraction</span>
-      <h2>CLASSIFY → GATE → EXTRACT → PARSE → VALIDATE</h2>
+      <h2>DETECT → CLASSIFY → GATE → EXTRACT → PARSE → VALIDATE</h2>
       <p class="section-desc">
         Runs on one already-split PDF. <code>ExtractionPipeline.run(pdf_path)</code> in
         <code>extraction_pipeline.py</code>.
       </p>
+    </div>
+
+    <div class="stage-card">
+      <div class="stage-card-head">
+        <span class="stage-badge">DETECT</span>
+        <h3>Scan detection — PDF or page images</h3>
+        <span class="span-name mono">invoice_utils.page_mode.is_scanned_pdf</span>
+      </div>
+      <p>Deterministic, no LLM, and it decides what the classification and extraction stages actually <em>see</em>. A scanned page is one large image XObject covering the sheet, so any text layer it carries is the scanner's own OCR — well-formed and possibly wrong. The signal is therefore <strong>coverage</strong>, not character statistics: the fraction of the page area covered by image XObjects, taken as the max over the first <code>COVERAGE_SCAN_PAGES</code> pages (a scanned bundle can open with a clean cover sheet). Overlaps are counted rather than unioned and the ratio is left unclamped — scanners emit overlapping strips, so &gt; 1.0 is itself a scan fingerprint.</p>
+      <p class="muted">When it reads as scanned, <code>document_content_parts</code> sends the LLM stages rasterized page images instead of the PDF, because the API extracts a PDF's text layer rather than reading its pixels — whatever the scanner misread would simply be absent from what the model sees. Rendering produces nothing? It falls back to sending the PDF, so a rendering failure degrades rather than sending no document. The coverage ratio is put on the <code>extract:</code> span (and as the <code>input_mode</code> trace tag) precisely so a document near the threshold tells you the threshold needs tuning.</p>
+      <div class="config-ref">
+        <span class="label">Config (config.py)</span>
+        <code>SCANNED_COVERAGE_THRESHOLD = 1.0</code> — at or above this, read as image.<br>
+        <code>COVERAGE_SCAN_PAGES = 5</code> — pages inspected for coverage.<br>
+        <code>RENDER_DPI = 110</code> — 72 already reads correctly on the known scans; 110 is margin for finer print.<br>
+        <code>RENDER_MAX_PAGES = 5</code> — caps the pages sent as images (the information is usually at the start).
+      </div>
     </div>
 
     <div class="stage-card">
@@ -524,16 +558,16 @@
         <h3>Deterministic text baseline</h3>
         <span class="span-name mono">invoice_utils.pdf_parser.build_attachment_evidence · span 3-parsing</span>
       </div>
-      <p>No LLM. Extracts raw text from the PDF to give the validator ground truth to check the extraction against. Non-fatal — a parser failure just means validation proceeds without a text baseline (a common root cause of low-confidence results, visible in the trace).</p>
+      <p>No LLM. Extracts raw text from the PDF to give the validator ground truth to check the extraction against; it is told whether the document is scanned (§04 DETECT) so it can take the OCR route rather than trusting an authored text layer that isn't there. Non-fatal — a parser failure just means validation proceeds without a text baseline (a common root cause of low-confidence results, visible in the trace).</p>
     </div>
 
     <div class="stage-card">
       <div class="stage-card-head">
         <span class="stage-badge">VALIDATE</span>
         <h3>Cross-check &amp; correct</h3>
-        <span class="span-name mono">nodes.validate_document · spans 5-validation / 5a-validation:tools / 5b-validation:shaping</span>
+        <span class="span-name mono">nodes.validate_document · spans 5-validation / 5a-validation:tools / 5b-validation:shaping / 5c-validation:registry</span>
       </div>
-      <p>Produces the pipeline's final output, <code>ValidationReport</code> (<code>models/validation.py</code>) — the CORRECTED view (e.g. a swapped supplier/client is fixed here), each field a <code>Checked[T]</code> with <code>{value, confidence}</code>. Runs a tool-use loop (<code>5a-validation:tools</code>) that can independently call VAT/PO registry lookups (<code>tools/vat_registry.py</code>, <code>tools/po_confirmation.py</code>) before shaping the final structured report (<code>5b-validation:shaping</code>). After shaping, <code>nodes.validate.resolve_registry_ids</code> runs deterministically (no LLM) and fills <code>supplier_id</code>/<code>bu_id</code> from <code>dim_suppliers</code>/<code>dim_business_units</code> — VAT-first, name-fallback, since the registry (not the LLM) is the source of truth for id/name/VAT. Never raises: a failed lookup just leaves that party's id/name/vat as they were.</p>
+      <p>Produces the pipeline's final output, <code>ValidationReport</code> (<code>models/validation.py</code>) — the CORRECTED view (e.g. a swapped supplier/client is fixed here), each field a <code>Checked[T]</code> with <code>{value, confidence}</code>. Runs a tool-use loop (<code>5a-validation:tools</code>) that can independently call VAT/PO registry lookups (<code>tools/vat_registry.py</code>, <code>tools/po_confirmation.py</code>) before shaping the final structured report (<code>5b-validation:shaping</code>). After shaping, <code>nodes.validate.resolve_registry_ids</code> runs deterministically in its own span (<code>5c-validation:registry</code>, no LLM) and fills <code>supplier_id</code>/<code>bu_id</code> from <code>dim_suppliers</code>/<code>dim_business_units</code> — VAT-first, name-fallback, since the registry (not the LLM) is the source of truth for id/name/VAT. Never raises: a failed lookup just leaves that party's id/name/vat as they were.</p>
       <p class="muted">Naming note: <code>bu_name</code> / <code>bu_vat</code> in <code>ValidationReport</code> correspond to <code>client_name</code> / <code>client_vat</code> in <code>InvoiceData</code> — "BU" is the business unit being billed. <code>supplier_id</code> / <code>bu_id</code> are never read from the document itself — they only ever come from the registry lookup above, so a non-null VAT/name with a still-null id means "not found in the registry" (see §05).</p>
     </div>
   </section>
@@ -595,7 +629,20 @@
         <li><code>[]</code> — a PO-requiring supplier (logistics or both) and the document carries none → <span class="action-pill action-reply">Sent back to Supplier</span> ("Documento sem nota de encomenda...") — the supplier's omission, only they can fix it.</li>
         <li>a non-empty list — PO references on the document that don't resolve → <span class="action-pill action-manual">Validate Manually</span> — ours to investigate, not the supplier's.</li>
       </ul>
+      <p>Existence is only half the question. A PO that resolves is then checked for <strong>ownership</strong> — see the next card.</p>
       <p class="muted"><code>missing_pos</code> runs ONCE per document, in <code>_ingest_or_escalate</code>, and its answer is carried on the <code>DocumentDecision</code> as <code>po_problems</code>. <code>build_alerts_list</code> reads it back from there rather than repeating the lookups, so an alert and its routing action are the same answer by construction, not two answers that happen to agree. A document stopped by an earlier hurdle (did not validate, or failed <code>REQUIRED_FIELDS</code>) never reaches the PO check: it carries <code>NOT_CHECKED</code>, always routes to <span class="action-pill action-manual">Validate Manually</span>, and gets the alert <em>"Falha na validação de existência de pedido de compra"</em> so the reviewer knows the check never ran rather than reading its silence as "no PO problem". A supplier VAT we never read is not a PO problem — it's already caught by the <code>REQUIRED_FIELDS</code> gate above. The tools are invoked directly here (not via the LLM's tool calls), so the answer never depends on the LLM having actually called them during validation; a lookup failure is swallowed and logged rather than blocking routing.</p>
+    </div>
+
+    <div class="stage-card">
+      <h3 style="margin-bottom: var(--space-2);">PO ownership — does the PO belong to the parties we extracted?</h3>
+      <p>A PO can exist and still be the wrong one. <code>decisions.mismatched_pos</code> runs immediately after the existence check, on the POs that check already resolved, and asks whose the PO actually is. <code>tools.po_confirmation.po_conflicts(po, supplier_id, bu_id)</code> reads SAP's <code>EKKO</code> header and compares:</p>
+      <ul>
+        <li><code>EKKO.LIFNR</code> (vendor) against the document's <code>supplier_id</code> — both are <code>LFA1.LIFNR</code>, so they compare directly.</li>
+        <li><code>EKKO.BUKRS</code> (company code) against the document's <code>bu_id</code> — both are <code>T001.BUKRS</code>.</li>
+      </ul>
+      <p>Those two ids are the ones <code>resolve_registry_ids</code> (§04) already resolved from the document, so this is an id-to-id comparison — no VAT or name matching involved. Padding is ignored (<code>0000001015</code> and <code>1015</code> are the same vendor). A mismatch on <strong>either</strong> party routes the document to <span class="action-pill action-manual">Validate Manually</span> — never back to the supplier: a PO belonging to someone else is our data to investigate, exactly like an unresolvable PO above. One mismatch among several POs is enough to escalate the whole document.</p>
+      <p>The reviewer gets the two ids side by side, so the disagreement can be judged without opening SAP: <em>"Nota de encomenda com id do fornecedor 0000001015, mas extração identificou fornecedor com id 0000002030"</em> (and the <code>cliente</code> wording for a company-code mismatch).</p>
+      <p class="muted">Like every check on this path, it only ever escalates on <strong>positive evidence of a conflict</strong>. An unknown PO, a blank <code>LIFNR</code>/<code>BUKRS</code> on the EKKO row (≈7,000 real rows carry no vendor), an unresolved <code>supplier_id</code>/<code>bu_id</code>, or a failed lookup all read as "no mismatch" and let the document proceed. Degraded master data therefore makes the system miss mismatches; it never sends every invoice to manual review. Mismatches are carried on the <code>DocumentDecision</code> as <code>po_mismatches</code>, and <code>build_alerts_list</code> reads them back from there — same construction as <code>po_problems</code>, so alert and action cannot disagree.</p>
     </div>
   </section>
 
@@ -609,7 +656,9 @@
         routes it, pure and LLM-free. An <code>EmailAction</code> is what the email as a whole owes
         someone — <code>decide_email(...)</code> rolls the per-document actions up into a
         <strong>list</strong> (<code>EmailDecision.actions</code>), since one email can warrant
-        several things at once: a reply for one document AND a treasury forward for another.
+        several things at once: a reply for one document AND a treasury forward for another. A
+        third layer, <code>close_prior_process</code>, is the only rule that looks BACKWARDS: whether
+        an earlier email of the same thread is settled by this newer one arriving.
       </p>
     </div>
 
@@ -637,7 +686,7 @@
           <tr><th>Case</th><th>Condition</th><th>Action</th><th>Reason</th></tr>
         </thead>
         <tbody>
-          <tr><td class="case-id">A1</td><td>No attachments at all</td><td><span class="action-pill action-inbox">body decides</span></td><td>reply if invoice-related with no link, else Inbox</td></tr>
+          <tr><td class="case-id">A1</td><td>No attachments at all</td><td><span class="action-pill action-inbox">body decides</span></td><td>reply if the body delivers a document with no link, else Inbox</td></tr>
           <tr><td class="case-id">A2</td><td>Attachments present, none is a PDF</td><td><span class="action-pill action-inbox">body decides</span></td><td>same as A1</td></tr>
           <tr><td class="case-id">A3</td><td>Ingestion itself failed</td><td><span class="action-pill action-inbox">Left in Inbox</span></td><td>nothing was ever read</td></tr>
           <tr><td class="case-id">A4</td><td>Ingestion skipped (already processed)</td><td><span class="action-pill action-inbox">Left in Inbox</span></td><td>earlier run owns the decision</td></tr>
@@ -658,6 +707,7 @@
           <tr><td class="case-id">B1 / B5 / B7</td><td>Original</td><td>Any field missing or &lt; 0.7</td><td><span class="action-pill action-manual">Validate Manually</span></td></tr>
           <tr><td class="case-id">B1 / B5 / B7</td><td>Original, confident</td><td>Supplier requires PO, document has none</td><td><span class="action-pill action-reply">Sent back to Supplier</span> — "Documento sem nota de encomenda..."</td></tr>
           <tr><td class="case-id">B1 / B5 / B7</td><td>Original, confident</td><td>PO(s) present but not found in the PO list</td><td><span class="action-pill action-manual">Validate Manually</span></td></tr>
+          <tr><td class="case-id">B1 / B5 / B7</td><td>Original, confident</td><td>PO(s) found, but belonging to another supplier or business unit</td><td><span class="action-pill action-manual">Validate Manually</span> — ours to investigate, never the supplier's</td></tr>
           <tr><td class="case-id">B2</td><td>Proforma</td><td>—</td><td><span class="action-pill action-reply">Sent back to Supplier</span> — "Documento proforma, por favor enviar o original"</td></tr>
           <tr><td class="case-id">B3</td><td>Copy</td><td>—</td><td><span class="action-pill action-reply">Sent back to Supplier</span> — "Documento duplicado, por favor enviar o original"</td></tr>
           <tr><td class="case-id">B4 / B6 / B8</td><td>Cancelled</td><td>—</td><td><span class="action-pill action-inbox">Left in Inbox</span> — nothing to ask for, nothing to book</td></tr>
@@ -740,12 +790,60 @@
         <table class="matrix">
           <thead><tr><th>Status</th><th>When</th></tr></thead>
           <tbody>
-            <tr><td><span class="action-pill action-ingest">Fechado</span></td><td>Archived, or the only action is TREASURY, or the email is <code>out_of_scope</code> (no document and the body isn't invoice-related) — closed wins even on an escalated thread.</td></tr>
+            <tr><td><span class="action-pill action-ingest">Fechado</span></td><td>Archived, or the only action is TREASURY, or the email is <code>out_of_scope</code> (no document and the body isn't delivering one) — closed wins even on an escalated thread.</td></tr>
             <tr><td><span class="action-pill action-manual">Requer Ação</span></td><td>Something is still outstanding (REPLY/TREASURY/INBOX) AND the thread has hit <code>THREAD_ESCALATION_COUNT</code> — no further automatic reply will go out, so it is waiting on a human instead of the pipeline.</td></tr>
             <tr><td><span class="action-pill action-inbox">Aberto</span></td><td>Something is still outstanding, thread not escalated — the normal in-progress state.</td></tr>
           </tbody>
         </table>
       </div>
+    </div>
+
+    <div class="stage-card">
+      <h3 style="margin-bottom: var(--space-2);">Reply language (reply_language)</h3>
+      <p>One email gets one reply, so something must settle what language it is written in.
+      <code>reply_language(decisions, extractions)</code> asks only the documents that actually
+      <strong>drove</strong> the reply, and the FIRST of those to answer wins. Per document, in order:</p>
+      <ul>
+        <li><code>dim_suppliers.preferred_language</code> — the supplier told us. Asked only when
+        <code>resolve_registry_ids</code> identified them (§04), so it is silent for an unknown supplier.</li>
+        <li>the document's own <code>language</code>, read at classification — which is what covers proformas
+        and duplicates, neither of which reaches the registry lookup.</li>
+      </ul>
+      <p class="muted"><code>pt</code> and <code>en</code> are the only two letters that exist
+      (<code>REPLY_LETTER_TEMPLATES</code>), so anything else falls back to
+      <code>DEFAULT_REPLY_LANGUAGE</code> (<code>en</code>) — a French supplier gets the default rather than a
+      half-translated one. Each document carries EVERY wording and none of the choice: a
+      <code>DocumentDecision.reply_text</code> is a <code>{language: text}</code> mapping, deduped across
+      documents so two proformas in one email yield one reason, and only resolved to a single language when
+      <code>EmailDecision.reply_body</code> slots the reasons into that language's letter. For A1/A2 (no
+      document at all) the body classification is the only language evidence, so <code>intent.language</code>
+      decides. The treasury letter is always Portuguese — it goes to our own team, so the supplier's language
+      does not apply.</p>
+    </div>
+
+    <div class="stage-card">
+      <h3 style="margin-bottom: var(--space-2);">Layer 3 — closing an EARLIER process (close_prior_process)</h3>
+      <p>Every rule above decides the email in front of us. This one looks backwards: a supplier answering
+      on a thread is exactly what an earlier <span class="action-pill action-reply">Retornado ao
+      Fornecedor</span> was waiting for, so that process is revisited now rather than staying
+      <code>Aberto</code> forever. <code>email_pipeline.close_prior_processes</code> reads the candidates and
+      writes <code>Fechado</code>; the rule itself is pure.</p>
+      <p class="muted">Only still-<code>Aberto</code> processes on the same <code>thread_id</code> are
+      considered, and never the row just written — a <code>Requer Ação</code> process is waiting on a human,
+      and a supplier answering does not discharge that.</p>
+      <div class="table-wrap">
+        <table class="matrix">
+          <thead><tr><th>Earlier process's email_action</th><th>Closed?</th></tr></thead>
+          <tbody>
+            <tr><td>REPLY alone, or REPLY + TREASURY</td><td>Yes — what it was waiting for has arrived.</td></tr>
+            <tr><td>REPLY + INBOX</td><td>Only if EVERY document is settled: an <code>INGEST</code> document counts only once its <code>status</code> is <code>Ingerido</code>; <code>INBOX</code>/<code>REPLY</code>/<code>TREASURY</code>/<code>IGNORE</code> need nothing further. <code>MANUAL</code> is deliberately absent — a human has not looked at it yet.</td></tr>
+            <tr><td>anything without REPLY</td><td>No — nothing was ever asked of the supplier, so their answer settles nothing.</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="muted"><code>close_process_after_manual_send</code> applies the same settled-document test
+      from the other direction: whether a process is finished once a human has pushed one of its documents to
+      SAP.</p>
     </div>
   </section>
 
@@ -754,26 +852,35 @@
       <span class="section-num">07 — Persistence</span>
       <h2>What gets written, and when</h2>
       <p class="section-desc">
-        Three tables, written from <code>EmailPipeline._persist</code>. Booking to SAP is
-        <strong>not</strong> part of this — see the standalone pipeline callout below.
+        One blob upload and three tables, written from <code>EmailPipeline._persist</code> in that order,
+        then the sends and the backward-looking close. Booking to SAP is <strong>not</strong> part of this —
+        see the standalone pipeline callout below.
       </p>
     </div>
     <div class="card-grid">
+      <div class="mini-card">
+        <h4>Blob storage — first, before anything else</h4>
+        <p>The whole email folder (<code>email_content.json</code> plus every split PDF) is uploaded to Azure Blob Storage under <code>processed_emails/&lt;YYYY&gt;/&lt;MM&gt;/&lt;email folder&gt;/</code> — partitioned by <strong>reception</strong> date, so a late-processed email files under the period it belongs to. It runs FIRST on purpose: raising here leaves no row pointing at a missing blob and no supplier/treasury mail sent for an email we dropped. The container is not part of the key (it comes from settings), so the same path resolves in any environment. <code>utils/blob_storage.py</code>.</p>
+      </div>
       <div class="mini-card">
         <h4>fct_processes</h4>
         <p>One row per email: <code>sender_email</code>, <code>email_subject</code>, <code>email_content</code>, <code>reception_date</code>, <code>message_id</code>, <code>thread_id</code>, <code>thread_message_count</code>, <code>email_status</code> (Aberto/Fechado/Requer Ação, §06), <code>email_action</code> (the rolled-up action list). <code>process_id</code> is DB-generated and returned to key the documents below.</p>
       </div>
       <div class="mini-card">
         <h4>fct_documents</h4>
-        <p>One row per extracted PDF, inserted first at its day-one status (<code>derive_status</code> — "Criado", or "Failed" if the pipeline broke on it): document type/state label, final (post-suppression) <code>action</code>, <code>status</code>, flattened <code>ValidationReport</code> as JSONB (<code>document_content</code>), and <code>alerts_list</code>. <code>document_id</code> is generated in code (<code>uuid.uuid4()</code>), not left to the column default, so the whole batch inserts in one call yet every id is already known for the follow-up UPDATE below.</p>
+        <p>One row per extracted PDF, inserted at its day-one status (<code>derive_status</code>): "Failed" if the pipeline broke on it, "Ignorado" for an <code>IGNORE</code> or <code>INBOX</code> document (no follow-up and nothing pending), otherwise "Criado". Also: document type/state label, final <code>action</code>, flattened <code>ValidationReport</code> as JSONB (<code>document_content</code>), <code>alerts_list</code>, and <code>file_path</code> — the blob key of this document's own PDF, which is how the API reads it back. <code>document_id</code> is generated in code (<code>uuid.uuid4()</code>), not left to the column default, so the whole batch inserts in one call yet every id is already known for the follow-up UPDATE below.</p>
       </div>
       <div class="mini-card">
         <h4>fct_document_first_action</h4>
         <p>One immutable row per document, written once right after <code>fct_documents</code>, from the same <code>action</code> values — before any follow-up send or later manual review can change them. Always reflects the document's ORIGINAL routing, unlike <code>fct_documents.action</code>, which manual review overwrites.</p>
       </div>
       <div class="mini-card">
-        <h4>Follow-ups: reply / treasury forward</h4>
-        <p><code>_send_followups</code> runs after every row above already exists at "Criado". It sends the supplier reply and/or treasury forward — each ONCE per email, as a Graph reply/forward on the original <code>message_id</code>, deduped/joined across every REPLY/TREASURY document — then UPDATEs just those documents' <code>fct_documents.status</code> to "Comunicado" on success (left at "Criado" on send failure, e.g. <code>Mail.Send</code> not yet granted). <code>INGEST</code> rows are deliberately left at "Criado" here.</p>
+        <h4>Follow-ups: reply / treasury forward / archive</h4>
+        <p><code>_send_followups</code> runs after every row above already exists at "Criado". It sends the supplier reply and/or treasury forward — each ONCE per email, as a Graph reply/forward on the original <code>message_id</code>, deduped/joined across every REPLY/TREASURY document — then UPDATEs just those documents' <code>fct_documents.status</code> to "Comunicado" on success (left at "Criado" on send failure, e.g. <code>Mail.Send</code> not yet granted). <code>INGEST</code> rows are deliberately left at "Criado" here. The archive move runs last and acts on the message itself rather than on any document, so it touches no status.</p>
+      </div>
+      <div class="mini-card">
+        <h4>Then: settle earlier processes, drop the local folder</h4>
+        <p><code>close_prior_processes</code> runs last, after the row just written exists (so it cannot count itself): it revisits this thread's still-<code>Aberto</code> earlier processes and closes the ones this email settles — see §06, Layer 3. Once everything above has succeeded, <code>_discard_local_folder</code> deletes the working folder under <code>docs/processed_emails/</code>: blob storage holds the artifacts now. A failed delete is logged, never raised — the upload and the rows are already correct.</p>
       </div>
       <div class="mini-card">
         <h4>sap_pipeline.py — booking, separate and in bulk</h4>
@@ -781,7 +888,7 @@
       </div>
       <div class="mini-card">
         <h4>WRITE_TO_DB (config.py)</h4>
-        <p>Currently <code>True</code> in the checked-in default. When off, the pipeline can still run (and trace) without a database — no pool is opened, and dedup falls back to an empty skip set, so every fetched email runs unconditionally.</p>
+        <p>Currently <code>True</code> in the checked-in default. When off, the pipeline can still run (and trace) without a database — no pool is opened, and dedup falls back to an empty skip set, so every fetched email runs unconditionally. It gates the whole of <code>_persist</code>, so the blob upload, the sends and the local-folder deletion are all skipped too: the working folders stay on disk for inspection.</p>
       </div>
     </div>
   </section>
@@ -812,6 +919,8 @@
         <span class="tag-tool">verify_client_nif</span>               (TOOL)
         <span class="tag-tool">verify_supplier_nif</span>             (TOOL)
       <span class="tag-llm">5b-validation:shaping</span>               (LLM)
+      <span class="tag-chain">5c-validation:registry</span>              (CHAIN — deterministic, no LLM)
+  <span class="tag-llm">email-intent</span>                        (LLM — only when no PDF was usable)
   <span class="tag-chain">6-decision</span>                          (CHAIN — pure business rules)</pre>
     </div>
     <div class="two-col">
@@ -861,6 +970,20 @@ mlflow server --backend-store-uri sqlite:///mlflow.db --default-artifact-root ./
       <div class="cmd-block">cd fastapi_webapi
 .venv/Scripts/python.exe -m invoice_extraction.email_pipeline
 .venv/Scripts/python.exe -m invoice_extraction.sap_pipeline</div>
+    </div>
+
+    <div class="stage-card">
+      <h3 style="margin-bottom: var(--space-2);">Score the extraction (eval/)</h3>
+      <p class="muted"><code>eval/</code> runs the pipeline over a hand-labelled ground truth
+      (<code>docs/eval_ground_truth.json</code>) with MLflow GenAI evaluation — one scorer per field
+      (<code>eval/scorers.py</code>), plus the extraction gate itself, with amounts compared to a tolerance so a
+      float round-trip cannot fail a match. Unlike tracing, this needs a real tracking server: datasets require a
+      backend store, so an unset <code>MLFLOW_TRACKING_URI</code> is a hard error rather than a silent no-op.
+      Each scored row still leaves a full span tree, so a failed field is one click from the prompt that produced
+      it.</p>
+      <div class="cmd-block">cd fastapi_webapi
+.venv/Scripts/python.exe -m invoice_extraction.eval.create_dataset
+.venv/Scripts/python.exe -m invoice_extraction.eval.run_evaluation</div>
     </div>
   </section>
 

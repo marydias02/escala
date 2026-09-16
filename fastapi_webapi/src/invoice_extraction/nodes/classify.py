@@ -12,9 +12,7 @@ from invoice_extraction.prompts import (
 from invoice_extraction.tracing import STAGE_CLASSIFICATION, classification_summary, span
 
 
-def classify_document(
-    llm: BaseChatModel, doc: InvoiceDocument, *, scanned: bool = False
-) -> DocumentClassification:
+def classify_document(llm: BaseChatModel, doc: InvoiceDocument, *, scanned: bool = False) -> DocumentClassification:
     """Classify a single document: accounting type + legal state.
 
     `scanned` routes the document to the vision path: the API extracts a PDF's
@@ -25,9 +23,7 @@ def classify_document(
     human_message = build_classification_human_message(doc, scanned=scanned)
 
     with span(STAGE_CLASSIFICATION, "LLM") as stage_span:
-        stage_span.set_inputs(
-            {"filename": doc.filename, "input_mode": "image" if scanned else "pdf"}
-        )
+        stage_span.set_inputs({"filename": doc.filename, "input_mode": "image" if scanned else "pdf"})
         classification = invoke_with_retry(
             structured_llm, [CLASSIFICATION_SYSTEM_MESSAGE, human_message], stage="classification"
         )

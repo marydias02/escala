@@ -1,4 +1,4 @@
-from typing import Literal, Optional
+from typing import Literal
 
 from pydantic import BaseModel, Field
 
@@ -37,21 +37,17 @@ class DocumentClassification(BaseModel):
     financial information (shipping documents, customs documents, bank statements,
     insurance certificates, purchase orders, etc.).
 
+    Settlement/reconciliation statements (Liquidação, IATA CASS, statement of
+    account) are to be considered as invoice.
+
+    Documentos úncios de cobrança should be considered invoice
+
     Do not infer the type from filenames.
     Only use the document contents.
     """
     )
 
-    document_state: Optional[
-        Confident[
-            Literal[
-                "original",
-                "proforma",
-                "copy",
-                "cancelled",
-            ]
-        ]
-    ] = Field(
+    document_state: Confident[Literal["original", "proforma", "copy", "cancelled"]] | None = Field(
         default=None,
         description="""
     Legal status of the document.
@@ -67,9 +63,9 @@ class DocumentClassification(BaseModel):
     Cancelled (cancelled)
 
     Return null when no state is explicitly indicated.
-    """
+    """,
     )
-    document_number: Optional[Confident[str]] = Field(
+    document_number: Confident[str] | None = Field(
         default=None,
         description="""
     The document's own identifying number, as assigned by the supplier.
@@ -98,7 +94,7 @@ class DocumentClassification(BaseModel):
     """,
     )
 
-    language: Optional[Confident[str]] = Field(
+    language: Confident[str] | None = Field(
         default=None,
         description="""
     The language the document is written in, as a lowercase ISO 639-1 code:
@@ -111,15 +107,7 @@ class DocumentClassification(BaseModel):
     """,
     )
 
-    document_exception: Optional[
-        Confident[
-            Literal[
-                "condominio",
-                "insurance",
-                "extract"
-            ]
-        ]
-    ] = Field(
+    document_exception: Confident[Literal["condominio", "insurance", "extract"]] | None = Field(
         default=None,
         description="""
     Optional exceptions that should be populated when a document is a receipt.
@@ -131,7 +119,7 @@ class DocumentClassification(BaseModel):
     )
 
 
-def normalize_document_number(value: Optional[str]) -> Optional[str]:
+def normalize_document_number(value: str | None) -> str | None:
     """The comparable form of a document number, or None when there is nothing to compare.
 
     Suppliers rarely print the same number identically twice: "FT 2024/123",
@@ -146,15 +134,12 @@ def normalize_document_number(value: Optional[str]) -> Optional[str]:
     if value is None:
         return None
 
-    normalized = "".join(
-        char for char in value.casefold() if char.isalnum()
-    )
+    normalized = "".join(char for char in value.casefold() if char.isalnum())
     return normalized or None
 
 
-def document_number_of(classification: Optional[DocumentClassification]) -> Optional[str]:
+def document_number_of(classification: DocumentClassification | None) -> str | None:
     """The raw document number read at classification, or None."""
     if classification is None or classification.document_number is None:
         return None
     return classification.document_number.value
-

@@ -89,8 +89,7 @@ The second date, which appears after "DATA DE EMISSÃO:", relates to the goods a
 
 On freight/shipping invoices, the line-item table may have a column literally
 labelled "Base" that is a quantity or rate-calculation basis. Do not extract base_amount from that
-column. The real base_amount is the taxable base shown in the VAT/tax summary
-block near the totals (e.g. labelled "Basis VAT" or "Base Imponible").
+column. The real base_amount is near the totals (e.g. labelled "Basis VAT" or "Base Imponible").
 
 For Seaco, the Purcher Order number is the number between brackets after Lease number. 
 Example:
