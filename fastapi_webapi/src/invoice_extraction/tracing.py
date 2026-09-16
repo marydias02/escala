@@ -94,37 +94,47 @@ _ENABLED = False
 
 
 # --------------------------------------------------------------------------- #
-# base64 safety net
+# keep file bytes out of the trace store
 # --------------------------------------------------------------------------- #
 
-# Our prompts hand the model whole PDFs as base64 data-URIs (see
-# `prompts.classification.build_classification_human_message`) — up to ~1.6MB per
-# call, sent twice per document. MLflow 3.14 already lifts base64 out of
-# structured `{"type": "file"}` parts into a separate attachment, leaving a
-# short `mlflow-attachment://` reference in the span, so the common path is
-# handled upstream.
+# Our prompts hand the model whole PDFs and rendered page images as base64
+# data-URIs (see `page_mode.document_content_parts` and
+# `prompts.segmentation`) — up to ~1.6MB per call, sent twice per document.
+# We never want that in the trace store: left alone, MLflow 3.14's autolog
+# lifts it out of a structured `{"type": "file"}`/`{"type": "image_url"}` part
+# into its own attachment file under `mlruns/.../artifacts/attachments/`,
+# which is what made local trace storage balloon into the hundreds of MB.
 #
-# This processor is the safety net for what that does NOT cover: a data-URI
-# pasted into a plain text field, or attachment extraction being turned off via
-# MLFLOW_TRACE_EXTRACT_ATTACHMENTS. Without it those land in the trace store in
-# full and make the UI unusable.
-#
-# 200+ chars so ordinary short strings and inline icons are left alone.
+# `_FILE_BYTES_KEYS` below clears the bytes at the source, before autolog gets
+# to write anything. This regex is the fallback for what that does NOT cover:
+# a data-URI pasted into a plain text field. 200+ chars so ordinary short
+# strings and inline icons are left alone.
 _DATA_URI = re.compile(r"data:[\w.+-]+/[\w.+-]+;base64,[A-Za-z0-9+/=]{200,}")
 
 
-def _redact(obj):
-    """Recursively replace inline base64 data-URIs with a short marker.
+# The two message-part keys our prompts use to carry file bytes (see
+# `page_mode.document_content_parts` and `prompts.segmentation`): `file_data`
+# for a whole PDF, `url` for a rendered page image. Cleared unconditionally —
+# we never want these bytes in the trace store — and before MLflow's autolog
+# runs, since that is the step that would otherwise lift them out into a
+# standalone attachment file under `mlruns/.../artifacts/attachments/`.
+_FILE_BYTES_KEYS = {"file_data", "url"}
+
+
+def _redact(obj, parent_key: Optional[str] = None):
+    """Recursively strip file bytes and inline base64 data-URIs from a span payload.
 
     Walks lists as well as dicts: a chat-model span's `inputs` is a *list* of
     message dicts, not a dict, so a `.items()`-only walk would miss it entirely.
     """
     if isinstance(obj, str):
+        if parent_key in _FILE_BYTES_KEYS:
+            return None
         return _DATA_URI.sub(lambda m: f"<base64 stripped ({len(m.group(0))} chars)>", obj)
     if isinstance(obj, list):
         return [_redact(item) for item in obj]
     if isinstance(obj, dict):
-        return {key: _redact(value) for key, value in obj.items()}
+        return {key: _redact(value, parent_key=key) for key, value in obj.items()}
     return obj
 
 
