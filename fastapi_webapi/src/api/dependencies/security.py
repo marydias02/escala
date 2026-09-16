@@ -260,12 +260,12 @@ swagger_security_kwargs: dict[str, Any] = dict(
 # You can easly adapt this by changing the way you define the `policy` to include rules (functions/lambdas) and changing the `isSubjectAuthorized(...)` to evaluate them.
 
 policy = {
-    "admin": {
+    "Admin": {
         "documents": {"read", "update"},
         "processes": {"read"},
         "runs": {"read", "create"},
     },
-    "user": {
+    "User": {
         "documents": {"read", "update"},
         "processes": {"read"},
         "runs": {"read"},

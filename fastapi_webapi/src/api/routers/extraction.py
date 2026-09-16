@@ -109,6 +109,7 @@ async def get_document_email(service: ExtractionServiceDep, document_id: str) ->
     result = await service.get_document_email(document_id)
     return DocumentEmailRead.model_validate(result)
 
+
 # Previous local-disk implementation, before documents were persisted to blob storage:
 #
 # @router.get("/documents/{document_id}/pdf", summary="Get the source PDF for a document")
@@ -127,7 +128,7 @@ async def get_document_email(service: ExtractionServiceDep, document_id: str) ->
     summary="Get the source PDF for a document",
     dependencies=[READ_DOCUMENTS],
 )
-async def get_document_pdf(service: ExtractionServiceDep, document_id: str) -> FileResponse:
+async def get_document_pdf(service: ExtractionServiceDep, document_id: str) -> Response:
     """
     The invoice PDF for one document, retrieved from blob storage.
 
