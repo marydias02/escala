@@ -39,7 +39,7 @@ class InvoiceData(BaseModel):
     supplier_vat: Confident[str] | None = Field(
         default=None,
         description="""
-        Tax identification number (VAT/NIF/NIPC/BRN) of the supplier.
+        Tax identification number (VAT/NIF/NIPC/BRN/Legal person/Registration) of the supplier.
 
         Usually appears close to the supplier name.
 
