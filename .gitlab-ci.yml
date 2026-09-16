@@ -49,7 +49,7 @@ include:
       if: $CI_COMMIT_TAG
       when: never
 
-.main_plotly_rules: &plotly_rules
+.main_plotly_rules: &main_plotly_rules
   rules:
     - changes:
       - '**/plotly_webapp/**/*'
@@ -63,7 +63,7 @@ include:
       when: never
 
 
-.main_fastapi_rules: &fastapi_rules
+.main_fastapi_rules: &main_fastapi_rules
   rules:
     - changes:
       - '**/fastapi_webapi/**/*'
