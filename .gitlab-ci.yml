@@ -54,7 +54,7 @@ include:
     - changes:
       - '**/plotly_webapp/**/*'
       - '**/ops/**/*'
-      if: $CI_COMMIT_BRANCH == main
+      if: $CI_COMMIT_BRANCH == 'main'
       when: on_success
     - changes:
       - '**/plotly_webapp/**/*'
@@ -68,7 +68,7 @@ include:
     - changes:
       - '**/fastapi_webapi/**/*'
       - '**/ops/**/*'
-      if: $CI_COMMIT_BRANCH == main
+      if: $CI_COMMIT_BRANCH == 'main'
       when: on_success
     - changes:
       - '**/fastapi_webapi/**/*'
