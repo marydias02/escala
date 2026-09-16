@@ -1,4 +1,3 @@
-import os
 from concurrent.futures import ThreadPoolExecutor
 from copy import deepcopy
 from threading import Lock, local
@@ -7,9 +6,7 @@ from time import monotonic
 import requests
 from requests.adapters import HTTPAdapter
 
-BASE_URL = "http://localhost:8000"
-
-HEADERS = {"X-API-KEY": os.environ.get("API_KEY", "")}
+from config import BACKEND_BASE_URL
 
 _REQUEST_TIMEOUT = 10
 _DASHBOARD_CACHE_TTL_SECONDS = 20
@@ -25,7 +22,6 @@ def _get_session() -> requests.Session:
     session = getattr(_thread_local, "session", None)
     if session is None:
         session = requests.Session()
-        session.headers.update(HEADERS)
         adapter = HTTPAdapter(pool_connections=8, pool_maxsize=8)
         session.mount("http://", adapter)
         session.mount("https://", adapter)
@@ -33,10 +29,11 @@ def _get_session() -> requests.Session:
     return session
 
 
-def _request(method: str, path: str, **kwargs) -> requests.Response:
+def _request(method: str, path: str, token: str, **kwargs) -> requests.Response:
     response = _get_session().request(
         method,
-        f"{BASE_URL}{path}",
+        f"{BACKEND_BASE_URL}{path}",
+        headers={"Authorization": f"Bearer {token}"},
         timeout=_REQUEST_TIMEOUT,
         **kwargs,
     )
@@ -44,23 +41,12 @@ def _request(method: str, path: str, **kwargs) -> requests.Response:
     return response
 
 
-def get_big_numbers():
-    return _request("GET", "/extraction/big-numbers").json()
+def get_big_numbers(token: str):
+    return _request("GET", "/extraction/big-numbers", token).json()
 
 
-def get_priority_documents():
-    rows = _request("GET", "/extraction/priority-documents").json()
-
-    for row in rows:
-        created_at = row.get("created_at")
-        if created_at:
-            row["created_at"] = created_at[:16].replace("T", " ")
-
-    return rows
-
-
-def get_all_documents():
-    rows = _request("GET", "/extraction/documents").json()
+def get_priority_documents(token: str):
+    rows = _request("GET", "/extraction/priority-documents", token).json()
 
     for row in rows:
         created_at = row.get("created_at")
@@ -70,8 +56,19 @@ def get_all_documents():
     return rows
 
 
-def get_pending_processes():
-    rows = _request("GET", "/extraction/pending-processes").json()
+def get_all_documents(token: str):
+    rows = _request("GET", "/extraction/documents", token).json()
+
+    for row in rows:
+        created_at = row.get("created_at")
+        if created_at:
+            row["created_at"] = created_at[:16].replace("T", " ")
+
+    return rows
+
+
+def get_pending_processes(token: str):
+    rows = _request("GET", "/extraction/pending-processes", token).json()
 
     for row in rows:
         reception_date = row.get("reception_date")
@@ -85,12 +82,12 @@ def get_pending_processes():
     return rows
 
 
-def get_document_details(doc_id: str):
-    return _request("GET", f"/extraction/documents/{doc_id}").json()
+def get_document_details(token: str, doc_id: str):
+    return _request("GET", f"/extraction/documents/{doc_id}", token).json()
 
 
-def get_document_email(doc_id: str):
-    data = _request("GET", f"/extraction/documents/{doc_id}/email").json()
+def get_document_email(token: str, doc_id: str):
+    data = _request("GET", f"/extraction/documents/{doc_id}/email", token).json()
     reception_date = data.get("reception_date")
     if reception_date:
         data["reception_date"] = reception_date[:16].replace("T", " ")
@@ -99,6 +96,7 @@ def get_document_email(doc_id: str):
 
 
 def alter_document_details(
+    token: str,
     document_id: str,
     alerts_list: list[str],
     document_content: dict,
@@ -121,14 +119,15 @@ def alter_document_details(
     response = _request(
         "PATCH",
         "/extraction",
+        token,
         json=payload,
     )
     invalidate_dashboard_cache()
     return response.json()
 
 
-def get_next_priority_document(document_id: str):
-    return _request("GET", f"/extraction/next-priority-document/{document_id}").json()
+def get_next_priority_document(token: str, document_id: str):
+    return _request("GET", f"/extraction/next-priority-document/{document_id}", token).json()
 
 
 def invalidate_dashboard_cache() -> None:
@@ -140,7 +139,7 @@ def invalidate_dashboard_cache() -> None:
         _dashboard_cache_expires_at = 0.0
 
 
-def get_extraction_dashboard(*, force_refresh: bool = False) -> dict:
+def get_extraction_dashboard(token: str, *, force_refresh: bool = False) -> dict:
     """Fetch independent dashboard resources concurrently and cache them briefly."""
     global _dashboard_cache, _dashboard_cache_expires_at
 
@@ -150,10 +149,10 @@ def get_extraction_dashboard(*, force_refresh: bool = False) -> dict:
             return deepcopy(_dashboard_cache)
 
         futures = {
-            "kpis": _dashboard_executor.submit(get_big_numbers),
-            "priority_documents": _dashboard_executor.submit(get_priority_documents),
-            "all_documents": _dashboard_executor.submit(get_all_documents),
-            "pending_documents": _dashboard_executor.submit(get_pending_processes),
+            "kpis": _dashboard_executor.submit(get_big_numbers, token),
+            "priority_documents": _dashboard_executor.submit(get_priority_documents, token),
+            "all_documents": _dashboard_executor.submit(get_all_documents, token),
+            "pending_documents": _dashboard_executor.submit(get_pending_processes, token),
         }
         dashboard = {name: future.result() for name, future in futures.items()}
 

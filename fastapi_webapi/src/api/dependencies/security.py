@@ -1,65 +1,135 @@
-from functools import lru_cache
+import time
 from threading import Lock
+from typing import Annotated, Any
 from urllib.parse import urlparse
 
 import httpx
-from argon2 import PasswordHasher
-from argon2.exceptions import VerifyMismatchError
 from fastapi import Depends, HTTPException, Request
-from fastapi.security import APIKeyHeader, OAuth2AuthorizationCodeBearer
+from fastapi.concurrency import run_in_threadpool
+from fastapi.security import OAuth2AuthorizationCodeBearer
 from jose import ExpiredSignatureError, JWTError, jwt
 from jose.exceptions import JWTClaimsError
 from loguru import logger
-from typing_extensions import Annotated, Any
 
 import api.properties as props
 from api.properties import AUDIENCE
 
-# API KEY ===================================================================
-
-ph = PasswordHasher()
-
-api_key_header = APIKeyHeader(name="X-API-KEY", auto_error=True)
-_api_key_verification_lock = Lock()
-
-
-@lru_cache(maxsize=8)
-def _verify_api_key_hash(hashed_api_key: str, api_key: str) -> bool:
-    """Cache successful checks; invalid-key exceptions are never cached."""
-    return ph.verify(hashed_api_key, api_key)
-
-
-def verify_api_key(api_key: str = Depends(api_key_header)):
-    try:
-        if not api_key:
-            raise HTTPException(status_code=401, detail="Not Authenticated")
-        # Prevent identical first requests from repeating the expensive Argon2
-        # calculation before the cache has been populated in this worker.
-        with _api_key_verification_lock:
-            _verify_api_key_hash(props.HASHED_API_KEY, api_key)
-        return True
-    except VerifyMismatchError:
-        raise HTTPException(status_code=401, detail="Invalid API Key")
-
-
 ## OPENID CONNECT =======================================================
-@lru_cache(maxsize=1)
+# Provider metadata is cached for props.JWKS_CACHE_TTL_SECONDS. MIN_REFETCH_SECONDS
+# floors how often anything off-schedule -- an unknown kid, a failed refresh --
+# may go back to the provider.
+MIN_REFETCH_SECONDS = 300
+
+_discovery_cache: dict[str, tuple[float, dict]] = {}
+_discovery_last_failed: dict[str, float] = {}
+_discovery_lock = Lock()
+
+
+def _cached_discovery(metadata_url, now):
+    """The cached document while it may still be served, else None."""
+    cached = _discovery_cache.get(metadata_url)
+    if not cached:
+        return None
+    last_failed = _discovery_last_failed.get(metadata_url)
+    if last_failed is not None and now - last_failed < MIN_REFETCH_SECONDS:
+        return cached[1]
+    if now - cached[0] < props.JWKS_CACHE_TTL_SECONDS:
+        return cached[1]
+    return None
+
+
 def oidc_discovery(metadata_url):
-    response = httpx.get(metadata_url)
-    response.raise_for_status()
-    return response.json()
+    document = _cached_discovery(metadata_url, time.monotonic())
+    if document is not None:
+        return document
+    with _discovery_lock:
+        # Re-check: a thread that held the lock before us may have just refreshed,
+        # which is what keeps a cold start from stampeding the provider.
+        now = time.monotonic()
+        document = _cached_discovery(metadata_url, now)
+        if document is not None:
+            return document
+        try:
+            response = httpx.get(metadata_url)
+            response.raise_for_status()
+            document = response.json()
+        except Exception as exc:
+            # A stale document still names a usable issuer and jwks_uri, so a transient
+            # provider outage must not take otherwise-valid tokens down with it.
+            cached = _discovery_cache.get(metadata_url)
+            if cached:
+                _discovery_last_failed[metadata_url] = now
+                logger.warning(f"OIDC discovery refresh failed ({metadata_url!r}): {exc}. Serving cached document.")
+                return cached[1]
+            raise
+        _discovery_cache[metadata_url] = (now, document)
+        _discovery_last_failed.pop(metadata_url, None)
+        return document
 
 
-@lru_cache(maxsize=1)
-def jwks_keys(metadata_url):
-    response = httpx.get(oidc_discovery(metadata_url)["jwks_uri"])
-    response.raise_for_status()
-    return response.json()["keys"]
+_jwks_cache: dict[str, tuple[float, list]] = {}
+_jwks_last_forced: dict[str, float] = {}
+_jwks_last_failed: dict[str, float] = {}
+_jwks_lock = Lock()
 
 
-def is_not_microsoft_multitenant(issuer):  # Used for setting defaults only
+def _cached_jwks(metadata_url, now, force_refresh):
+    """The cached keys while they may still be served, else None."""
+    cached = _jwks_cache.get(metadata_url)
+    if not cached:
+        return None
+    fetched_at, keys = cached
+    last_failed = _jwks_last_failed.get(metadata_url)
+    if last_failed is not None and now - last_failed < MIN_REFETCH_SECONDS:
+        return keys
+    if force_refresh:
+        last_forced = _jwks_last_forced.get(metadata_url)
+        if last_forced is not None and now - last_forced < MIN_REFETCH_SECONDS:
+            return keys
+        return None
+    if now - fetched_at < props.JWKS_CACHE_TTL_SECONDS:
+        return keys
+    return None
+
+
+def cached_jwks_kids(metadata_url) -> set:
+    """Key ids already held, without triggering a fetch."""
+    cached = _jwks_cache.get(metadata_url)
+    return {key.get("kid") for key in cached[1]} if cached else set()
+
+
+def jwks_keys(metadata_url, force_refresh: bool = False):
+    keys = _cached_jwks(metadata_url, time.monotonic(), force_refresh)
+    if keys is not None:
+        return keys
+    # Ordering note: this lock is always taken before _discovery_lock, never after.
+    with _jwks_lock:
+        now = time.monotonic()
+        keys = _cached_jwks(metadata_url, now, force_refresh)
+        if keys is not None:
+            return keys
+        try:
+            response = httpx.get(oidc_discovery(metadata_url)["jwks_uri"])
+            response.raise_for_status()
+            keys = response.json()["keys"]
+        except Exception as exc:
+            cached = _jwks_cache.get(metadata_url)
+            if cached:
+                _jwks_last_failed[metadata_url] = now
+                logger.warning(f"JWKS refresh failed ({metadata_url!r}): {exc}. Serving cached keys.")
+                return cached[1]
+            raise
+        if force_refresh:
+            _jwks_last_forced[metadata_url] = now
+        _jwks_cache[metadata_url] = (time.monotonic(), keys)
+        _jwks_last_failed.pop(metadata_url, None)
+        return keys
+
+
+def is_not_microsoft_multitenant(metadata_url):  # Used for setting defaults only
     return not any(
-        issuer.startswith(f"https://login.microsoftonline.com/{t}") for t in ("common", "organizations", "consumers")
+        metadata_url.startswith(f"https://login.microsoftonline.com/{t}")
+        for t in ("common", "organizations", "consumers")
     )
 
 
@@ -110,22 +180,43 @@ class OpenIdConnectAuthorizationCodeBearer(OAuth2AuthorizationCodeBearer):
             scopes=discovered_scopes,
         )
 
-    async def decode_verified_token(self, token: str) -> dict[str, Any]:
+    def _decode(self, token: str, force_refresh: bool = False) -> dict[str, Any]:
+        discovery = oidc_discovery(self.metadata_url)
+        jwk_keys = jwks_keys(self.metadata_url, force_refresh=force_refresh)
+        algos = discovery.get("id_token_signing_alg_values_supported", ["RS256"])
+        return jwt.decode(
+            token,
+            jwk_keys,
+            algorithms=algos,
+            audience=self._audience,
+            issuer=discovery["issuer"],
+            options={"verify_aud": self._validate_aud, "verify_iss": self._validate_iss},
+        )
+
+    def _signed_by_unknown_key(self, token: str) -> bool:
+        """Whether the token names a signing key we have not fetched yet."""
         try:
-            discovery = oidc_discovery(self.metadata_url)
-            jwk_keys = jwks_keys(self.metadata_url)
+            kid = jwt.get_unverified_header(token).get("kid")
+        except JWTError:
+            return False  # Malformed beyond the header; refetching cannot help.
+        return kid is not None and kid not in cached_jwks_kids(self.metadata_url)
 
-            algos = discovery.get("id_token_signing_alg_values_supported", ["RS256"])
-            issuer = discovery["issuer"]
+    async def decode_verified_token(self, token: str) -> dict[str, Any]:
+        # _decode does blocking I/O on a cache miss; keep it off the event loop.
+        try:
+            return await run_in_threadpool(self._decode, token)
+        except httpx.HTTPError as e:
+            raise HTTPException(status_code=503, detail="Authentication provider unavailable") from e
+        except (ExpiredSignatureError, JWTClaimsError) as e:
+            raise HTTPException(status_code=401, detail=str(e), headers={"WWW-Authenticate": "Bearer"})
+        except JWTError as e:
+            if not self._signed_by_unknown_key(token):
+                raise HTTPException(status_code=401, detail=str(e), headers={"WWW-Authenticate": "Bearer"})
 
-            return jwt.decode(
-                token,
-                jwk_keys,
-                algorithms=algos,
-                audience=self._audience,
-                issuer=issuer,
-                options={"verify_aud": self._validate_aud, "verify_iss": self._validate_iss},
-            )
+        try:
+            return await run_in_threadpool(self._decode, token, force_refresh=True)
+        except httpx.HTTPError as e:
+            raise HTTPException(status_code=503, detail="Authentication provider unavailable") from e
         except (ExpiredSignatureError, JWTError, JWTClaimsError) as e:
             raise HTTPException(status_code=401, detail=str(e), headers={"WWW-Authenticate": "Bearer"})
 
@@ -170,16 +261,14 @@ swagger_security_kwargs: dict[str, Any] = dict(
 
 policy = {
     "admin": {
-        "items": {"create", "read", "update", "delete", "assignUsers"},
-        "users": {"create", "read", "update", "delete", "updateSelf"},
+        "documents": {"read", "update"},
+        "processes": {"read"},
+        "runs": {"read", "create"},
     },
     "user": {
-        "items": {"read", "update"},
-        "users": {"read", "updateSelf"},
-    },
-    "unassigned": {
-        "items": {"read"},
-        "users": {"read"},
+        "documents": {"read", "update"},
+        "processes": {"read"},
+        "runs": {"read"},
     },
 }
 

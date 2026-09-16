@@ -1,14 +1,15 @@
-import dash
-from dash import dcc, html
 from datetime import datetime
 
+import dash
+from dash import dcc, html
+
 from assets.api_calls.validation_api import get_process_messages, get_validation_page_data
+from auth.msal_client import get_access_token
 from components.cards.indicator_card.indicator_card import IndicatorCard
-from components.right_drawer.right_drawer import RightDrawer
 from components.page_header.page_header import PageHeader
+from components.right_drawer.right_drawer import RightDrawer
 from components.section.section import Section
 from components.table.V1.table import Table as TableV1
-
 
 dash.register_page(__name__, path="/validation", title="Validacao")
 
@@ -26,9 +27,7 @@ documents_col_def = [
         "headerName": "Financeiro",
         "width": 120,
         "cellDataType": "text",
-        "valueFormatter": {
-            "function": "params.value ? 'Sim' : 'Não'"
-        },
+        "valueFormatter": {"function": "params.value ? 'Sim' : 'Não'"},
     },
     {"field": "issue", "headerName": "Issue", "minWidth": 180},
     {"field": "owner", "headerName": "Owner", "minWidth": 150},
@@ -36,9 +35,7 @@ documents_col_def = [
         "field": "reconciled",
         "headerName": "Reconciliado",
         "width": 150,
-        "valueFormatter": {
-            "function": "params.value ? 'Sim' : 'Não'"
-        },
+        "valueFormatter": {"function": "params.value ? 'Sim' : 'Não'"},
     },
     {"field": "status", "headerName": "Estado", "width": 280, "cellRenderer": "SAPStatus"},
 ]
@@ -77,7 +74,9 @@ def _message_bubble(message: dict) -> html.Div:
     is_system_sender = sender.casefold() == "system"
 
     return html.Div(
-        className="validation__message validation__message--system" if is_system_sender else "validation__message validation__message--user",
+        className="validation__message validation__message--system"
+        if is_system_sender
+        else "validation__message validation__message--user",
         children=[
             html.Div(content, className="validation__message-content"),
             html.Div(_format_message_timestamp(timestamp), className="validation__message-timestamp"),
@@ -164,7 +163,7 @@ def layout():
     prevent_initial_call=False,
 )
 def load_validation_content(_pathname):
-    dashboard = get_validation_page_data()
+    dashboard = get_validation_page_data(get_access_token())
     kpis = dashboard["kpis"]
     sap_processes = dashboard["sap_processes"]
 
@@ -285,7 +284,7 @@ def toggle_validation_drawer(selected_rows, close_clicks):
 
     if selected_rows:
         process_ref_no = selected_rows[0].get("reference_no")
-        messages = get_process_messages(str(process_ref_no)) if process_ref_no else []
+        messages = get_process_messages(get_access_token(), str(process_ref_no)) if process_ref_no else []
         return "right-sidebar", _build_messages_section(messages)
 
     return "right-sidebar sidebar--collapsed", dash.no_update

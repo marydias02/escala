@@ -1,8 +1,8 @@
 import dash
-from dash import html, dcc, Input, Output, State, callback_context, no_update, ALL
-from dash_iconify import DashIconify
-from dash.dcc import Tab
+import pandas as pd
 import requests
+from dash import ALL, Input, Output, State, callback_context, dcc, html, no_update
+from dash_iconify import DashIconify
 from requests import RequestException
 
 from assets.api_calls.extraction_api import (
@@ -11,29 +11,14 @@ from assets.api_calls.extraction_api import (
     get_document_email,
     get_next_priority_document,
 )
-from components.page_header.page_header import PageHeader
+from auth.msal_client import get_access_token
 from components.banner.banner import TableBanner
-from components.tabs.tabs import Tabs
 from components.button.button import Button
-from components.section.section import Section
-from components.label.label import Label
 from components.checkbox.checkbox import Checkbox
-from components.cards.indicator_card.indicator_card import IndicatorCard
+from components.label.label import Label
+from components.page_header.page_header import PageHeader
 from components.right_drawer.right_drawer import RightDrawer, register_right_drawer_callbacks
-from utils.base.grid_system.grid import Col, Container, Row
-
-from components.table.V1.table import Table as TableV1
-from callbacks.table.V1.secondary_actions_callback import (
-    create_quickfilter_secondary, create_sort_secondary, create_reset_secondary )
-from callbacks.table.V1.primary_action_callback import (
-    create_export_csv_callback_v1 )
-from utils.table.data_loader import get_brand_and_year_columns, load_group_table_data
-from components.table.shared.col_def_config import (
-    create_simple_table_column_defs , create_demo_tab_table )
-from components.table.shared.action_bar import action_bar
-
-import pandas as pd
-from functools import partial
+from components.section.section import Section
 
 
 def _action_banner_props(action):
@@ -58,12 +43,12 @@ register_right_drawer_callbacks(
 )
 
 
-def _build_email_drawer_content(document_id):
+def _build_email_drawer_content(token, document_id):
     if not document_id:
         return "Sem documento selecionado."
 
     try:
-        email = get_document_email(str(document_id))
+        email = get_document_email(token, str(document_id))
     except Exception:
         return "Não foi possível carregar o email."
 
@@ -120,7 +105,6 @@ def _build_email_drawer_content(document_id):
     )
 
 
-
 def layout(ref_number=None, **_kwargs):
     """Render the route immediately; document data is populated by a callback."""
     return html.Div(
@@ -141,13 +125,13 @@ def layout(ref_number=None, **_kwargs):
     Input("email-detail-ref-number", "data"),
 )
 def load_email_detail(ref_number):
-    return _build_email_detail(ref_number)
+    return _build_email_detail(get_access_token(), ref_number)
 
 
-def _build_email_detail(ref_number):
+def _build_email_detail(token, ref_number):
     document_lookup_failed = False
     try:
-        match = get_document_details(str(ref_number))
+        match = get_document_details(token, str(ref_number))
     except requests.RequestException as exc:
         match = None
         document_lookup_failed = getattr(getattr(exc, "response", None), "status_code", None) != 404
@@ -164,11 +148,7 @@ def _build_email_detail(ref_number):
             return None
 
         issue_date = field_value("issue_date")
-        data_recepcao = (
-            pd.to_datetime(issue_date, dayfirst=True).date()
-            if issue_date
-            else None
-        )
+        data_recepcao = pd.to_datetime(issue_date, dayfirst=True).date() if issue_date else None
 
         business_unit = field_value("bu_name")
         # bu_vat = fields.get("bu_vat", {}).get("value")
@@ -230,224 +210,246 @@ def _build_email_detail(ref_number):
                             ),
                         ],
                     ),
-                html.Section(
-                    className="email_detail__content_section",
-                    children=[
-                        # html.H1("Validação"),
-                        # html.P("Extração dos campos da fatura original", className="body-sm subtitle"),
-                        html.Section(
-                          className="email_detail__inside_content_section",
-                          children=[
-                            html.Div(
-                                "Backend indisponível. Verifique o servidor em localhost:8000.",
-                                className="email_detail__backend_warning",
-                            ) if match is None else html.Span(),
+                    html.Section(
+                        className="email_detail__content_section",
+                        children=[
+                            # html.H1("Validação"),
+                            # html.P("Extração dos campos da fatura original", className="body-sm subtitle"),
                             html.Section(
-                              className="email_detail__content_left_section",
-                              children=[
-                                Section(
-                                  title="Alertas",
-                                  content=[
-                                    html.Ul(
-                                        className="email_detail__invoice_errors",
-                                        children=[
-                                            html.Li(
-                                                html.Div(
-                                                    [
-                                                        html.Div(
-                                                            [
-                                                                html.H4(a.split(":", 1)[0].strip(), className="body-sm"),
-                                                                Label(a.split(":", 1)[1].strip() if ":" in a else ""),
-                                                            ],
-                                                            className="email_detail__invoice_text",
-                                                        ),
-                                                        html.Div(
-                                                            [
-                                                                Button(
-                                                                    "Ok",
-                                                                    id={
-                                                                        "type": "email-detail-correction-button",
-                                                                        "alert": a,
-                                                                    },
-                                                                    icon="lucide:check",
-                                                                    variant="outline",
-                                                                ) if a.split(":", 1)[0].strip() in {
-                                                                    "Confiança baixa",
-                                                                    "Nota de encomenda não encontrada",
-                                                                    "NIF do fornecedor não encontrado",
-                                                                } else None,
-                                                                html.Div(
-                                                                    DashIconify(icon="lucide:triangle-alert", className="email_detail__invoice_button_icon"),
-                                                                ),
-                                                            ],
-                                                            className="email_detail__invoice_actions",
-                                                        ),
-                                                      ],
-                                                    className="email_detail__invoice_item",
-                                                )
-                                            )
-                                            for a in alerts
-                                        ],
+                                className="email_detail__inside_content_section",
+                                children=[
+                                    html.Div(
+                                        "Backend indisponível. Verifique o servidor em localhost:8000.",
+                                        className="email_detail__backend_warning",
                                     )
-                                  ],
-                                  open=True
-                                ),
-                                html.Section(
-                                  className="email_detail__field_extraction_section",
-                                  children=[
-                                      html.H1("Extração dos Campos"),
-                                        html.Section(
-                                            className="email_detail__field_grid",
-                                            children=[
-                                                html.Div(
-                                                    className="email_detail__field",
-                                                    children=[
-                                                        Label(label_text="Unidade de Negócio"),
-                                                    
-                                                        dcc.Input(id='bu_name', value=business_unit, type='text', className="email_detail__input"),
-                                                    ],
-                                                ),
-                                                html.Div(
-                                                    className="email_detail__field",
-                                                    children=[
-                                                        Label(label_text="Nome do Fornecedor"),
-                                                    
-                                                        dcc.Input(id='supplier_name', value=supplier_name, type='text', className="email_detail__input"),
-                                                    ],
-                                                ),
-                                                html.Div(
-                                                    className="email_detail__field",
-                                                    children=[
-                                                        Label(label_text="NIF do Fornecedor"),
-                                                        
-                                                        dcc.Input(id='supplier_vat', value=supplier_vat, type='text', className="email_detail__input"),
-                                                    ],
-                                                ),
-                                                html.Div(
-                                                    className="email_detail__field",
-                                                    children=[
-                                                        Label(label_text="Data da Fatura"),
-                                                        
-                                                        dcc.DatePickerSingle(
-                                                            id='issue_date',
-                                                            date=data_recepcao,
-                                                            className="email_detail__input email_detail__date_picker",
-                                                        )
-                                                    ],
-                                                ),
-                                                html.Div(
-                                                    className="email_detail__field",
-                                                    children=[
-                                                        Label(label_text="Valor Total"),
-                                                        
-                                                        dcc.Input(id='total_amount', value=total_amount, type='number', className="email_detail__input"),
-                                                    ],
-                                                ),  
-                                                html.Div(
-                                                    className="email_detail__field",
-                                                    children=[
-                                                        Label(label_text="Valor do IVA"),
-                                                        
-                                                        dcc.Input(id='vat_amount', value=vat_amount, type='number', className="email_detail__input"),
-                                                    ],
-                                                ),   
-                                                html.Div(
-                                                    className="email_detail__field",
-                                                    children=[
-                                                        Label(label_text="Valor Base"),
-                                                        
-                                                        dcc.Input(id='base_amount', value=base_amount, type='number', className="email_detail__input"),
-                                                    ],
-                                                ),                                                                                                                                                 
-                                                html.Div(
-                                                    className="email_detail__field",
-                                                    children=[
-                                                        Label(label_text="Moeda"),
-                                                        
-                                                        dcc.Dropdown(
-                                                            id='currency',
-                                                            options=['EUR', 'USD', 'CVE'],
-                                                            value=currency,
-                                                            clearable=False,
-                                                            className="email_detail__input email_detail__dropdown",
-                                                        )
-                                                    ],
-                                                ),
-                                                html.Div(
-                                                    className="email_detail__field",
-                                                    children=[
-                                                        Label(label_text="Nota de Crédito"),
-                                                        
-                                                        Checkbox(id='credit_note', label_text="Sim")
-                                                    ]
-                                                )
-                                            ]
-                                        )
-                                    ]
-                                )
-                              ]
-                            ),
-                            html.Section(
-                              className="email_detail__content_right_section",
-                              children=[
-                                html.Iframe(
-                                    id="document-pdf-viewer",
-                                    src=(
-                                        f"/assets/pdf-viewer.html?file=/pdf/{ref_number}"
-                                        f"&document_missing={'true' if match is None and not document_lookup_failed else 'false'}"
+                                    if match is None
+                                    else html.Span(),
+                                    html.Section(
+                                        className="email_detail__content_left_section",
+                                        children=[
+                                            Section(
+                                                title="Alertas",
+                                                content=[
+                                                    html.Ul(
+                                                        className="email_detail__invoice_errors",
+                                                        children=[
+                                                            html.Li(
+                                                                html.Div(
+                                                                    [
+                                                                        html.Div(
+                                                                            [
+                                                                                html.H4(
+                                                                                    a.split(":", 1)[0].strip(),
+                                                                                    className="body-sm",
+                                                                                ),
+                                                                                Label(
+                                                                                    a.split(":", 1)[1].strip()
+                                                                                    if ":" in a
+                                                                                    else ""
+                                                                                ),
+                                                                            ],
+                                                                            className="email_detail__invoice_text",
+                                                                        ),
+                                                                        html.Div(
+                                                                            [
+                                                                                Button(
+                                                                                    "Ok",
+                                                                                    id={
+                                                                                        "type": "email-detail-correction-button",
+                                                                                        "alert": a,
+                                                                                    },
+                                                                                    icon="lucide:check",
+                                                                                    variant="outline",
+                                                                                )
+                                                                                if a.split(":", 1)[0].strip()
+                                                                                in {
+                                                                                    "Confiança baixa",
+                                                                                    "Nota de encomenda não encontrada",
+                                                                                    "NIF do fornecedor não encontrado",
+                                                                                }
+                                                                                else None,
+                                                                                html.Div(
+                                                                                    DashIconify(
+                                                                                        icon="lucide:triangle-alert",
+                                                                                        className="email_detail__invoice_button_icon",
+                                                                                    ),
+                                                                                ),
+                                                                            ],
+                                                                            className="email_detail__invoice_actions",
+                                                                        ),
+                                                                    ],
+                                                                    className="email_detail__invoice_item",
+                                                                )
+                                                            )
+                                                            for a in alerts
+                                                        ],
+                                                    )
+                                                ],
+                                                open=True,
+                                            ),
+                                            html.Section(
+                                                className="email_detail__field_extraction_section",
+                                                children=[
+                                                    html.H1("Extração dos Campos"),
+                                                    html.Section(
+                                                        className="email_detail__field_grid",
+                                                        children=[
+                                                            html.Div(
+                                                                className="email_detail__field",
+                                                                children=[
+                                                                    Label(label_text="Unidade de Negócio"),
+                                                                    dcc.Input(
+                                                                        id="bu_name",
+                                                                        value=business_unit,
+                                                                        type="text",
+                                                                        className="email_detail__input",
+                                                                    ),
+                                                                ],
+                                                            ),
+                                                            html.Div(
+                                                                className="email_detail__field",
+                                                                children=[
+                                                                    Label(label_text="Nome do Fornecedor"),
+                                                                    dcc.Input(
+                                                                        id="supplier_name",
+                                                                        value=supplier_name,
+                                                                        type="text",
+                                                                        className="email_detail__input",
+                                                                    ),
+                                                                ],
+                                                            ),
+                                                            html.Div(
+                                                                className="email_detail__field",
+                                                                children=[
+                                                                    Label(label_text="NIF do Fornecedor"),
+                                                                    dcc.Input(
+                                                                        id="supplier_vat",
+                                                                        value=supplier_vat,
+                                                                        type="text",
+                                                                        className="email_detail__input",
+                                                                    ),
+                                                                ],
+                                                            ),
+                                                            html.Div(
+                                                                className="email_detail__field",
+                                                                children=[
+                                                                    Label(label_text="Data da Fatura"),
+                                                                    dcc.DatePickerSingle(
+                                                                        id="issue_date",
+                                                                        date=data_recepcao,
+                                                                        className="email_detail__input email_detail__date_picker",
+                                                                    ),
+                                                                ],
+                                                            ),
+                                                            html.Div(
+                                                                className="email_detail__field",
+                                                                children=[
+                                                                    Label(label_text="Valor Total"),
+                                                                    dcc.Input(
+                                                                        id="total_amount",
+                                                                        value=total_amount,
+                                                                        type="number",
+                                                                        className="email_detail__input",
+                                                                    ),
+                                                                ],
+                                                            ),
+                                                            html.Div(
+                                                                className="email_detail__field",
+                                                                children=[
+                                                                    Label(label_text="Valor do IVA"),
+                                                                    dcc.Input(
+                                                                        id="vat_amount",
+                                                                        value=vat_amount,
+                                                                        type="number",
+                                                                        className="email_detail__input",
+                                                                    ),
+                                                                ],
+                                                            ),
+                                                            html.Div(
+                                                                className="email_detail__field",
+                                                                children=[
+                                                                    Label(label_text="Valor Base"),
+                                                                    dcc.Input(
+                                                                        id="base_amount",
+                                                                        value=base_amount,
+                                                                        type="number",
+                                                                        className="email_detail__input",
+                                                                    ),
+                                                                ],
+                                                            ),
+                                                            html.Div(
+                                                                className="email_detail__field",
+                                                                children=[
+                                                                    Label(label_text="Moeda"),
+                                                                    dcc.Dropdown(
+                                                                        id="currency",
+                                                                        options=["EUR", "USD", "CVE"],
+                                                                        value=currency,
+                                                                        clearable=False,
+                                                                        className="email_detail__input email_detail__dropdown",
+                                                                    ),
+                                                                ],
+                                                            ),
+                                                            html.Div(
+                                                                className="email_detail__field",
+                                                                children=[
+                                                                    Label(label_text="Nota de Crédito"),
+                                                                    Checkbox(id="credit_note", label_text="Sim"),
+                                                                ],
+                                                            ),
+                                                        ],
+                                                    ),
+                                                ],
+                                            ),
+                                        ],
                                     ),
-                                    style={
-                                        "width": "100%",
-                                        "height":"100%",
-                                        "border": "none",
-                                    },
-                                )
-                              ]
+                                    html.Section(
+                                        className="email_detail__content_right_section",
+                                        children=[
+                                            html.Iframe(
+                                                id="document-pdf-viewer",
+                                                src=f"/assets/pdf-viewer.html?file=/pdf/{ref_number}",
+                                                style={
+                                                    "width": "100%",
+                                                    "height": "100%",
+                                                    "border": "none",
+                                                },
+                                            )
+                                        ],
+                                    ),
+                                ],
                             )
-                          ]
-                        )
-                    ]
-                ),
-                html.Section(
-                    className="email_detail__bottom_section",
-                    children=[
-                        Button("Exportar", icon="lucide:file-down", variant="outline"),
-                        Button(
-                            "Guardar",
-                            id="save-button",
-                            icon="lucide:circle-check",
-                            variant="outline",
-                            disabled=action != "Validação Manual",
-                        ),
-                        Button(
-                            "Enviar para SAP",
-                            id="send-sap-button",
-                            icon="lucide:send",
-                            disabled=action != "Validação Manual",
-                        ),
-                        html.P(id="email-detail-update-status", className="body-sm email_detail__status"),
-                    ]
-                ),
-                RightDrawer(
-                    drawer_id="email-detail-drawer",
-                    title="Detalhes do Email",
-                    children=[
-                        Section(
-                            title="Conteúdo do Email",
-                            content=dcc.Loading(
-                                id="email-detail-drawer-loading",
-                                type="default",
-                                color="var(--primary-color-13)",
-                                children=html.Div(id="email-detail-drawer-email-content"),
+                        ],
+                    ),
+                    html.Section(
+                        className="email_detail__bottom_section",
+                        children=[
+                            Button("Exportar", icon="lucide:file-down", variant="outline"),
+                            Button("Guardar", id="save-button", icon="lucide:circle-check", variant="outline"),
+                            Button("Enviar para SAP", id="send-sap-button", icon="lucide:send"),
+                            html.P(id="email-detail-update-status", className="body-sm email_detail__status"),
+                        ],
+                    ),
+                    RightDrawer(
+                        drawer_id="email-detail-drawer",
+                        title="Detalhes do Email",
+                        children=[
+                            Section(
+                                title="Conteúdo do Email",
+                                content=dcc.Loading(
+                                    id="email-detail-drawer-loading",
+                                    type="default",
+                                    color="var(--primary-color-13)",
+                                    children=html.Div(id="email-detail-drawer-email-content"),
+                                ),
+                                open=True,
                             ),
-                            open=True,
-                        ),
-                    ],
-                ),
-            ]           
-        )
-    ]
-)
+                        ],
+                    ),
+                ],
+            ),
+        ]
+    )
 
 
 def _build_sap_success_toast(has_next_document: bool):
@@ -499,7 +501,7 @@ def _build_sap_loading_toast():
     prevent_initial_call=True,
 )
 def load_email_drawer_content(_clicks, document_id):
-    return _build_email_drawer_content(document_id)
+    return _build_email_drawer_content(get_access_token(), document_id)
 
 
 @dash.callback(
@@ -552,6 +554,7 @@ def update_document_details(
         return "Documento invalido", no_update, no_update, no_update, no_update, no_update
 
     button_id = triggered[0]["prop_id"].split(".")[0]
+    token = get_access_token()
     updated_fields = fields.copy() if isinstance(fields, dict) else {}
 
     def update_field(name: str, value: object) -> None:
@@ -599,8 +602,7 @@ def update_document_details(
         return True
 
     normalized_missing_field_alert_map = {
-        key.strip().casefold(): value
-        for key, value in missing_field_alert_map.items()
+        key.strip().casefold(): value for key, value in missing_field_alert_map.items()
     }
 
     updated_alerts = list(alerts or [])
@@ -626,7 +628,7 @@ def update_document_details(
         action = "Ingerir em SAP"
         status = "Criado"
         try:
-            result = get_next_priority_document(document_id)
+            result = get_next_priority_document(token, document_id)
         except RequestException:
             result = {}
         next_document_id = result.get("next_document_id")
@@ -636,6 +638,7 @@ def update_document_details(
 
     try:
         alter_document_details(
+            token,
             document_id,
             updated_alerts,
             updated_fields,
@@ -702,9 +705,11 @@ def remove_alert_from_document(_clicks, document_id, alerts, fields):
         raise dash.exceptions.PreventUpdate
 
     updated_alerts = [alert for alert in current_alerts if alert != alert_to_remove]
+    token = get_access_token()
 
     try:
         alter_document_details(
+            token,
             document_id,
             updated_alerts,
             fields if isinstance(fields, dict) else {},
@@ -713,7 +718,7 @@ def remove_alert_from_document(_clicks, document_id, alerts, fields):
     except Exception as exc:
         return no_update, no_update, f"Erro ao remover alerta: {exc}", no_update
 
-    return updated_alerts, _build_email_detail(document_id), "Alerta removido", no_update
+    return updated_alerts, _build_email_detail(token, document_id), "Alerta removido", no_update
 
 
 @dash.callback(
@@ -726,4 +731,3 @@ def clear_sap_success_toast(_n_intervals):
     if not _n_intervals:
         raise dash.exceptions.PreventUpdate
     return None, True
-

@@ -1,16 +1,16 @@
 {
   "folders": [
     {
+      "name": "repo root",
+      "path": "..",
+    },
+    {
       "name": "backend (fastapi_webapi)",
       "path": "../fastapi_webapi",
     },
     {
       "name": "frontend (plotly_webapp)",
       "path": "../plotly_webapp",
-    },
-    {
-      "name": "repo root",
-      "path": "..",
     },
   ],
   "settings": {
@@ -94,7 +94,7 @@
         "envFile": "${workspaceFolder:backend (fastapi_webapi)}/.env",
         "console": "integratedTerminal",
         "justMyCode": false,
-        "preLaunchTask": "Backend: uv sync (silent)",
+        // "preLaunchTask": "Backend: uv sync (silent)", // commenting this out because it breaks FE tests, uv sync must be run manually (for now)
         "presentation": { "hidden": true },
       },
     ],
