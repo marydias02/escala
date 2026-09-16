@@ -1,16 +1,18 @@
 """Validation dashboard endpoints: the big-numbers tiles and the document list
 backing the manual-validation screen."""
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter
 
-from api.dependencies.security import verify_api_key
+from api.dependencies.security import has_authorization_for
 from api.dependencies.services import ValidationServiceDep
 from api.messages.store import SapMessageRead, ValidationBigNumbersDict
 
-router = APIRouter(prefix="/validation", tags=["validation"], dependencies=[Depends(verify_api_key)])
+router = APIRouter(prefix="/validation", tags=["validation"])
+
+READ_DOCUMENTS = has_authorization_for("read", "documents")
 
 
-@router.get("/big-numbers", summary="Get validation dashboard indicators")
+@router.get("/big-numbers", summary="Get validation dashboard indicators", dependencies=[READ_DOCUMENTS])
 async def get_validation_big_numbers(service: ValidationServiceDep) -> ValidationBigNumbersDict:
     """
     Top indicator tiles for the validation dashboard. Each value is bucketed by
@@ -28,7 +30,7 @@ async def get_validation_big_numbers(service: ValidationServiceDep) -> Validatio
     return await service.get_validation_big_numbers()  # type: ignore
 
 
-@router.get("/documents", summary="Get all documents")
+@router.get("/documents", summary="Get all documents", dependencies=[READ_DOCUMENTS])
 async def get_all_documents(service: ValidationServiceDep, limit: int = 100) -> list[dict]:
     """
     All documents, most recently received first.
@@ -39,7 +41,11 @@ async def get_all_documents(service: ValidationServiceDep, limit: int = 100) -> 
     return rows
 
 
-@router.get("/{process_ref_no}/messages", summary="Get the message log of a SAP process")
+@router.get(
+    "/{process_ref_no}/messages",
+    summary="Get the message log of a SAP process",
+    dependencies=[has_authorization_for("read", "processes")],
+)
 async def get_process_messages(process_ref_no: str, service: ValidationServiceDep) -> list[SapMessageRead]:
     """
     Messages exchanged during a SAP process, oldest first.
@@ -50,4 +56,3 @@ async def get_process_messages(process_ref_no: str, service: ValidationServiceDe
     """
     rows = await service.list_process_messages(process_ref_no)
     return [SapMessageRead(**row) for row in rows]
-

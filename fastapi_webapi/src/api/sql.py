@@ -17,6 +17,11 @@ async def init_database_pool(uri=DATABASE_URI) -> asyncpg.Pool:
     return new_pool
 
 
+def get_database_pool() -> asyncpg.Pool | None:
+    """The pool `init_database_pool` created, or None before the lifespan runs."""
+    return _default_pool
+
+
 class BaseRepository:
     __table_name__: str = ""
 

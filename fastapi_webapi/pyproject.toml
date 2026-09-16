@@ -16,7 +16,6 @@ dependencies = [
     # Database dependencies
     "asyncpg>=0.31.0",
     # Security dependencies
-    "argon2-cffi>=25.1.0",
     "python-jose>=3.5.0",
     # LTP Labs dependencies
     "airpy>=3",
@@ -40,6 +39,9 @@ dependencies = [
 [dependency-groups]
 dev = [
     "alembic>=1.18.5",
+    # The test key-pair fixture imports cryptography directly; it otherwise arrives only
+    # transitively, via azure-identity.
+    "cryptography>=48.0.1",
     "psycopg2-binary>=2.9.12",
     "pytest>=9.1.1",
     "ruff>=0.14.3",
@@ -52,9 +54,6 @@ airpy = { index = "ltpypi" }
 name = "ltpypi"
 url = "https://git.ltplabs.net/api/v4/projects/344/packages/pypi/simple"
 explicit = true
-
-[project.scripts]
-generate_api_key = "api.development:generate_api_key"
 
 [build-system]
 requires = ["uv_build>=0.9.6,<0.10.0"]

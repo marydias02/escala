@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends
 from fastapi.responses import FileResponse
 
-from api.dependencies.security import verify_api_key
+from api.dependencies.security import has_authorization_for, openid_connect
 from api.dependencies.services import ExtractionServiceDep
 from api.messages.store import (
     DocumentDetailRead,
@@ -12,10 +12,14 @@ from api.messages.store import (
     NextPriorityDocumentRead,
 )
 
-router = APIRouter(prefix="/extraction", tags=["extraction"], dependencies=[Depends(verify_api_key)])
+# Authorization is per route, not per router: reading a document and updating one are
+# no longer the same check.
+router = APIRouter(prefix="/extraction", tags=["extraction"])
+
+READ_DOCUMENTS = has_authorization_for("read", "documents")
 
 
-@router.get("/big-numbers", summary="Get extraction dashboard indicators")
+@router.get("/big-numbers", summary="Get extraction dashboard indicators", dependencies=[READ_DOCUMENTS])
 async def get_extraction_big_numbers(service: ExtractionServiceDep) -> ExtractionBigNumbersDict:
     """
     Top indicator tiles for the extraction dashboard.
@@ -30,7 +34,7 @@ async def get_extraction_big_numbers(service: ExtractionServiceDep) -> Extractio
     return await service.get_extraction_big_numbers()  # type: ignore
 
 
-@router.get("/priority-documents", summary="Get priority documents")
+@router.get("/priority-documents", summary="Get priority documents", dependencies=[READ_DOCUMENTS])
 async def get_priority_documents(service: ExtractionServiceDep, limit: int = 100) -> list[DocumentRead]:
     """
     Documents awaiting manual validation, most recently received first.
@@ -44,10 +48,9 @@ async def get_priority_documents(service: ExtractionServiceDep, limit: int = 100
 @router.get(
     "/next-priority-document/{document_id}",
     summary="Get the next priority document",
+    dependencies=[READ_DOCUMENTS],
 )
-async def get_next_priority_document(
-    service: ExtractionServiceDep, document_id: str
-) -> NextPriorityDocumentRead:
+async def get_next_priority_document(service: ExtractionServiceDep, document_id: str) -> NextPriorityDocumentRead:
     """Return whether the current document is eligible for manual validation and
     the next document in the priority queue, if one exists.
     """
@@ -55,7 +58,7 @@ async def get_next_priority_document(
     return NextPriorityDocumentRead.model_validate(result)
 
 
-@router.get("/documents", summary="Get all documents")
+@router.get("/documents", summary="Get all documents", dependencies=[READ_DOCUMENTS])
 async def get_all_documents(service: ExtractionServiceDep, limit: int = 100) -> list[DocumentRead]:
     """
     All documents, most recently received first.
@@ -66,7 +69,11 @@ async def get_all_documents(service: ExtractionServiceDep, limit: int = 100) -> 
     return [DocumentRead.model_validate(r) for r in rows]
 
 
-@router.get("/pending-processes", summary="Get pending processes")
+@router.get(
+    "/pending-processes",
+    summary="Get pending processes",
+    dependencies=[has_authorization_for("read", "processes")],
+)
 async def get_pending_processes(service: ExtractionServiceDep, limit: int = 100) -> list[dict]:
     """
     Documents awaiting a response, most recently received first.
@@ -77,7 +84,7 @@ async def get_pending_processes(service: ExtractionServiceDep, limit: int = 100)
     return rows
 
 
-@router.get("/documents/{document_id}", summary="Get document details")
+@router.get("/documents/{document_id}", summary="Get document details", dependencies=[READ_DOCUMENTS])
 async def get_document(service: ExtractionServiceDep, document_id: str) -> DocumentDetailRead:
     """
     Alerts and extracted field values (with confidence) for one document.
@@ -88,7 +95,11 @@ async def get_document(service: ExtractionServiceDep, document_id: str) -> Docum
     return DocumentDetailRead.model_validate(result)
 
 
-@router.get("/documents/{document_id}/email", summary="Get the source email for a document")
+@router.get(
+    "/documents/{document_id}/email",
+    summary="Get the source email for a document",
+    dependencies=[READ_DOCUMENTS],
+)
 async def get_document_email(service: ExtractionServiceDep, document_id: str) -> DocumentEmailRead:
     """
     Sender, subject, content and reception date of the email that carried this document.
@@ -98,9 +109,10 @@ async def get_document_email(service: ExtractionServiceDep, document_id: str) ->
     result = await service.get_document_email(document_id)
     return DocumentEmailRead.model_validate(result)
 
-#TODO: This method is temporary, while there is no access to blob storage.
+
+# TODO: This method is temporary, while there is no access to blob storage.
 # With acess to blob storage, would need a file response from the blob
-#Implementation for blob storage would be like:
+# Implementation for blob storage would be like:
 #
 # @router.get("/documents/{document_id}/pdf", summary="Get the source PDF for a document")
 # async def get_document_pdf(service: ExtractionServiceDep, document_id: str) -> StreamingResponse:
@@ -113,7 +125,11 @@ async def get_document_email(service: ExtractionServiceDep, document_id: str) ->
 #     return StreamingResponse(stream, media_type="application/pdf")
 
 
-@router.get("/documents/{document_id}/pdf", summary="Get the source PDF for a document")
+@router.get(
+    "/documents/{document_id}/pdf",
+    summary="Get the source PDF for a document",
+    dependencies=[READ_DOCUMENTS],
+)
 async def get_document_pdf(service: ExtractionServiceDep, document_id: str) -> FileResponse:
     """
     The invoice PDF for one document, as stored on disk (local emulation of blob storage).
@@ -124,7 +140,12 @@ async def get_document_pdf(service: ExtractionServiceDep, document_id: str) -> F
     return FileResponse(path, media_type="application/pdf")
 
 
-@router.get("/business-units/exists", summary="Check whether a business unit exists")
+# An existence check against no resource in the policy: any valid token may ask.
+@router.get(
+    "/business-units/exists",
+    summary="Check whether a business unit exists",
+    dependencies=[Depends(openid_connect)],
+)
 async def business_unit_exists(service: ExtractionServiceDep, vat: str) -> bool:
     """
     Whether a business unit with the given VAT exists in dim_business_units.
@@ -134,10 +155,13 @@ async def business_unit_exists(service: ExtractionServiceDep, vat: str) -> bool:
     return await service.business_unit_exists(vat)
 
 
-@router.patch("", status_code=201, summary="Alter the details of a document")
-async def alter_document_details(
-    service: ExtractionServiceDep, payload: DocumentUpdate
-) -> DocumentDetailRead:
+@router.patch(
+    "",
+    status_code=201,
+    summary="Alter the details of a document",
+    dependencies=[has_authorization_for("update", "documents")],
+)
+async def alter_document_details(service: ExtractionServiceDep, payload: DocumentUpdate) -> DocumentDetailRead:
     """
     Alter the details of a document.
 
