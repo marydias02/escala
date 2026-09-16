@@ -4,6 +4,7 @@ pdfjsLib.GlobalWorkerOptions.workerSrc = "/assets/pdfjs/build/pdf.worker.mjs";
 
 const params = new URLSearchParams(window.location.search);
 const fileUrl = params.get("file");
+const documentMissing = params.get("document_missing") === "true";
 const viewer = document.getElementById("viewer");
 
 let pdfDoc = null;
@@ -70,7 +71,7 @@ async function loadPdf(url) {
     await renderPdf();
   } catch (err) {
     console.error("PDF load error:", err);
-    showError(`Could not load the PDF: ${err?.message || err}`);
+    showError("Erro ao aceder ao documento associado.");
   }
 }
 
@@ -83,8 +84,10 @@ const observer = new ResizeObserver(() => {
 
 observer.observe(viewer);
 
-if (!fileUrl) {
-  showError("Missing ?file= parameter.");
+if (documentMissing) {
+  showError("Processo sem Documento Associado.");
+} else if (!fileUrl) {
+  showError("Erro ao aceder ao documento associado.");
 } else {
   loadPdf(fileUrl);
 }

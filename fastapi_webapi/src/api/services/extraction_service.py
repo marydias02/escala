@@ -22,7 +22,6 @@ class ExtractionService:
         self.documents = DocumentsRepository()
         self.processes = ProcessesRepository()
         self.business_units = BusinessUnitRepository()
-        self.processes = ProcessesRepository()
 
     async def list_priority_documents(self, limit: int = 100) -> list[dict]:
         df = await self.documents.list_priority_documents(limit=limit)
@@ -36,6 +35,10 @@ class ExtractionService:
 
     async def list_all_documents(self, limit: int = 100) -> list[dict]:
         df = await self.documents.list_all_documents(limit=limit)
+        return df.to_dicts()
+
+    async def list_pending_processes(self, limit: int = 100) -> list[dict]:
+        df = await self.processes.list_pending_processes(limit=limit)
         return df.to_dicts()
 
     async def list_pending_processes(self, limit: int = 100) -> list[dict]:

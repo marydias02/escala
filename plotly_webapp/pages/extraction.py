@@ -1,40 +1,23 @@
 import dash
-from dash import html
-from dash_iconify import DashIconify
+from dash import Input, Output, State, callback, callback_context, dcc, html, no_update
 from dash.dcc import Tab
-from dash import dcc
-from dash import callback, Input, Output, State, callback_context, no_update
 from dash.exceptions import PreventUpdate
 
-from components.page_header.page_header import PageHeader
-from components.tabs.tabs import Tabs
-from components.button.button import Button
-from components.section.section import Section
-from components.cards.indicator_card.indicator_card import IndicatorCard
-from components.right_drawer.right_drawer import RightDrawer
-from utils.base.grid_system.grid import Col, Container, Row
-
-from components.table.V1.table import Table as TableV1
-from callbacks.table.V1.secondary_actions_callback import (
-    create_quickfilter_secondary, create_sort_secondary, create_reset_secondary )
-from callbacks.table.V1.primary_action_callback import (
-    create_export_csv_callback_v1 )
-from utils.table.data_loader import get_brand_and_year_columns, load_group_table_data
-from components.table.shared.col_def_config import (
-    create_simple_table_column_defs , create_demo_tab_table )
-from components.table.shared.action_bar import action_bar
-
-import pandas as pd
-from functools import partial
-
 from assets.api_calls.extraction_api import get_extraction_dashboard
-
+from auth.msal_client import get_access_token
+from components.cards.indicator_card.indicator_card import IndicatorCard
+from components.page_header.page_header import PageHeader
+from components.right_drawer.right_drawer import RightDrawer
+from components.section.section import Section
+from components.table.V1.table import Table as TableV1
+from components.tabs.tabs import Tabs
 
 dash.register_page(
     __name__,
     path="/",
     title="Extracao",
 )
+
 
 def trend(delta):
     if delta > 0:
@@ -43,8 +26,10 @@ def trend(delta):
         return "decrease"
     return "neutral"
 
+
 def fmt_pct(value):
     return f"{value:g}%"
+
 
 # df = load_group_table_data()
 # brand_cols, year_cols = get_brand_and_year_columns(list(df.columns))
@@ -256,38 +241,36 @@ def make_medium_tabs(priority_documents, all_documents, pending_documents):
 def layout():
     # Render a lightweight page immediately and load heavy data via a background callback.
     return html.Div(
-    [  
-        html.Div( 
-            className="homepage__container",
-            children=[
-                html.Section(
-                    className="homepage__top_section",
-                    children=[
-                        PageHeader(
-                            icon = "lucide:scan-text",
-                            title = "Extração",  
-                        ),
-                        html.P("Atualizado há 5 segundos", className="body-xs homepage__updated_section")
-                    ],                  
-                ),
-
-                html.Section(
-                    className="homepage__content_section",
-                    children=[
-                        # Content will be populated asynchronously; show a loading spinner meanwhile.
-                        dcc.Loading(
-                            id="extraction-loading",
-                            type="default",
-                            color="var(--primary-color-13)",
-                            children=html.Div(id="extraction-content"),
-                        )
-                    ]
-                )
-            ]           
-        )
-    ]
-)
-
+        [
+            html.Div(
+                className="homepage__container",
+                children=[
+                    html.Section(
+                        className="homepage__top_section",
+                        children=[
+                            PageHeader(
+                                icon="lucide:scan-text",
+                                title="Extração",
+                            ),
+                            html.P("Atualizado há 5 segundos", className="body-xs homepage__updated_section"),
+                        ],
+                    ),
+                    html.Section(
+                        className="homepage__content_section",
+                        children=[
+                            # Content will be populated asynchronously; show a loading spinner meanwhile.
+                            dcc.Loading(
+                                id="extraction-loading",
+                                type="default",
+                                color="var(--primary-color-13)",
+                                children=html.Div(id="extraction-content"),
+                            )
+                        ],
+                    ),
+                ],
+            )
+        ]
+    )
 
 
 @callback(
@@ -297,7 +280,9 @@ def layout():
 )
 def load_extraction_content(_pathname):
     # The page shell renders first; the API client loads these independent resources concurrently.
-    dashboard = get_extraction_dashboard()
+    # The token is read here, in the request thread, because the loaders run on a
+    # thread pool where `flask.session` raises.
+    dashboard = get_extraction_dashboard(get_access_token())
     kpis = dashboard["kpis"]
     priority_documents = dashboard["priority_documents"]
     all_documents = dashboard["all_documents"]
@@ -313,10 +298,12 @@ def load_extraction_content(_pathname):
                         IndicatorCard(
                             label_text="Faturas para Validação",
                             label_tooltip="Faturas pendentes de validação manual; variação percentual face à semana anterior no número de documentos que necessitaram de validação manual",
-                            rows=[(kpis["pending_manual_validation"]["value"],
-                                   "última semana",
-                                   abs(kpis["pending_manual_validation"]["delta_pp"]),
-                                   trend(kpis["pending_manual_validation"]["delta_pp"])
+                            rows=[
+                                (
+                                    kpis["pending_manual_validation"]["value"],
+                                    "última semana",
+                                    abs(kpis["pending_manual_validation"]["delta_pp"]),
+                                    trend(kpis["pending_manual_validation"]["delta_pp"]),
                                 )
                             ],
                             badge_unit="%",
@@ -324,22 +311,30 @@ def load_extraction_content(_pathname):
                         IndicatorCard(
                             label_text="Faturas Ingeridas Automaticamente",
                             label_tooltip="Percentagem de documentos que não necessitaram de validação manual e foram ingeridas em SAP; diferença em pontos percentuais face à semana anterior",
-                            rows=[(fmt_pct(kpis["auto_ingested"]["pct"]),
-                                "última semana",
-                                abs(kpis["auto_ingested"]["delta_pp"]),
-                                trend(kpis["auto_ingested"]["delta_pp"]))],
+                            rows=[
+                                (
+                                    fmt_pct(kpis["auto_ingested"]["pct"]),
+                                    "última semana",
+                                    abs(kpis["auto_ingested"]["delta_pp"]),
+                                    trend(kpis["auto_ingested"]["delta_pp"]),
+                                )
+                            ],
                             badge_unit="pp",
                         ),
                         IndicatorCard(
                             label_text="Faturas Devolvidas ao Fornecedor",
                             label_tooltip="Percentagem de documentos que devolvidas ao fornecedor; diferença em pontos percentuais face à semana anterior",
-                            rows=[(fmt_pct(kpis["returned_to_supplier"]["pct"]),
-                                "última semana",
-                                abs(kpis["returned_to_supplier"]["delta_pp"]),
-                                trend(kpis["returned_to_supplier"]["delta_pp"]))],
+                            rows=[
+                                (
+                                    fmt_pct(kpis["returned_to_supplier"]["pct"]),
+                                    "última semana",
+                                    abs(kpis["returned_to_supplier"]["delta_pp"]),
+                                    trend(kpis["returned_to_supplier"]["delta_pp"]),
+                                )
+                            ],
                             badge_unit="pp",
-        ),
-    ]
+                        ),
+                    ],
                 ),
             ],
             open=True,

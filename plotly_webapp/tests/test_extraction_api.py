@@ -16,7 +16,7 @@ class ExtractionDashboardTests(unittest.TestCase):
         barrier = Barrier(4, timeout=2)
 
         def result(value):
-            def load():
+            def load(_token):
                 barrier.wait()
                 return value
 
@@ -28,9 +28,9 @@ class ExtractionDashboardTests(unittest.TestCase):
             patch.object(extraction_api, "get_all_documents", side_effect=result(["all"])) as all_documents,
             patch.object(extraction_api, "get_pending_processes", side_effect=result(["pending"])) as pending,
         ):
-            first = extraction_api.get_extraction_dashboard()
+            first = extraction_api.get_extraction_dashboard("a-token")
             first["all_documents"].append("local mutation")
-            second = extraction_api.get_extraction_dashboard()
+            second = extraction_api.get_extraction_dashboard("a-token")
 
         self.assertEqual(
             second,
@@ -42,7 +42,7 @@ class ExtractionDashboardTests(unittest.TestCase):
             },
         )
         for request_mock in (big_numbers, priority, all_documents, pending):
-            request_mock.assert_called_once_with()
+            request_mock.assert_called_once_with("a-token")
 
     def test_cache_can_be_invalidated(self):
         cached = {
@@ -58,9 +58,9 @@ class ExtractionDashboardTests(unittest.TestCase):
                 patch.object(extraction_api, "get_all_documents", return_value=[]),
                 patch.object(extraction_api, "get_pending_processes", return_value=[]),
             ):
-                self.assertEqual(extraction_api.get_extraction_dashboard(), cached)
+                self.assertEqual(extraction_api.get_extraction_dashboard("a-token"), cached)
                 extraction_api.invalidate_dashboard_cache()
-                self.assertEqual(extraction_api.get_extraction_dashboard(), cached)
+                self.assertEqual(extraction_api.get_extraction_dashboard("a-token"), cached)
 
         self.assertEqual(big_numbers.call_count, 2)
 

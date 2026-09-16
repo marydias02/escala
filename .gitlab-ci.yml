@@ -1,118 +1,148 @@
-# stages:
-#   - build
-#   - deployment
+stages:
+  - build
+  - deployment
 
-valid_dummy_job:
-  stage: .pre
+variables:
+  GIT_DEPTH: 1
+  PROJECT_MAJOR_VERSION: 1
+
+include:
+  project: libs/gitlab-jobs
+  ref: main
+  file:
+    - Gitlab/Build-and-push.gitlab-ci.yml
+    - Gitlab/Build-and-push-multiple-tag.gitlab-ci.yml
+    - General/LTP-deployment-service-deploy-app.yaml
+    - General/LTP-deployment-service-AIR-Stage.yaml
+
+.default_rules: &default_rules
+  rules:
+    - if: $CI_COMMIT_TAG
+      when: never
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+      when: on_success
+
+.plotly_rules: &plotly_rules
+  rules:
+    - changes:
+      - '**/plotly_webapp/**/*'
+      - '**/ops/**/*'
+      if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+      when: on_success
+    - changes:
+      - '**/plotly_webapp/**/*'
+      - '**/ops/**/*'
+      if: $CI_COMMIT_TAG
+      when: never
+
+
+.fastapi_rules: &fastapi_rules
+  rules:
+    - changes:
+      - '**/fastapi_webapi/**/*'
+      - '**/ops/**/*'
+      if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+      when: on_success
+    - changes:
+      - '**/fastapi_webapi/**/*'
+      - '**/ops/**/*'
+      if: $CI_COMMIT_TAG
+      when: never
+
+.main_plotly_rules: &main_plotly_rules
+  rules:
+    - changes:
+      - '**/plotly_webapp/**/*'
+      - '**/ops/**/*'
+      if: $CI_COMMIT_BRANCH == 'main'
+      when: on_success
+    - changes:
+      - '**/plotly_webapp/**/*'
+      - '**/ops/**/*'
+      if: $CI_COMMIT_TAG
+      when: never
+
+
+.main_fastapi_rules: &main_fastapi_rules
+  rules:
+    - changes:
+      - '**/fastapi_webapi/**/*'
+      - '**/ops/**/*'
+      if: $CI_COMMIT_BRANCH == 'main'
+      when: on_success
+    - changes:
+      - '**/fastapi_webapi/**/*'
+      - '**/ops/**/*'
+      if: $CI_COMMIT_TAG
+      when: never
+
+
+
+
+
+build_webapp_image:
+  extends: .build_and_push_multiple_tag
+  stage: build
+  variables:
+    BUILD_ARGS: UV_INDEX_LTPYPI_PASSWORD=$CI_JOB_TOKEN
+    TAGS: latest $PROJECT_MAJOR_VERSION.$CI_PIPELINE_IID
+  parallel:
+    matrix:
+      - DOCKERFILE_PATH: $CI_PROJECT_DIR/ops/Dockerfile.plotly_webapp
+        IMAGE_NAME: $CI_REGISTRY_IMAGE/plotly_webapp
+        IMAGE_BUILD_PATH: $CI_PROJECT_DIR
+  <<: *plotly_rules
+
+
+build_webapi_image:
+  extends: .build_and_push_multiple_tag
+  stage: build
+  variables:
+    BUILD_ARGS: UV_INDEX_LTPYPI_PASSWORD=$CI_JOB_TOKEN
+    TAGS: latest $PROJECT_MAJOR_VERSION.$CI_PIPELINE_IID
+  parallel:
+    matrix:
+      - DOCKERFILE_PATH: $CI_PROJECT_DIR/ops/Dockerfile.fastapi_webapi
+        IMAGE_NAME: $CI_REGISTRY_IMAGE/fastapi_webapi
+        IMAGE_BUILD_PATH: $CI_PROJECT_DIR
+  <<: *fastapi_rules
+
+
+main_build_webapp_image:
+  extends: .build_and_push_multiple_tag
+  stage: build
+  variables:
+    BUILD_ARGS: UV_INDEX_LTPYPI_PASSWORD=$CI_JOB_TOKEN
+    TAGS: latest $PROJECT_MAJOR_VERSION.$CI_PIPELINE_IID
+  parallel:
+    matrix:
+      - DOCKERFILE_PATH: $CI_PROJECT_DIR/ops/Dockerfile.plotly_webapp
+        IMAGE_NAME: $CI_REGISTRY_IMAGE/main_plotly_webapp
+        IMAGE_BUILD_PATH: $CI_PROJECT_DIR
+  <<: *main_plotly_rules
+
+
+mian_build_webapi_image:
+  extends: .build_and_push_multiple_tag
+  stage: build
+  variables:
+    BUILD_ARGS: UV_INDEX_LTPYPI_PASSWORD=$CI_JOB_TOKEN
+    TAGS: latest $PROJECT_MAJOR_VERSION.$CI_PIPELINE_IID
+  parallel:
+    matrix:
+      - DOCKERFILE_PATH: $CI_PROJECT_DIR/ops/Dockerfile.fastapi_webapi
+        IMAGE_NAME: $CI_REGISTRY_IMAGE/main_fastapi_webapi
+        IMAGE_BUILD_PATH: $CI_PROJECT_DIR
+  <<: *main_fastapi_rules
+
+
+release_job:
+  stage: deployment
+  image: registry.gitlab.com/gitlab-org/release-cli:latest
   script:
-    - echo "Silencing pipeline in other branches"
-
-# variables:
-#   GIT_DEPTH: 1
-#   PROJECT_MAJOR_VERSION: 1
-#   FORECAST_DIRECTORY: $CI_PROJECT_DIR/analytics_core/data
-
-# include:
-#   project: libs/gitlab-jobs
-#   ref: main
-#   file:
-#     - Gitlab/Build-and-push.gitlab-ci.yml
-#     - Gitlab/Build-and-push-multiple-tag.gitlab-ci.yml
-#     - General/LTP-deployment-service-deploy-app.yaml
-#     - General/LTP-deployment-service-AIR-Stage.yaml
-
-# .default_rules: &default_rules
-#   rules:
-#     - if: $CI_COMMIT_TAG
-#       when: never
-#     - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
-#       when: on_success
-
-# .plotly_rules: &plotly_rules
-#   rules:
-#     - changes:
-#       - '**/plotly_webapp/**/*'
-#       - '**/ops/**/*'
-#       if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
-#       when: on_success
-#     - changes:
-#       - '**/plotly_webapp/**/*'
-#       - '**/ops/**/*'
-#       if: $CI_COMMIT_TAG
-#       when: never
-
-
-# .fastapi_rules: &fastapi_rules
-#   rules:
-#     - changes:
-#       - '**/fastapi_webapi/**/*'
-#       - '**/ops/**/*'
-#       if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
-#       when: on_success
-#     - changes:
-#       - '**/fastapi_webapi/**/*'
-#       - '**/ops/**/*'
-#       if: $CI_COMMIT_TAG
-#       when: never
-
-
-
-# build_webapp_image:
-#   extends: .build_and_push_multiple_tag
-#   stage: build
-#   variables:
-#     BUILD_ARGS: UV_INDEX_LTPYPI_PASSWORD=$CI_JOB_TOKEN
-#     TAGS: latest $PROJECT_MAJOR_VERSION.$CI_PIPELINE_IID
-#   parallel:
-#     matrix:
-#       - DOCKERFILE_PATH: $CI_PROJECT_DIR/ops/Dockerfile.plotly_webapp
-#         IMAGE_NAME: $CI_REGISTRY_IMAGE/plotly_webapp
-#         IMAGE_BUILD_PATH: $CI_PROJECT_DIR/plotly_webapp
-#   <<: *plotly_rules
-
-
-# build_webapi_image:
-#   extends: .build_and_push_multiple_tag
-#   stage: build
-#   variables:
-#     BUILD_ARGS: UV_INDEX_LTPYPI_PASSWORD=$CI_JOB_TOKEN
-#     TAGS: latest $PROJECT_MAJOR_VERSION.$CI_PIPELINE_IID
-#   parallel:
-#     matrix:
-#       - DOCKERFILE_PATH: $CI_PROJECT_DIR/ops/Dockerfile.fastapi_webapi
-#         IMAGE_NAME: $CI_REGISTRY_IMAGE/fastapi_webapi
-#         IMAGE_BUILD_PATH: $CI_PROJECT_DIR/fastapi_webapi
-#   <<: *fastapi_rules
-
-
-# release_job:
-#   stage: deployment
-#   image: registry.gitlab.com/gitlab-org/release-cli:latest
-#   script:
-#     - echo "Releasing $CI_COMMIT_REF_NAME to $CI_DEFAULT_BRANCH"
-#   release:
-#     tag_name: "v$PROJECT_MAJOR_VERSION.$CI_PIPELINE_IID"
-#     description: "Published image: $CI_REGISTRY_IMAGE:$PROJECT_MAJOR_VERSION.$CI_PIPELINE_IID"
-#     ref: $CI_COMMIT_SHA
-#   <<: *default_rules
-
-# deploy_webapp:
-#   stage: deployment
-#   extends: .ltp_deployment_service_deploy_app
-#   needs: 
-#     - build_webapp_image
-#   variables:
-#     LTP_APP_INDEX: 0
-#     UPDATED_IMAGE_TAG: $PROJECT_MAJOR_VERSION.$CI_PIPELINE_IID
-#   <<: *plotly_rules
-
-# deploy_webapi:
-#   stage: deployment
-#   extends: .ltp_deployment_service_deploy_app
-#   needs:
-#     - build_webapi_image
-#   variables:
-#     LTP_APP_INDEX: 1
-#     UPDATED_IMAGE_TAG: $PROJECT_MAJOR_VERSION.$CI_PIPELINE_IID
-#   <<: *fastapi_rules
-
+    - echo "Releasing $CI_COMMIT_REF_NAME to $CI_DEFAULT_BRANCH"
+  release:
+    tag_name: "v$PROJECT_MAJOR_VERSION.$CI_PIPELINE_IID"
+    description: "Published image: $CI_REGISTRY_IMAGE:$PROJECT_MAJOR_VERSION.$CI_PIPELINE_IID"
+    ref: $CI_COMMIT_SHA
+  <<: *default_rules

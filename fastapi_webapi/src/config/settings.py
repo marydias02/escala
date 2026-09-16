@@ -24,14 +24,12 @@ class Settings(BaseSettings):
     BLOB_STORAGE_ENDPOINT: Optional[str] = None
     BLOB_CONTAINER_NAME: Optional[str] = None
 
-    # Authentication - API Keys
-    HASHED_API_KEY: Optional[str] = None
-
     # Authentication - OIDC
     OIDC_METADATA_URL: Optional[str] = None
     OIDC_CLIENT_ID: Optional[str] = None
     OIDC_AUDIENCE: Optional[str] = None
     OIDC_SCOPES: Optional[str] = None
+    OIDC_JWKS_CACHE_TTL_SECONDS: int = 3600
 
     # Authentication - Entra ID (App Registration, shared by SQL and Lakehouse access)
     AZURE_TENANT_ID: Optional[str] = None
