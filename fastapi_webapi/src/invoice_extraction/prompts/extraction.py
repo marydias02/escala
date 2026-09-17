@@ -94,6 +94,7 @@ column. The real base_amount is near the totals (e.g. labelled "Basis VAT" or "B
 For Seaco, the Purcher Order number is the number between brackets after Lease number. 
 Example:
 Summary Charges - Lease Number : 182991 (5000284123)
+Other suppliers may also use similar formats, such as 1234567-5000284123, where the purchase order is the second number after the dash.
 
 The purchase order can be handwritten in red for some Cabo Verde invoices, 
 in the format (PC_XXXXXXXXXX).

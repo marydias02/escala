@@ -33,13 +33,9 @@ Use 'other' whenever the document is not one of the above, even if it contains
 financial information (shipping documents, customs documents, bank statements,
 insurance certificates, purchase orders, etc.).
 
-Settlement and reconciliation statements are 'other', not invoices. They settle
-a period between two parties instead of billing one sale, yet carry an
-invoice-like layout. Tells: a settled period rather than an issue date
-('Período liquidado', 'Settlement period'); wording like 'Liquidação', 'Acerto
-de contas', 'Statement of account', 'Extrato de conta', 'Self-billing'; lines
-for commissions, incentives or adjustments ('Ajustes'). IATA CASS documents are
-one of these. A title naming a settlement is evidence AGAINST 'invoice'.
+Settlement and reconciliation statements are considered as invoices. They settle
+a period between two parties instead of billing one sale, and carry an
+invoice-like layout.
 
 Also determine the document state (document_state) ONLY when explicitly visible:
 

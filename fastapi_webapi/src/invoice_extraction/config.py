@@ -60,7 +60,7 @@ ZIP_CHUNK_SIZE = 64 * 1024
 EXTRACTION_MAX_WORKERS = 3
 
 # How many email threads run concurrently; multiplies with EXTRACTION_MAX_WORKERS.
-EMAIL_MAX_WORKERS = 3
+EMAIL_MAX_WORKERS = 5
 
 # Deterministic parser settings, matching the notebook.
 PARSER_KWARGS = {

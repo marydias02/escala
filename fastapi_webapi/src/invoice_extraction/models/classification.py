@@ -37,10 +37,16 @@ class DocumentClassification(BaseModel):
     financial information (shipping documents, customs documents, bank statements,
     insurance certificates, purchase orders, etc.).
 
-    Settlement/reconciliation statements (Liquidação, IATA CASS, statement of
-    account) are to be considered as invoice.
+    Avisos de recibo (Receipt notices) are considered receipts.
 
-    Documentos úncios de cobrança should be considered invoice
+    Documents "Anexos" (Annexes) are considered other.
+
+    Settlement/reconciliation statements (Liquidação, IATA CASS, statement of
+    account) are to be considered as invoice. 
+
+    RESUMO VENDA DE CARGA are other.
+
+    Documentos úncios de cobrança should be considered invoice.
 
     Do not infer the type from filenames.
     Only use the document contents.

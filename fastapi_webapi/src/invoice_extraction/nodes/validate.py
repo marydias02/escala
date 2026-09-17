@@ -238,6 +238,13 @@ def _resolve_party(report: ValidationReport, prefix: str, repository: PartyRepos
 
     No match: the report is returned unchanged (id stays null, extracted
     name/vat are kept) — which will get flagged in decisions.py
+
+    `row["vat"]` is None when the registry itself holds no VAT for this party
+    (common outside the EU, e.g. Japanese suppliers) — stamped here as "" rather
+    than None, since the party IS identified and the registry, being
+    authoritative, is confirming there genuinely is no VAT to give. `""` is what
+    lets `ingestion_blockers` tell "identified, no VAT" apart from "not
+    identified at all".
     """
     vat = getattr(report, f"{prefix}_vat")
     name = getattr(report, f"{prefix}_name")
@@ -251,7 +258,7 @@ def _resolve_party(report: ValidationReport, prefix: str, repository: PartyRepos
         update={
             f"{prefix}_id": Checked[str](value=str(row["id"]), confidence=confidence),
             f"{prefix}_name": Checked[str](value=row["name"], confidence=confidence),
-            f"{prefix}_vat": Checked[str](value=row["vat"], confidence=confidence),
+            f"{prefix}_vat": Checked[str](value=row["vat"] or "", confidence=confidence),
         }
     )
 
