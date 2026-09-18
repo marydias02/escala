@@ -24,6 +24,7 @@ CLASSIFICATION
 Determine the accounting nature of the document (document_type):
 
 - invoice
+- billing_document
 - receipt
 - credit_note
 - debit_note
@@ -35,7 +36,14 @@ insurance certificates, purchase orders, etc.).
 
 Settlement and reconciliation statements are considered as invoices. They settle
 a period between two parties instead of billing one sale, and carry an
-invoice-like layout.
+invoice-like layout. This does NOT extend to a RESUMO VENDA DE CARGA, which
+reports an agent's own sales and is always 'other': it arrives behind a
+CASS/IATA cover page whose settlement and billing-period wording describes the
+scheme, not the document. Where that title appears anywhere, classify as other.
+
+A document demanding payment under its own collection reference rather than an
+invoice number (Documento Único de Cobrança and similar) is a billing_document.
+Wording about it serving as proof once paid does not make it a receipt.
 
 Also determine the document state (document_state) ONLY when explicitly visible:
 
@@ -51,7 +59,7 @@ If applicable, include document_exception:
 - insurance
 - extract
 
-Return NULL if any of these apply. It is safer to return NULL when unsure.
+Return NULL when none of these applies. It is safer to return NULL when unsure.
 
 LANGUAGE
 

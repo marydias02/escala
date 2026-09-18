@@ -16,6 +16,7 @@ class DocumentClassification(BaseModel):
     document_type: Confident[
         Literal[
             "invoice",
+            "billing_document",
             "receipt",
             "credit_note",
             "debit_note",
@@ -28,6 +29,7 @@ class DocumentClassification(BaseModel):
     Choose:
 
     - invoice
+    - billing_document
     - receipt
     - credit_note
     - debit_note
@@ -42,11 +44,21 @@ class DocumentClassification(BaseModel):
     Documents "Anexos" (Annexes) are considered other.
 
     Settlement/reconciliation statements (Liquidação, IATA CASS, statement of
-    account) are to be considered as invoice. 
+    account) are to be considered as invoice, when they actually settle a
+    balance between two parties.
 
-    RESUMO VENDA DE CARGA are other.
+    RESUMO VENDA DE CARGA are other, whatever else the document carries. They
+    report an agent's own sales to the airlines, so there is nothing billed to
+    us. These arrive bundled behind a CASS/IATA cover page full of settlement
+    and billing-period wording: that cover page describes the scheme, not this
+    document. Where "RESUMO VENDA DE CARGA" appears anywhere in the document,
+    the type is other and the settlement rule above does not apply.
 
-    Documentos úncios de cobrança should be considered invoice.
+    billing_document is a demand for payment issued under its own collection
+    reference rather than an invoice number — Documento Único de Cobrança (DUC)
+    and similar. Wording about the document serving as proof once paid describes
+    what it becomes after payment, not what it is: classify it here, not as a
+    receipt.
 
     Do not infer the type from filenames.
     Only use the document contents.

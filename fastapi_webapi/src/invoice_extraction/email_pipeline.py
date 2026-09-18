@@ -151,6 +151,7 @@ class EmailProcessingResult:
 
 _TYPE_LABELS = {
     "invoice": "Invoice",
+    "billing_document": "Billing Document",
     "receipt": "Receipt",
     "credit_note": "Credit Note",
     "debit_note": "Debit Note",
