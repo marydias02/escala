@@ -12,9 +12,9 @@ WORKDIR /app
 
 COPY plotly_webapp/pyproject.toml plotly_webapp/uv.lock plotly_webapp/.python-version ./
 
-RUN uv sync
-# Copy the contents of cockpits directory
 COPY ./plotly_webapp/ .
+
+RUN uv sync
 
 # Run command
 CMD ["uv", "run", "gunicorn", "-b", "0.0.0.0:8050", "-w", "4", "-t", "60", "webapp.main:app"]
