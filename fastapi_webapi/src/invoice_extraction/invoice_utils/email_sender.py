@@ -32,7 +32,7 @@ from typing import Literal, Optional
 
 import httpx
 
-from utils.graph_auth import GRAPH_BASE, get_graph_token, graph_user_path
+from utils.graph_auth import GRAPH_BASE, IMMUTABLE_ID_PREFER, get_graph_token, graph_user_path
 
 MAX_SEND_ATTEMPTS = 3
 RETRY_BACKOFF_SECONDS = 2.0
@@ -56,7 +56,11 @@ async def _post(url: str, json: dict) -> httpx.Response:
     errors) with backoff. A 4xx is a permanent failure and raised immediately
     """
     token = await get_graph_token()
-    headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
+    headers = {
+        "Authorization": f"Bearer {token}",
+        "Content-Type": "application/json",
+        "Prefer": IMMUTABLE_ID_PREFER,
+    }
 
     for attempt in range(1, MAX_SEND_ATTEMPTS + 1):
         try:
