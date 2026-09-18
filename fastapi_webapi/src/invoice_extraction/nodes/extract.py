@@ -14,7 +14,7 @@ def extract_document(
     *,
     scanned: bool = False,
 ) -> InvoiceData:
-    """Extract InvoiceData from a document already classified as an invoice-like Original.
+    """Extract InvoiceData from an already-classified document.
 
     The confirmed classification is passed into the prompt as context so the
     model does not re-classify.
@@ -29,6 +29,9 @@ def extract_document(
             {
                 "filename": doc.filename,
                 "document_type": classification.document_type.value,
+                "document_exception": (
+                    classification.document_exception.value if classification.document_exception else None
+                ),
                 "input_mode": "image" if scanned else "pdf",
             }
         )

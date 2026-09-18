@@ -133,7 +133,7 @@
       "document_state": "original",
       "document_exception": "condominio",
       "document_number": "616/11753",
-      "supplier_vat": "PT902080083",
+      "supplier_vat": "PT902077660",
       "client_vat": "PT509578888",
       "issue_date": "17-06-2026",
       "base_amount": 8.04,
@@ -413,7 +413,7 @@
     },
     "expect": {
       "should_extract": true,
-      "document_type": "invoice",
+      "document_type": "billing_document",
       "document_state": "original",
       "document_number": "926155680483",
       "supplier_vat": "CV355112574",

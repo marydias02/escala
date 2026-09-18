@@ -7,8 +7,8 @@ from invoice_extraction.models import DocumentClassification
 EXTRACTION_SYSTEM_PROMPT = """
 You are an expert document understanding system specialized in invoices and accounting documents.
 
-The document has ALREADY been classified as an invoice-like Original by a
-previous step, which also read its document_number. Your task is ONLY to extract
+The document has ALREADY been classified by a previous step, which also read its
+document_number. Your task is ONLY to extract
 the remaining structured information into the provided InvoiceData schema. Do
 NOT re-classify the document and do NOT return a document number — that field is
 not part of your schema and is already known.
@@ -83,6 +83,12 @@ Do not normalize evidence.
 
 KNOWN EDGE CASES
 
+On a condomínio receipt the supplier is the condomínio named under "CONDOMÍNIO:",
+with the NIF from that same block — not the administrator in the letterhead.
+Its charges are quotas, not taxed supplies: FCR (Fundo Comum de Reserva) and
+permilagem columns are never VAT. Absent an explicit IVA line, vat_amount is 0
+and base_amount equals the total.
+
 If the email comes from COMPLEXO DE CARGA DO Aeroporto Humberto Delgado, the issue date is the first date,
 that appears after "EMITIDO EM:" in the pdf.
 The second date, which appears after "DATA DE EMISSÃO:", relates to the goods and should be ignored.
@@ -96,8 +102,13 @@ Example:
 Summary Charges - Lease Number : 182991 (5000284123)
 Other suppliers may also use similar formats, such as 1234567-5000284123, where the purchase order is the second number after the dash.
 
-The purchase order can be handwritten in red for some Cabo Verde invoices, 
-in the format (PC_XXXXXXXXXX).
+The purchase order can be handwritten for some Cabo Verde invoices, usually at
+the very top of the page, as a "PC" prefix followed by the 10-digit number
+(PC_XXXXXXXXXX, PC-XXXXXXXXXX). Handwriting OCRs poorly: the prefix may arrive
+as Pe, le, PL or be lost entirely, the separator may be any dash or space, and a
+short page or sequence number may follow. Read an isolated 10-digit number in
+that position as the purchase order even when the prefix is garbled. Return the
+10 digits ALONE, stripping the prefix, the separator and any trailing number.
 
 FINAL RULE
 
@@ -130,6 +141,11 @@ def build_extraction_human_message(
         else "original (not explicitly stated)"
     )
     doc_number = classification.document_number.value if classification.document_number is not None else "not found"
+    exception_line = (
+        f"\n  - exception:       {classification.document_exception.value} — see KNOWN EDGE CASES"
+        if classification.document_exception is not None
+        else ""
+    )
     return HumanMessage(
         content=[
             {
@@ -140,7 +156,7 @@ Analyze the attached PDF.
 This document has ALREADY been classified as:
   - document_type:   {doc_type}
   - document_state:  {doc_state}
-  - document_number: {doc_number}
+  - document_number: {doc_number}{exception_line}
 
 Do NOT re-classify it and do NOT return the document number. Extract the
 requested structured invoice information into the provided schema, following

@@ -17,6 +17,7 @@ from invoice_extraction.tracing import (
     STAGE_VALIDATION,
     STAGE_VALIDATION_REGISTRY,
     STAGE_VALIDATION_SHAPING,
+    STAGE_VALIDATION_SWAP,
     STAGE_VALIDATION_TOOLS,
     span,
     validation_summary,
@@ -129,10 +130,46 @@ def _reconcile_amounts(report: ValidationReport) -> ValidationReport:
     )
 
 
-def _noted(report: ValidationReport, fields: dict[str, Checked[float]], note: str) -> ValidationReport:
+def _noted(report: ValidationReport, fields: dict[str, Checked[float] | Checked[str] | None], note: str) -> ValidationReport:
     """Set the given fields and append the note explaining them, for the reviewer."""
     logger.info(note)
     return report.model_copy(update={**fields, "notes": f"{report.notes.strip()} {note}".strip()})
+
+
+def _vat_rows(repository: PartyRepository, vat: str | None) -> list[dict]:
+    """Registry rows holding `vat`, retried without the country prefix."""
+    normalized = normalize_key(vat)
+    if not normalized:
+        return []
+    return repository.by_vat(normalized) or repository.by_vat(normalized, ignore_country_prefix=True)
+
+
+def _swap_parties_if_needed(report: ValidationReport) -> ValidationReport:
+    """Swap the parties when the supplier VAT is a group company and the client's is not.
+
+    `business_units` is SAP's own company-code table, so a VAT in it belongs to
+    the group. Both resolving is an intra-group invoice — nothing to correct.
+    """
+    supplier, bu = report.supplier_vat, report.bu_vat
+    if supplier is None or bu is None:
+        return report
+
+    supplier_is_ours = bool(_vat_rows(business_units, supplier.value))
+    bu_is_ours = bool(_vat_rows(business_units, bu.value))
+
+    if not supplier_is_ours or bu_is_ours:
+        return report
+
+    return _noted(
+        report,
+        {
+            "supplier_name": report.bu_name,
+            "supplier_vat": report.bu_vat,
+            "bu_name": report.supplier_name,
+            "bu_vat": report.supplier_vat,
+        },
+        f"supplier/client swapped, fixed ({supplier.value} is a group company)",
+    )
 
 
 def _best_name_match(repository: PartyRepository, name: str) -> tuple[dict, float] | None:
@@ -313,6 +350,7 @@ def validate_document(
     invoice: InvoiceData,
     parsed_text: str | None = None,
     document_number: str | None = None,
+    document_exception: str | None = None,
 ) -> ValidationReport:
     """Validate extracted invoice data, using the registry tools, into a ValidationReport.
 
@@ -332,7 +370,12 @@ def validate_document(
     """
     messages: list[BaseMessage] = [
         VALIDATION_SYSTEM_MESSAGE,
-        build_validation_human_message(invoice, parsed_text=parsed_text, document_number=document_number),
+        build_validation_human_message(
+            invoice,
+            parsed_text=parsed_text,
+            document_number=document_number,
+            document_exception=document_exception,
+        ),
     ]
 
     llm_with_tools = llm.bind_tools(VALIDATION_TOOLS)
@@ -343,7 +386,7 @@ def validate_document(
     # which is meaningless against `bind_tools` — the model is reasoning, not
     # emitting a schema. A span there would miss every tool round.
     with span(STAGE_VALIDATION, "LLM") as stage_span:
-        stage_span.set_inputs({"has_parsed_text": parsed_text is not None})
+        stage_span.set_inputs({"has_parsed_text": parsed_text is not None, "document_exception": document_exception})
 
         with span(STAGE_VALIDATION_TOOLS) as tools_span:
             rounds = 0
@@ -375,6 +418,15 @@ def validate_document(
             report = invoke_with_retry(structured_llm, [*messages, SHAPE_REQUEST], stage="validation (shaping)")
             report = _reconcile_amounts(report)
             shaping_span.set_outputs(validation_summary(report))
+
+        with span(STAGE_VALIDATION_SWAP) as swap_span:
+            before = report.supplier_vat.value if report.supplier_vat else None
+            try:
+                report = _swap_parties_if_needed(report)
+            except Exception as exc:  # noqa: BLE001 - a lookup blip must not break validation
+                logger.warning(f"Swap check failed, leaving parties as read: {exc!r}")
+            after = report.supplier_vat.value if report.supplier_vat else None
+            swap_span.set_outputs({"swapped": before != after, **validation_summary(report)})
 
         with span(STAGE_VALIDATION_REGISTRY) as registry_span:
             report = resolve_registry_ids(report)
