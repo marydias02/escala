@@ -173,7 +173,7 @@ Seguem em anexo recibos para processamento.
 Obrigado"""
 
 # Document types routed by the B-cases below.
-_INVOICE_LIKE = ("invoice", "credit_note", "debit_note")
+_INVOICE_LIKE = ("invoice", "billing_document", "credit_note", "debit_note")
 
 # --------------------------------------------------------------------------- #
 # Go / no-go on the extraction itself — THE place to tune ingestion strictness.
