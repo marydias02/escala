@@ -183,7 +183,6 @@ def _build_email_detail(token, ref_number):
 
         total_amount = field_value("total_amount")
         vat_amount = field_value("vat_amount")
-        base_amount = field_value("base_amount")
         currency = field_value("currency")
 
     else:
@@ -393,18 +392,6 @@ def _build_email_detail(token, ref_number):
                                                             html.Div(
                                                                 className="email_detail__field",
                                                                 children=[
-                                                                    Label(label_text="Valor Base"),
-                                                                    dcc.Input(
-                                                                        id="base_amount",
-                                                                        value=base_amount,
-                                                                        type="number",
-                                                                        className="email_detail__input",
-                                                                    ),
-                                                                ],
-                                                            ),
-                                                            html.Div(
-                                                                className="email_detail__field",
-                                                                children=[
                                                                     Label(label_text="Moeda"),
                                                                     dcc.Dropdown(
                                                                         id="currency",
@@ -552,7 +539,6 @@ def load_email_drawer_content(_clicks, document_id):
     State("issue_date", "date"),
     State("total_amount", "value"),
     State("vat_amount", "value"),
-    State("base_amount", "value"),
     State("currency", "value"),
     State("credit_note", "value"),
     prevent_initial_call=True,
@@ -569,7 +555,6 @@ def update_document_details(
     issue_date,
     total_amount,
     vat_amount,
-    base_amount,
     currency,
     credit_note,
 ):
@@ -603,8 +588,6 @@ def update_document_details(
         update_field("total_amount", total_amount)
     if vat_amount is not None:
         update_field("vat_amount", vat_amount)
-    if base_amount is not None:
-        update_field("base_amount", base_amount)
     if currency is not None:
         update_field("currency", currency)
     if credit_note is not None:
@@ -617,7 +600,6 @@ def update_document_details(
         "Data da Fatura": issue_date,
         "Valor Total": total_amount,
         "Valor do IVA": vat_amount,
-        "Valor Base": base_amount,
         "Moeda": currency,
         "Nota de Crédito": credit_note,
     }
