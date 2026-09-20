@@ -110,6 +110,7 @@ def layout(ref_number=None, **_kwargs):
     return html.Div(
         [
             dcc.Store(id="email-detail-ref-number", data=str(ref_number)),
+            dcc.Store(id="email-detail-export-trigger"),
             dcc.Loading(
                 id="email-detail-loading",
                 type="default",
@@ -126,6 +127,30 @@ def layout(ref_number=None, **_kwargs):
 )
 def load_email_detail(ref_number):
     return _build_email_detail(get_access_token(), ref_number)
+
+
+dash.clientside_callback(
+    """
+    function (n_clicks, ref_number) {
+        if (!n_clicks || !ref_number) {
+            return window.dash_clientside.no_update;
+        }
+
+        const link = document.createElement("a");
+        link.href = "/pdf/" + encodeURIComponent(ref_number);
+        link.download = String(ref_number) + ".pdf";
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+
+        return window.dash_clientside.no_update;
+    }
+    """,
+    Output("email-detail-export-trigger", "data"),
+    Input("email-detail-export-button", "n_clicks"),
+    State("email-detail-ref-number", "data"),
+    prevent_initial_call=True,
+)
 
 
 def _build_email_detail(token, ref_number):
@@ -424,7 +449,12 @@ def _build_email_detail(token, ref_number):
                     html.Section(
                         className="email_detail__bottom_section",
                         children=[
-                            Button("Exportar", icon="lucide:file-down", variant="outline"),
+                            Button(
+                                "Exportar",
+                                id="email-detail-export-button",
+                                icon="lucide:file-down",
+                                variant="outline",
+                            ),
                             Button("Guardar", id="save-button", icon="lucide:circle-check", variant="outline"),
                             Button("Enviar para SAP", id="send-sap-button", icon="lucide:send"),
                             html.P(id="email-detail-update-status", className="body-sm email_detail__status"),
