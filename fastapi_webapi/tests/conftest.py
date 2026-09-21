@@ -1,4 +1,4 @@
-"""Test harness for OIDC token validation and RBAC.
+﻿"""Test harness for OIDC token validation and RBAC.
 
 The suite mints its own RSA-signed JWTs and serves a local JWKS, so the real
 validation code path in `api.dependencies.security` runs end to end with no
@@ -100,7 +100,7 @@ def mint_token(keys):
             "exp": now + timedelta(seconds=expires_in),
         }
         if roles is _UNSET:
-            roles = ["user"]
+            roles = ["User"]
         if roles is not None:
             claims["roles"] = roles
         signer = keys[sign_with or kid]
@@ -195,6 +195,36 @@ def stub_extraction_service(app):
     from api.dependencies.services import get_extraction_service
 
     app.dependency_overrides[get_extraction_service] = lambda: _StubExtractionService()
+
+
+class _StubSearchService:
+    """Records the (q, limit) each route passed and returns a canned list."""
+
+    def __init__(self, rows=None):
+        self.rows = rows if rows is not None else []
+        self.calls: list[tuple[str, str, int]] = []
+
+    async def search_suppliers(self, q: str, limit: int = 10):
+        return self._record("suppliers", q, limit)
+
+    async def search_business_units(self, q: str, limit: int = 10):
+        return self._record("business_units", q, limit)
+
+    async def search_purchase_orders(self, q: str, limit: int = 10):
+        return self._record("purchase_orders", q, limit)
+
+    def _record(self, entity: str, q: str, limit: int):
+        self.calls.append((entity, q, limit))
+        return self.rows
+
+
+@pytest.fixture
+def stub_search_service(app):
+    from api.dependencies.services import get_search_service
+
+    stub = _StubSearchService()
+    app.dependency_overrides[get_search_service] = lambda: stub
+    return stub
 
 
 class _StubAirService:

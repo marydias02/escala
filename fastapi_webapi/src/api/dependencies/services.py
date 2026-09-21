@@ -4,6 +4,7 @@ from fastapi import Depends
 
 from api.services.air_example import AirExampleService
 from api.services.extraction_service import ExtractionService
+from api.services.search_service import SearchService
 from api.services.validation_service import ValidationService
 
 
@@ -26,6 +27,13 @@ async def get_validation_service() -> ValidationService:
 
 
 ValidationServiceDep = Annotated[ValidationService, Depends(get_validation_service)]
+
+
+async def get_search_service() -> SearchService:
+    return SearchService()
+
+
+SearchServiceDep = Annotated[SearchService, Depends(get_search_service)]
 
 
 # These dependencies might seem redundant now, but it's here to allow easy extension in the future

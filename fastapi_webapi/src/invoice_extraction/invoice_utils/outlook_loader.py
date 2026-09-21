@@ -15,7 +15,7 @@ Auth (delegated device-code, or app-only client-credentials) is via
 """
 
 import re
-from datetime import datetime
+from datetime import UTC, datetime
 from email.utils import parseaddr
 from pathlib import Path
 
@@ -24,7 +24,7 @@ from loguru import logger
 
 from invoice_extraction.invoice_utils.attachments import _expand_zip
 from invoice_extraction.models import EmailAttachment, LoadedEmail
-from utils.graph_auth import GRAPH_BASE, get_graph_token, graph_user_path
+from utils.graph_auth import GRAPH_BASE, IMMUTABLE_ID_PREFER, get_graph_token, graph_user_path
 
 _MESSAGE_SELECT = ",".join(
     [
@@ -37,6 +37,33 @@ _MESSAGE_SELECT = ",".join(
         "body",
     ]
 )
+
+# The delta page is metadata only — enough to record the message and order it.
+_DELTA_SELECT = ",".join(
+    [
+        "id",
+        "conversationId",
+        "receivedDateTime",
+        "from",
+        "subject",
+        "hasAttachments",
+    ]
+)
+
+
+async def auth_headers() -> dict[str, str]:
+    """Bearer + immutable-id headers, the base for every request in this module."""
+    token = await get_graph_token()
+    return {
+        "Authorization": f"Bearer {token}",
+        "Accept": "application/json",
+        "Prefer": IMMUTABLE_ID_PREFER,
+    }
+
+
+def _with_prefer(headers: dict[str, str], preference: str) -> dict[str, str]:
+    """Add a Prefer value, keeping the immutable-id one — Graph takes them comma-separated."""
+    return {**headers, "Prefer": f"{headers['Prefer']}, {preference}"}
 
 
 def _extract_email_address(sender: dict | None) -> str:
@@ -92,7 +119,7 @@ async def _graph_get_paged(
 
 async def _list_messages(client: httpx.AsyncClient, headers: dict, top: int) -> list[dict]:
     params = {"$top": str(top), "$select": _MESSAGE_SELECT, "$orderby": "receivedDateTime DESC"}
-    list_headers = {**headers, "Prefer": 'outlook.body-content-type="text"'}
+    list_headers = _with_prefer(headers, 'outlook.body-content-type="text"')
     response = await client.get(
         f"{GRAPH_BASE}/{graph_user_path()}/mailFolders/inbox/messages",
         headers=list_headers,
@@ -147,6 +174,88 @@ async def _list_attachments(client: httpx.AsyncClient, headers: dict, message_id
     return attachments
 
 
+class DeltaResyncRequired(Exception):
+    """Graph answered 410 Gone: the stored delta token has expired.
+
+    The caller drops `sync_url` and restarts from an initial call filtered on
+    the last received date; messages replayed that way are already recorded, so
+    they hit the ON CONFLICT and vanish.
+    """
+
+
+async def fetch_inbox_delta_page(
+    client: httpx.AsyncClient,
+    headers: dict,
+    url: str | None,
+    *,
+    since: datetime,
+    page_size: int,
+) -> tuple[list[dict], str | None, bool]:
+    """One page of the inbox delta query: `(entries, next_url, is_delta_link)`.
+
+    `url` is a stored `@odata.nextLink`/`@odata.deltaLink` — both opaque and
+    already carrying their own query — or None to start an initial call bounded
+    by `since`. Metadata only: no body and no attachments, so a page stays cheap.
+
+    `is_delta_link` marks the end of the stream; the returned url is then the
+    cursor to resume from on the next run rather than a page to fetch now.
+    Raises `DeltaResyncRequired` on the 410 an expired token produces.
+    """
+    page_headers = _with_prefer(headers, f"odata.maxpagesize={page_size}")
+
+    if url is None:
+        request_url = f"{GRAPH_BASE}/{graph_user_path()}/mailFolders/inbox/messages/delta"
+        params = {
+            "$select": _DELTA_SELECT,
+            "$filter": f"receivedDateTime ge {since.astimezone(UTC).strftime('%Y-%m-%dT%H:%M:%SZ')}",
+        }
+    else:
+        request_url = url
+        params = None
+
+    response = await client.get(request_url, headers=page_headers, params=params)
+    if response.status_code == 410:
+        raise DeltaResyncRequired(response.text)
+    response.raise_for_status()
+
+    data = response.json()
+    delta_link = data.get("@odata.deltaLink")
+    next_link = data.get("@odata.nextLink")
+    return data.get("value", []), delta_link or next_link, delta_link is not None
+
+
+async def fetch_message(client: httpx.AsyncClient, headers: dict, message_id: str) -> LoadedEmail | None:
+    """One full message — body and attachments — by id, or None if it is gone.
+
+    None means Graph answered 404: a human deleted or moved the message out of
+    reach between the delta page recording it and this call.
+    """
+    message_headers = _with_prefer(headers, 'outlook.body-content-type="text"')
+    response = await client.get(
+        f"{GRAPH_BASE}/{graph_user_path()}/messages/{message_id}",
+        headers=message_headers,
+        params={"$select": _MESSAGE_SELECT},
+    )
+    if response.status_code == 404:
+        return None
+    response.raise_for_status()
+    message = response.json()
+
+    attachments: list[EmailAttachment] = []
+    if message.get("hasAttachments"):
+        attachments = await _list_attachments(client, headers, message_id)
+
+    return LoadedEmail(
+        sender_email=_extract_email_address(message.get("from")),
+        subject=(message.get("subject") or "").strip(),
+        body=_collapse_blank_lines((message.get("body") or {}).get("content") or ""),
+        reception_date=_received_date_iso(message),
+        attachments=attachments,
+        message_id=message_id,
+        thread_id=message.get("conversationId") or "",
+    )
+
+
 async def fetch_inbox_emails(
     limit: int, skip_message_ids: set[str] | None = None
 ) -> list[LoadedEmail]:
@@ -158,8 +267,7 @@ async def fetch_inbox_emails(
     lives only in memory until the caller (ingestion) writes its output.
     """
     skip_message_ids = skip_message_ids or set()
-    token = await get_graph_token()
-    headers = {"Authorization": f"Bearer {token}", "Accept": "application/json"}
+    headers = await auth_headers()
 
     loaded_emails: list[LoadedEmail] = []
     skipped = 0

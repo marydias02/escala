@@ -6,6 +6,7 @@ pipelines read their configuration from one place. Application-wide settings
 """
 
 import math
+from datetime import timedelta
 from pathlib import Path
 
 BASE_DIR = Path(__file__).parent
@@ -25,12 +26,14 @@ PROCESSED_EMAILS_DIR = DOCS_DIR / "processed_emails"
 MANIFEST_NAME = "email_content.json"
 
 # How many messages fetch_inbox_emails pulls from Graph per run (the `$top` on
-# the message list request).
+# the message list request). `email_pipeline --test` only — the cron run pages a
+# delta query instead and never uses this.
 DEFAULT_FETCH_LIMIT = 1
 
-# Of the emails fetched, only run the first N through the pipeline (None = all
-# of them). A testing knob, independent of DEFAULT_FETCH_LIMIT
-INGEST_LIMIT: int | None = 1
+# How much LLM work one run does: at most N emails are processed per run (None =
+# every claimable row). Arrivals above it build a backlog in `email_messages`
+# that drains on quieter runs; it is a throughput cap, not a fetch limit.
+INGEST_LIMIT: int | None = 100
 
 # Persist results to Postgres. Off lets the pipeline be exercised (and traced)
 # with no database running, and keeps test runs out of fct_processes.
@@ -43,6 +46,26 @@ EMAIL_ACTIONS = False
 # Windows caps a full path at 260 characters by default. Email subjects in the
 # sample set reach 111 characters, so folder names are truncated well short of it.
 MAX_FOLDER_NAME = 80
+
+# -- Inbox sync (cron path) ------------------------------------------------
+# `email_pipeline.main` walks a Graph delta query over the inbox, records each
+# addition in `email_messages`, then processes from that table. See the
+# 20260918_01 migration.
+
+# `Prefer: odata.maxpagesize` on the delta call. Metadata only (no body, no
+# attachments), so a page is cheap and this is just how often the cursor commits.
+DELTA_PAGE_SIZE = 50
+
+# A `failed` row is retried until it has been attempted this many times.
+MAX_ATTEMPTS = 3
+
+# How far back the very first delta call reaches, before any cursor exists.
+# Every message inside this window is queued, so keep it short.
+INITIAL_SYNC_LOOKBACK = timedelta(minutes=10)
+
+# Key for the `pg_try_advisory_lock` that keeps runs from overlapping. Arbitrary
+# but fixed: a second run that cannot take it exits as `skipped`.
+RUN_LOCK_KEY = 3_141_592
 
 # -- Zip expansion limits --------------------------------------------------
 # Attachments are untrusted input. These bound what a malicious archive can cost
@@ -60,7 +83,7 @@ ZIP_CHUNK_SIZE = 64 * 1024
 EXTRACTION_MAX_WORKERS = 3
 
 # How many email threads run concurrently; multiplies with EXTRACTION_MAX_WORKERS.
-EMAIL_MAX_WORKERS = 3
+EMAIL_MAX_WORKERS = 7
 
 # Deterministic parser settings, matching the notebook.
 PARSER_KWARGS = {

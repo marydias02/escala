@@ -24,6 +24,7 @@ CLASSIFICATION
 Determine the accounting nature of the document (document_type):
 
 - invoice
+- billing_document
 - receipt
 - credit_note
 - debit_note
@@ -33,13 +34,16 @@ Use 'other' whenever the document is not one of the above, even if it contains
 financial information (shipping documents, customs documents, bank statements,
 insurance certificates, purchase orders, etc.).
 
-Settlement and reconciliation statements are 'other', not invoices. They settle
-a period between two parties instead of billing one sale, yet carry an
-invoice-like layout. Tells: a settled period rather than an issue date
-('Período liquidado', 'Settlement period'); wording like 'Liquidação', 'Acerto
-de contas', 'Statement of account', 'Extrato de conta', 'Self-billing'; lines
-for commissions, incentives or adjustments ('Ajustes'). IATA CASS documents are
-one of these. A title naming a settlement is evidence AGAINST 'invoice'.
+Settlement and reconciliation statements are considered as invoices. They settle
+a period between two parties instead of billing one sale, and carry an
+invoice-like layout. This does NOT extend to a RESUMO VENDA DE CARGA, which
+reports an agent's own sales and is always 'other': it arrives behind a
+CASS/IATA cover page whose settlement and billing-period wording describes the
+scheme, not the document. Where that title appears anywhere, classify as other.
+
+A document demanding payment under its own collection reference rather than an
+invoice number (Documento Único de Cobrança and similar) is a billing_document.
+Wording about it serving as proof once paid does not make it a receipt.
 
 Also determine the document state (document_state) ONLY when explicitly visible:
 
@@ -55,7 +59,7 @@ If applicable, include document_exception:
 - insurance
 - extract
 
-Return NULL if any of these apply. It is safer to return NULL when unsure.
+Return NULL when none of these applies. It is safer to return NULL when unsure.
 
 LANGUAGE
 

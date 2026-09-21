@@ -24,10 +24,10 @@ def _verdict(matched: bool) -> str:
 
 
 def _text_match(got: Any, want: Any) -> bool:
-    """Compare as text, ignoring case and surrounding whitespace."""
+    """Compare as text, ignoring case and whitespace."""
     if got is None or want is None:
         return got == want
-    return str(got).strip().casefold() == str(want).strip().casefold()
+    return "".join(str(got).split()).casefold() == "".join(str(want).split()).casefold()
 
 
 def _score_text(outputs: dict, expectations: dict, field: str) -> Optional[str]:

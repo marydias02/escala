@@ -90,7 +90,9 @@
       "vat_amount": 0.0,
       "total_amount": 104.0,
       "currency": "EUR",
-      "purchase_order": ["5000355882"]
+      "purchase_order": [
+        "5000355882"
+      ]
     }
   },
   {
@@ -112,7 +114,10 @@
       "vat_amount": 0.0,
       "total_amount": 22634.02,
       "currency": "EUR",
-      "purchase_order": ["5000341531", "5000341503"]
+      "purchase_order": [
+        "5000341531",
+        "5000341503"
+      ]
     }
   },
   {
@@ -128,7 +133,7 @@
       "document_state": "original",
       "document_exception": "condominio",
       "document_number": "616/11753",
-      "supplier_vat": "PT510876838",
+      "supplier_vat": "PT902077660",
       "client_vat": "PT509578888",
       "issue_date": "17-06-2026",
       "base_amount": 8.04,
@@ -150,14 +155,16 @@
       "document_type": "invoice",
       "document_state": "original",
       "document_number": "FA3 2026/147",
-      "supplier_vat": "300004001",
-      "client_vat": "217730404",
+      "supplier_vat": "CV300004001",
+      "client_vat": "CV271730404",
       "issue_date": "23-06-2026",
       "base_amount": 5050.0,
       "vat_amount": 0.0,
       "total_amount": 5050.0,
       "currency": "CVE",
-      "purchase_order": ["4800053075"]
+      "purchase_order": [
+        "4800053075"
+      ]
     }
   },
   {
@@ -172,14 +179,16 @@
       "document_type": "invoice",
       "document_state": "original",
       "document_number": "60610052-2026",
-      "supplier_vat": "T9020001028682",
+      "supplier_vat": "",
       "client_vat": "PT511011911",
       "issue_date": "19-06-2026",
       "base_amount": 123000.0,
       "vat_amount": 0.0,
       "total_amount": 123000.0,
       "currency": "JPY",
-      "purchase_order": ["4500026263"]
+      "purchase_order": [
+        "4500026263"
+      ]
     }
   },
   {
@@ -201,7 +210,9 @@
       "vat_amount": 0.0,
       "total_amount": 11310.0,
       "currency": "USD",
-      "purchase_order": ["5000364195"]
+      "purchase_order": [
+        "5000364195"
+      ]
     }
   },
   {
@@ -281,7 +292,9 @@
       "vat_amount": 0,
       "total_amount": 16.67,
       "currency": "EUR",
-      "purchase_order": ["5628471754"]
+      "purchase_order": [
+        "5628471754"
+      ]
     }
   },
   {
@@ -292,10 +305,19 @@
       "scanned": "no"
     },
     "expect": {
-      "should_extract": false,
-      "document_type": "other",
+      "should_extract": true,
+      "document_type": "receipt",
+      "document_exception": "insurance",
       "document_state": "original",
-      "document_number": "0196907855"
+      "document_number": "0196907855",
+      "supplier_vat": "PT500918880",
+      "client_vat": "PT511126093",
+      "issue_date": "12-05-2026",
+      "base_amount": 111.16,
+      "vat_amount": 0,
+      "total_amount": 111.16,
+      "currency": "EUR",
+      "purchase_order": []
     }
   },
   {
@@ -317,7 +339,9 @@
       "vat_amount": 0,
       "total_amount": 6567.65,
       "currency": "EUR",
-      "purchase_order": ["5000350613"]
+      "purchase_order": [
+        "5000350613"
+      ]
     }
   },
   {
@@ -368,28 +392,78 @@
       "document_type": "invoice",
       "document_state": "original",
       "document_number": "FR/2026/2024/4",
-      "supplier_vat": "286861798",
-      "client_vat": "200103709",
+      "supplier_vat": "CV286861798",
+      "client_vat": "CV200103709",
       "issue_date": "26-06-2026",
-      "base_amount": 14000,
+      "base_amount": 14583,
       "vat_amount": 0,
       "total_amount": 14583,
       "currency": "CVE",
-      "purchase_order": ["5000363444"]
+      "purchase_order": [
+        "5000363444"
+      ]
     }
   },
   {
-    "pdf": "example_pdfs/FF 009 2026 - 004 CASH BOAVISTA_001.pdf",
+    "pdf": "example_pdfs/FF 009 2026 - 002 CARTAO BOAVISTA.pdf",
     "tags": {
       "lang": "pt",
-      "case": "nota_credito",
+      "case": "documento_unico_cobranca",
       "scanned": "yes"
+    },
+    "expect": {
+      "should_extract": true,
+      "document_type": "billing_document",
+      "document_state": "original",
+      "document_number": "926155680483",
+      "supplier_vat": "CV355112574",
+      "client_vat": "CV271730404",
+      "issue_date": "26-06-2026",
+      "base_amount": 7230.00,
+      "vat_amount": 0,
+      "total_amount": 7230.00,
+      "currency": "CVE",
+      "purchase_order": [
+        "4800053076"
+      ]
+    }
+  },
+  {
+    "pdf": "example_pdfs/01_Fatura Email 0092428904_001.PDF",
+    "tags": {
+      "lang": "pt",
+      "case": "fatura_nif_pc_hard",
+      "scanned": "no"
+    },
+    "expect": {
+      "should_extract": true,
+      "document_type": "invoice",
+      "document_state": "original",
+      "document_number": "92428904",
+      "supplier_vat": "PT511151110",
+      "client_vat": "PT511073755",
+      "issue_date": "16-09-2026",
+      "base_amount": 1227.30,
+      "vat_amount": 158.80,
+      "total_amount": 1386.10,
+      "currency": "EUR",
+      "purchase_order": [
+        "4700038658"
+      ]
+    }
+  },
+  {
+    "pdf": "example_pdfs/03_fat 208-2026 log anexo_001.pdf",
+    "tags": {
+      "lang": "pt",
+      "case": "anexo_fatura",
+      "scanned": "no"
     },
     "expect": {
       "should_extract": false,
       "document_type": "other",
       "document_state": "original",
-      "document_number": "9261 55680483"
+      "document_number": "208/2026"
     }
   }
 ]

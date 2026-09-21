@@ -1,4 +1,4 @@
-"""JWKS / discovery cache behaviour.
+﻿"""JWKS / discovery cache behaviour.
 
 These drive `openid_connect.decode_verified_token` directly with `httpx.get`
 replaced by a call counter, so they assert *counts of fetches* rather than which
@@ -27,7 +27,7 @@ def _decode(token: str):
 
 def _prime(mint_token) -> None:
     """Populate both caches with one successful validation."""
-    _decode(mint_token(roles=["user"]))
+    _decode(mint_token(roles=["User"]))
 
 
 def test_unknown_kid_triggers_exactly_one_refetch(reset_security_caches, counting_httpx, mint_token):
@@ -54,8 +54,8 @@ def test_garbage_expired_and_forged_tokens_trigger_no_refetch(reset_security_cac
 
     bad_tokens = [
         "not-a-jwt",
-        mint_token(roles=["user"], expires_in=-10),
-        mint_token(roles=["user"], kid="test-key-1", sign_with="test-key-unpublished"),
+        mint_token(roles=["User"], expires_in=-10),
+        mint_token(roles=["User"], kid="test-key-1", sign_with="test-key-unpublished"),
     ]
     for token in bad_tokens:
         with pytest.raises(HTTPException):
@@ -66,7 +66,7 @@ def test_garbage_expired_and_forged_tokens_trigger_no_refetch(reset_security_cac
 def test_concurrent_cold_start_fetches_each_cache_once(reset_security_caches, counting_httpx, mint_token):
     calls, state = counting_httpx
     state["delay"] = 0.05
-    token = mint_token(roles=["user"])
+    token = mint_token(roles=["User"])
 
     # The barrier is what makes this test about locking. Without it a slow thread pool
     # lets the first thread populate both caches before the last one starts, and the
@@ -121,5 +121,5 @@ def test_transport_failure_with_nothing_cached_returns_503(
     state[failing_fetch] = True
 
     with pytest.raises(HTTPException) as excinfo:
-        _decode(mint_token(roles=["user"]))
+        _decode(mint_token(roles=["User"]))
     assert excinfo.value.status_code == 503
