@@ -217,6 +217,22 @@
   gap: 8px;
 }
 
+/* Keep the identity fields in a stable business order, independent of the
+   number of columns produced by the responsive grid. */
+.email_detail__field:has(#document_number) { order: 1; grid-column: 1 / -1; }
+.email_detail__field:has(#bu_id) { order: 2; }
+.email_detail__field:has(#bu_name) { order: 3; }
+.email_detail__field:has(#bu_vat) { order: 4; }
+.email_detail__field:has(#supplier_id) { order: 5; }
+.email_detail__field:has(#supplier_name) { order: 6; }
+.email_detail__field:has(#supplier_vat) { order: 7; }
+.email_detail__field:has(#total_amount) { order: 8; }
+.email_detail__field:has(#vat_amount) { order: 9; }
+.email_detail__field:has(#currency) { order: 10; }
+.email_detail__field:has(#issue_date) { order: 11; }
+.email_detail__field:has(#credit_note) { order: 12; }
+.email_detail__field:has(#po_list) { order: 13; }
+
 .email_detail__input {
   width: 97%;
   height: 28px;

@@ -176,9 +176,14 @@ def _build_email_detail(token, ref_number):
         data_recepcao = pd.to_datetime(issue_date, dayfirst=True).date() if issue_date else None
 
         business_unit = field_value("bu_name")
-        # bu_vat = fields.get("bu_vat", {}).get("value")
+        bu_id = field_value("bu_id")
+        bu_vat = field_value("bu_vat")
+        document_number = field_value("document_number")
+        po_list = match.get("po_list") or []
+        po_values = [po.get("value") if isinstance(po, dict) else po for po in po_list]
 
         supplier_name = field_value("supplier_name")
+        supplier_id = field_value("supplier_id")
         supplier_vat = field_value("supplier_vat")
 
         total_amount = field_value("total_amount")
@@ -193,9 +198,14 @@ def _build_email_detail(token, ref_number):
         business_unit = None
         # bu_vat = None
         supplier_name = None
+        supplier_id = None
         supplier_vat = None
         total_amount = None
         currency = None
+        bu_id = None
+        bu_vat = None
+        document_number = None
+        po_values = []
 
     return html.Div(
         [
@@ -337,6 +347,68 @@ def _build_email_detail(token, ref_number):
                                                                     dcc.Input(
                                                                         id="supplier_name",
                                                                         value=supplier_name,
+                                                                        type="text",
+                                                                        className="email_detail__input",
+                                                                    ),
+                                                                ],
+                                                            ),
+                                                            html.Div(
+                                                                className="email_detail__field email_detail__supplier_id_field",
+                                                                children=[
+                                                                    Label(label_text="ID do Fornecedor"),
+                                                                    dcc.Input(
+                                                                        id="supplier_id",
+                                                                        value=supplier_id,
+                                                                        type="text",
+                                                                        className="email_detail__input",
+                                                                    ),
+                                                                ],
+                                                            ),
+                                                            html.Div(
+                                                                className="email_detail__field",
+                                                                children=[
+                                                                    Label(label_text="ID da Unidade de Negócio"),
+                                                                    dcc.Input(
+                                                                        id="bu_id",
+                                                                        value=bu_id,
+                                                                        type="text",
+                                                                        className="email_detail__input",
+                                                                    ),
+                                                                ],
+                                                            ),
+                                                            html.Div(
+                                                                className="email_detail__field",
+                                                                children=[
+                                                                    Label(label_text="NIF da Unidade de Negócio"),
+                                                                    dcc.Input(
+                                                                        id="bu_vat",
+                                                                        value=bu_vat,
+                                                                        type="text",
+                                                                        className="email_detail__input",
+                                                                    ),
+                                                                ],
+                                                            ),
+                                                            html.Div(
+                                                                className="email_detail__field",
+                                                                children=[
+                                                                    Label(label_text="Número do Documento"),
+                                                                    dcc.Input(
+                                                                        id="document_number",
+                                                                        value=document_number,
+                                                                        type="text",
+                                                                        className="email_detail__input",
+                                                                    ),
+                                                                ],
+                                                            ),
+                                                            html.Div(
+                                                                className="email_detail__field",
+                                                                children=[
+                                                                    Label(label_text="Ordens de Compra"),
+                                                                    dcc.Input(
+                                                                        id="po_list",
+                                                                        value=", ".join(
+                                                                            str(po) for po in po_values if po
+                                                                        ),
                                                                         type="text",
                                                                         className="email_detail__input",
                                                                     ),
@@ -534,7 +606,12 @@ def load_email_drawer_content(_clicks, document_id):
     State("document_fields_store", "data"),
     State("document_alerts_store", "data"),
     State("bu_name", "value"),
+    State("bu_id", "value"),
+    State("bu_vat", "value"),
+    State("document_number", "value"),
+    State("po_list", "value"),
     State("supplier_name", "value"),
+    State("supplier_id", "value"),
     State("supplier_vat", "value"),
     State("issue_date", "date"),
     State("total_amount", "value"),
@@ -550,7 +627,12 @@ def update_document_details(
     fields,
     alerts,
     bu_name,
+    bu_id,
+    bu_vat,
+    document_number,
+    po_list,
     supplier_name,
+    supplier_id,
     supplier_vat,
     issue_date,
     total_amount,
@@ -578,8 +660,19 @@ def update_document_details(
 
     if bu_name is not None:
         update_field("bu_name", bu_name)
+    if bu_id is not None:
+        update_field("bu_id", bu_id)
+    if bu_vat is not None:
+        update_field("bu_vat", bu_vat)
+    if document_number is not None:
+        update_field("document_number", document_number)
+    if po_list is not None:
+        po_values = [value.strip() for value in po_list.replace("\n", ",").split(",") if value.strip()]
+        updated_fields["po_list"] = [{"value": value, "confidence": 1.0} for value in po_values]
     if supplier_name is not None:
         update_field("supplier_name", supplier_name)
+    if supplier_id is not None:
+        update_field("supplier_id", supplier_id)
     if supplier_vat is not None:
         update_field("supplier_vat", supplier_vat)
     if issue_date is not None:
