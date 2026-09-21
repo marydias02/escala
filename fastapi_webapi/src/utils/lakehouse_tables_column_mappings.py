@@ -5,6 +5,9 @@ Each table has a `<TABLE>_TABLE_DESCRIPTION` string (what the table is) and a
 `SAPTableMetadata` model at the bottom wraps both behind a single `table_name`.
 """
 
+import re
+from collections import Counter
+
 from pydantic import BaseModel, field_validator
 
 ACDOCA_TABLE_DESCRIPTION: str = (
@@ -185,6 +188,11 @@ BSEG_COLUMN_DESCRIPTIONS: dict[str, str] = {
     "SHKZG": "Debit/credit indicator ('S' = debit, 'H' = credit)",
     "XBILK": "Indicator: account is a balance sheet account",
     "GVTYP": "P&L statement account type",
+    # Document header fields (copied from the header onto each line)
+    "H_BLART": "Document type (e.g. 'DZ' customer payment, 'DA' customer document in SAP standard)",
+    "H_BLDAT": "Document date (date of the original document, e.g. the invoice date)",
+    "H_BUDAT": "Posting date",
+    "H_WAERS": "Currency key of the document",
     # Amounts / currencies
     "DMBTR": "Amount in local currency",
     "WRBTR": "Amount in document currency",
@@ -462,6 +470,79 @@ EKPO_COLUMN_DESCRIPTIONS: dict[str, str] = {
     "MATNR_EXTERNAL": "Long material number (external format)",
 }
 
+LFA1_TABLE_DESCRIPTION: str = (
+    "Vendor master (general section). One row per vendor/supplier account, keyed by the "
+    "vendor number (LIFNR), holding the name, address, communication data, tax and VAT "
+    "registration numbers, account group, and central posting/purchasing/payment block and "
+    "deletion flags. Company-code data is in LFB1 and purchasing-organization data in LFM1; "
+    "join to EKKO/BSEG on LIFNR to label a vendor. The EU VAT id is in STCEG and the "
+    "domestic tax id in STCD1."
+)
+
+LFA1_COLUMN_DESCRIPTIONS: dict[str, str] = {
+    # Keys
+    "MANDT": "Client",
+    "LIFNR": "Vendor account number",
+    "ADRNR": "Address number (link to the central address management)",
+    # Names
+    "NAME1": "Vendor name, line 1",
+    "NAME2": "Vendor name, line 2",
+    "NAME3": "Vendor name, line 3",
+    "NAME4": "Vendor name, line 4",
+    "ANRED": "Title / form of address",
+    "SORTL": "Sort field (search term)",
+    "MCOD1": "Search term for matchcode use (uppercase name 1)",
+    "MCOD2": "Search term for matchcode use (uppercase name 2)",
+    "MCOD3": "Search term for matchcode use (uppercase city)",
+    # Address
+    "STRAS": "Street and house number",
+    "ORT01": "City",
+    "ORT02": "District",
+    "PSTLZ": "Postal code",
+    "LAND1": "Country key",
+    "REGIO": "Region (state, province, county)",
+    "PFACH": "PO box",
+    "PSTL2": "PO box postal code",
+    "PFORT": "PO box city",
+    "LZONE": "Transportation zone to or from which goods are delivered",
+    "TXJCD": "Tax jurisdiction code",
+    "SPRAS": "Language key",
+    # Communication
+    "TELF1": "First telephone number",
+    "TELF2": "Second telephone number",
+    "TELFX": "Fax number",
+    # Tax / VAT
+    "STCEG": "VAT registration number (EU VAT id)",
+    "STCD1": "Tax number 1 (domestic/national tax id, used when the vendor has no EU VAT id)",
+    "STCD2": "Tax number 2",
+    "STCD3": "Tax number 3",
+    "STCD4": "Tax number 4",
+    "STCDT": "Tax number type",
+    "STKZU": "Indicator: vendor is liable for VAT",
+    "STKZN": "Indicator: natural person (vs. legal entity)",
+    "FISKN": "Account number of the master record with the fiscal address",
+    "FITYP": "Tax type",
+    # Classification
+    "KTOKK": "Vendor account group",
+    "BRSCH": "Industry key",
+    "KONZS": "Group key (links vendors belonging to the same corporate group)",
+    "BEGRU": "Authorization group",
+    "XCPDK": "Indicator: one-time account (vendor data is entered per document)",
+    "VBUND": "Company ID of trading partner (for intercompany elimination)",
+    "KUNNR": "Customer number (when the vendor is also a customer)",
+    "WERKS": "Plant",
+    # Blocks / status
+    "SPERR": "Central posting block",
+    "SPERM": "Centrally imposed purchasing block",
+    "SPERZ": "Payment block",
+    "SPERQ": "Function that will be blocked",
+    "LOEVM": "Central deletion flag for the master record",
+    "NODEL": "Central deletion block for the master record",
+    # Audit
+    "ERDAT": "Date the vendor record was created",
+    "ERNAM": "User who created the vendor record",
+}
+
 SKAT_TABLE_DESCRIPTION: str = (
     "G/L account master record: chart-of-accounts area, descriptions. One row per chart "
     "of accounts, G/L account and language, providing the account's short (20-char) and "
@@ -481,6 +562,43 @@ SKAT_COLUMN_DESCRIPTIONS: dict[str, str] = {
     "MCOD1": "Search term for matchcode use (uppercase short text)",
 }
 
+T001_TABLE_DESCRIPTION: str = (
+    "Company codes. One row per company code, the smallest organizational unit for which "
+    "a complete, self-contained set of accounts can be drawn up, keyed by BUKRS. Holds the "
+    "company name, city and country, local currency, language, chart of accounts, fiscal "
+    "year variant and posting-period variant, and the company's own VAT registration "
+    "number. Referenced as BUKRS by EKKO, EKPO, BSEG, BSAD and the other accounting tables."
+)
+
+T001_COLUMN_DESCRIPTIONS: dict[str, str] = {
+    # Keys
+    "MANDT": "Client",
+    "BUKRS": "Company code",
+    "RCOMP": "Company (trading partner ID used for consolidation)",
+    "ADRNR": "Address number (link to the central address management)",
+    # Name / address
+    "BUTXT": "Name of the company code or company",
+    "ORT01": "City",
+    "LAND1": "Country key",
+    "SPRAS": "Language key",
+    "TXJCD": "Tax jurisdiction code",
+    # Currency / accounting settings
+    "WAERS": "Currency key (company code / local currency)",
+    "WAABW": "Maximum exchange rate deviation in percent",
+    "KTOPL": "Chart of accounts",
+    "PERIV": "Fiscal year variant",
+    "OPVAR": "Posting period variant",
+    "FSTVA": "Field status variant",
+    "XMWSN": "Indicator: calculate tax on net amount",
+    "XNEGP": "Indicator: negative postings allowed",
+    # Controlling / credit management
+    "KOKFI": "Allocation indicator for company code to controlling area",
+    "FIKRS": "Financial management area",
+    "KKBER": "Credit control area",
+    # Tax
+    "STCEG": "VAT registration number of the company code",
+}
+
 
 # --- Registry -------------------------------------------------------------------
 
@@ -492,7 +610,9 @@ TABLE_DESCRIPTIONS: dict[str, str] = {
     "CEPCT": CEPCT_TABLE_DESCRIPTION,
     "EKKO": EKKO_TABLE_DESCRIPTION,
     "EKPO": EKPO_TABLE_DESCRIPTION,
+    "LFA1": LFA1_TABLE_DESCRIPTION,
     "SKAT": SKAT_TABLE_DESCRIPTION,
+    "T001": T001_TABLE_DESCRIPTION,
 }
 
 COLUMN_DESCRIPTIONS: dict[str, dict[str, str]] = {
@@ -503,11 +623,26 @@ COLUMN_DESCRIPTIONS: dict[str, dict[str, str]] = {
     "CEPCT": CEPCT_COLUMN_DESCRIPTIONS,
     "EKKO": EKKO_COLUMN_DESCRIPTIONS,
     "EKPO": EKPO_COLUMN_DESCRIPTIONS,
+    "LFA1": LFA1_COLUMN_DESCRIPTIONS,
     "SKAT": SKAT_COLUMN_DESCRIPTIONS,
+    "T001": T001_COLUMN_DESCRIPTIONS,
 }
 
 #: Tables that have both a description and column mappings defined here.
 DOCUMENTED_TABLES: tuple[str, ...] = tuple(TABLE_DESCRIPTIONS)
+
+
+def readable_column_name(description: str) -> str:
+    """A column description as snake_case: lower-case, words joined by '_'.
+
+    Parenthetical asides ("(general ledger)", "('S' = debit, 'H' = credit)") are
+    dropped, and single-letter abbreviations are closed up ("G/L" -> "gl"), so
+    "Customer number" -> "customer_number" and "G/L account number (general
+    ledger)" -> "gl_account_number".
+    """
+    text = re.sub(r"\([^)]*\)", "", description)
+    text = re.sub(r"\b([A-Za-z])[/&]([A-Za-z])\b", r"\1\2", text)
+    return re.sub(r"[^a-z0-9]+", "_", text.lower()).strip("_")
 
 
 class SAPTableMetadata(BaseModel):
@@ -520,6 +655,7 @@ class SAPTableMetadata(BaseModel):
         meta.description  # -> "Universal Journal line items (S/4HANA). ..."
         meta.columns["RACCT"]  # -> "G/L account number"
         meta.column_meaning("racct")  # -> "G/L account number" (case-insensitive)
+        meta.readable_column_names["RACCT"]  # -> "gl_account_number"
         print(meta.describe())  # description + full column list, ready for a prompt
 
     `table_name` is normalized to upper case and must be one of
@@ -559,6 +695,22 @@ class SAPTableMetadata(BaseModel):
     def column_names(self) -> list[str]:
         """The documented column names, in declaration order."""
         return list(COLUMN_DESCRIPTIONS[self.table_name])
+
+    @property
+    def readable_column_names(self) -> dict[str, str]:
+        """Documented SAP column name -> snake_case name derived from its meaning.
+
+        E.g. BSEG "KUNNR" -> "customer_number". Columns whose meanings reduce to
+        the same name (BSEG `HKONT` and `SAKNR` are both "G/L account number")
+        each get their SAP name appended (`gl_account_number_hkont`), so a name is
+        unique within the table and does not depend on which columns are selected.
+        """
+        names = {
+            column: readable_column_name(meaning) or column.lower()
+            for column, meaning in COLUMN_DESCRIPTIONS[self.table_name].items()
+        }
+        counts = Counter(names.values())
+        return {column: f"{name}_{column.lower()}" if counts[name] > 1 else name for column, name in names.items()}
 
     def column_meaning(self, column: str) -> str | None:
         """Meaning of a single column (case-insensitive), or None if undocumented."""
