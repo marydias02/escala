@@ -1,4 +1,5 @@
 from datetime import date, datetime
+from datetime import date as DateType
 from typing import Any
 from uuid import UUID
 
@@ -103,3 +104,34 @@ class DocumentEmailRead(BaseModel):
     email_subject: str | None = None
     email_content: str | None = None
     reception_date: datetime | None = None
+
+
+class SupplierSearchRead(BaseModel):
+    supplier_id: str
+    name: str
+    vat: str | None = None
+    country: str | None = None
+    is_financial: int | None = None
+
+
+class BusinessUnitSearchRead(BaseModel):
+    bu_id: str
+    name: str
+    vat: str | None = None
+    country: str | None = None
+
+
+class PurchaseOrderSearchRead(BaseModel):
+    po_code: str
+    supplier_id: str | None = None
+    bu_id: str | None = None
+    # Annotated via the alias: the field name shadows `date` inside the class body.
+    date: DateType | None = None
+    value: float | None = None  # Coerces asyncpg's Decimal, as DocumentRead.total_amount does.
+    currency: str | None = None
+    # Resolved from the dim tables so selecting a PO can fill the party fields.
+    # Null when the PO names a party the current snapshot has not loaded.
+    supplier_name: str | None = None
+    supplier_vat: str | None = None
+    bu_name: str | None = None
+    bu_vat: str | None = None
