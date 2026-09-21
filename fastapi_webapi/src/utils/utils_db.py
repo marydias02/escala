@@ -182,6 +182,63 @@ async def insert_rows(
     return len(rows)
 
 
+async def upsert_rows(
+    table: str,
+    rows: list[dict[str, Any]],
+    *,
+    conflict_columns: Iterable[str],
+    update_columns: Optional[Iterable[str]] = None,
+    jsonb_columns: Iterable[str] = (),
+    chunk_size: int = 1000,
+) -> int:
+    """`insert_rows` with ON CONFLICT DO UPDATE. Returns the rows sent.
+
+    `update_columns` defaults to every column except the conflict ones; an empty
+    one degrades to DO NOTHING.
+
+    Never pass a GENERATED ALWAYS column (dim_suppliers/dim_business_units have
+    four, see the 20260918_02 migration) in `rows` or `update_columns` — Postgres
+    rejects the write. It recomputes them on UPDATE by itself.
+    """
+    if not rows:
+        return 0
+
+    columns = list(rows[0].keys())
+    conflict = list(conflict_columns)
+    updates = list(update_columns) if update_columns is not None else [c for c in columns if c not in conflict]
+
+    placeholders = ", ".join(_placeholder(i, col, jsonb_columns) for i, col in enumerate(columns, start=1))
+    action = "DO UPDATE SET " + ", ".join(f"{col} = EXCLUDED.{col}" for col in updates) if updates else "DO NOTHING"
+    query = (
+        f"INSERT INTO {table} ({', '.join(columns)}) VALUES ({placeholders}) "
+        f"ON CONFLICT ({', '.join(conflict)}) {action}"
+    )
+
+    pool = await get_pool()
+    for start in range(0, len(rows), chunk_size):
+        chunk = rows[start : start + chunk_size]
+        chunk_params = [[_encode(col, row[col], jsonb_columns) for col in columns] for row in chunk]
+        async with pool.acquire() as conn:
+            async with conn.transaction():
+                await conn.executemany(query, chunk_params)
+    return len(rows)
+
+
+async def delete_rows(table: str, key_column: str, keys: list[Any], *, chunk_size: int = 1000) -> int:
+    """Delete rows whose `key_column` is in `keys`. Returns the number deleted."""
+    if not keys:
+        return 0
+
+    query = f"DELETE FROM {table} WHERE {key_column} = ANY($1)"
+    pool = await get_pool()
+    deleted = 0
+    for start in range(0, len(keys), chunk_size):
+        tag = await pool.execute(query, keys[start : start + chunk_size])
+        # asyncpg returns the command tag, e.g. "DELETE 12".
+        deleted += int(tag.rsplit(" ", 1)[-1])
+    return deleted
+
+
 async def select(query: str, params: Optional[Iterable[Any]] = None) -> list[dict[str, Any]]:
     """Run a SELECT and return the rows as a list of dicts."""
     pool = await get_pool()

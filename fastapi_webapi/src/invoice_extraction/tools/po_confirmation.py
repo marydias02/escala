@@ -95,9 +95,12 @@ def po_conflicts(po_reference: str, supplier_id: str | None, bu_id: str | None) 
 
 def _query_is_financial(vat: str) -> int | None:
     """The supplier's `is_financial` flag, or None if unknown or unset."""
+    # Ordered because ~426 VATs are shared by several suppliers: without it the
+    # winner could change between syncs. A financial supplier on the VAT wins.
     query = f"""
     SELECT is_financial FROM dim_suppliers
     WHERE {normalize_sql("vat")} = $1
+    ORDER BY is_financial DESC NULLS LAST, supplier_id
     LIMIT 1
     """
     rows = select_sync(query, [vat])
