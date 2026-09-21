@@ -1,5 +1,12 @@
 """Replace dim_suppliers / dim_business_units / fct_purchase_orders with real SAP data.
 
+⚠️  TRUNCATES all three tables. This is the one-shot bootstrap, not the routine
+path — `python -m lakehouse_etl.pipeline` syncs them additively and is what the
+cron runs. Use this only to rebuild from empty.
+
+Note it applies no filters, so it also loads the ~67 SAP country templates the
+ETL leaves out, and resolves duplicate bu_id arbitrarily.
+
 Reads LFA1, BUT000, T001 and EKKO from the Azure Lakehouse and truncates + reloads
 the three master-data tables from them. The previous (dummy) rows are assumed to
 already be preserved elsewhere (e.g. *_dummy tables) before running this script.

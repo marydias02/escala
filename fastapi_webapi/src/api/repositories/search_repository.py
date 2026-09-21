@@ -111,9 +111,9 @@ LEFT JOIN dim_business_units u ON u.bu_id = b.bu_id
 ORDER BY b.tier DESC, b.sim DESC, b.distance ASC NULLS LAST, b.date DESC NULLS LAST, b.po_code ASC
 LIMIT $3
 """
-# The joins are LEFT and sit only in the final SELECT: the dim tables are
-# truncate-and-reloaded snapshots with no FKs, so a PO can name a supplier that
-# this reload has not landed yet, and that must not drop the PO from results.
+# The joins are LEFT and sit only in the final SELECT: the dim tables are synced
+# append-only with no FKs, so a PO can name a supplier the sync has not landed
+# yet, and that must not drop the PO from results.
 
 
 class _ThresholdSearchRepository(BaseRepository):
