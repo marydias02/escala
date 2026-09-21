@@ -31,18 +31,23 @@ class PartyRepository(LakehouseRepository):
     """A SAP table identifying a party, addressable by VAT.
 
     Subclasses name their id/name/VAT columns, so callers work in `id`/`name`/
-    `vat` terms and stay out of SAP's column naming.
+    `vat` terms and stay out of SAP's column naming. `name_column` is the
+    default `name` expression; a subclass whose name spans several columns
+    (see `SupplierRepository`) overrides `_name_expr` instead.
     """
 
     id_column: str = ""
     name_column: str = ""
     vat_columns: tuple[str, ...] = ()
 
+    def _name_expr(self) -> pl.Expr:
+        return pl.col(self.name_column)
+
     def _projection(self) -> dict[str, pl.Expr]:
         """`id`/`name`/`vat`, so callers stay out of SAP's column naming."""
         return {
             "id": pl.col(self.id_column),
-            "name": pl.col(self.name_column),
+            "name": self._name_expr(),
             "vat": pl.coalesce([normalize_expr(column).replace("", None) for column in self.vat_columns]),
         }
 
@@ -70,10 +75,25 @@ class SupplierRepository(PartyRepository):
     __table_name__ = "LFA1"
 
     id_column = "LIFNR"
-    name_column = "NAME1"
     # In precedence order: the EU VAT registration, then the domestic tax id
     # carried by suppliers that have no EU one.
     vat_columns = ("STCEG", "STCD1")
+
+    def _name_expr(self) -> pl.Expr:
+        """NAME1-NAME4 joined: SAP splits long supplier names across these
+        35-char lines, so NAME1 alone truncates them. Mirrors
+        `scripts/seed_sap_real_data.py::_full_name`.
+        """
+        lines = []
+        for column in ("NAME1", "NAME2", "NAME3", "NAME4"):
+            trimmed = pl.col(column).cast(pl.String).str.strip_chars()
+            # Blank dot-only placeholder lines (one supplier fills NAME3/NAME4 with ".")
+            lines.append(pl.when(trimmed.str.contains(r"^\.+$")).then(None).otherwise(trimmed))
+        return (
+            pl.concat_str(lines, separator=" ", ignore_nulls=True)
+            .str.replace_all(r"\s+", " ")
+            .str.strip_chars()
+        )
 
 
 class BusinessUnitRepository(PartyRepository):

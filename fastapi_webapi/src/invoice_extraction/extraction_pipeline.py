@@ -34,7 +34,7 @@ from utils.llm_factory import LLMFactory
 
 # Document types worth extracting on their own. Anything else is an accounting
 # document we do not process here (shipping documents, POs, ...).
-EXTRACTABLE_TYPES = ("invoice", "credit_note", "debit_note")
+EXTRACTABLE_TYPES = ("invoice", "billing_document", "credit_note", "debit_note")
 
 
 @dataclass
@@ -180,6 +180,9 @@ class ExtractionPipeline:
                 invoice_data,
                 parsed_text=parsed_text,
                 document_number=document_number_of(classification),
+                document_exception=(
+                    classification.document_exception.value if classification.document_exception else None
+                ),
             )
 
             # The full report lives on the `5-validation` span; this is the

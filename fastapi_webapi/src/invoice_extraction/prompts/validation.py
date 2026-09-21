@@ -70,17 +70,48 @@ You have access to the following tools:
 
 Use verify_client_nif/verify_supplier_nif to confirm the two parties. The strongest signal they give you:
 
-- If the extracted SUPPLIER VAT is found in the CLIENT registry, and the
-  extracted CLIENT VAT is found in the SUPPLIER registry, the two parties were
-  almost certainly SWAPPED during extraction. Swap them back in your report and
-  say so in the notes.
+- The CLIENT registry holds the group's own companies. If the extracted SUPPLIER
+  VAT is in it and the extracted CLIENT VAT is NOT, the two were SWAPPED during
+  extraction: swap them back and say so in the notes. Both VATs being in the
+  SUPPLIER registry neither confirms nor refutes this — some of those companies
+  are registered as suppliers too.
+  When BOTH VATs are in the client registry the invoice is intra-group: keep the
+  parties as extracted, since either could legitimately be the supplier.
+  The registry outranks the layout here.
 - A VAT found in neither registry is not an error — it just means the party is
-  unknown. Keep the value and note it.
+  unknown. Keep the value and note it. But an unmatched VAT is a prompt to
+  re-read the parsed text: prefer a number explicitly labelled NIF/NIPC/VAT
+  over an unlabelled one. On a Portuguese document a NIF/NIPC is nine digits,
+  so reject a candidate of any other length and take the labelled nine-digit
+  one, joining digits printed spaced apart.
 
 Use supplier_requires_po on the supplier_vat and, if it returns true, check each
 purchase_order candidate with po_exists. A PO that does not exist is not
 necessarily wrong (the registry may be incomplete), but lower its confidence
 accordingly and say so in notes.
+
+When supplier_requires_po is true and extraction returned none, look for one in
+the parsed text: a handwritten PO is often missed on the page image yet caught
+by OCR, mangled, at the very top. A candidate must be exactly 10 digits — never
+pad or stitch digits to reach that length.
+
+A PO is stored as those 10 digits alone. Strip any surrounding prefix,
+separator or trailing number before calling po_exists, and return the stripped
+form in po_list.
+
+total_amount is the gross amount invoiced, before withholding. A
+retention/retenção line is never subtracted from it: where a document shows both
+"Preço Total" and a lower "Total Pagar", the former is correct and needs no
+correction.
+
+DOCUMENT EXCEPTIONS
+
+When the document carries the `condominio` exception, the supplier is the
+condomínio named under "CONDOMÍNIO:" in the parsed text, with the NIF from that
+same block — correct it when extraction returned the managing administrator
+instead. Its charges are quotas, not taxed supplies: FCR (Fundo Comum de
+Reserva) and permilagem columns are never VAT. Absent an explicit IVA line,
+vat_amount is 0 and base_amount equals the total.
 
 CONFIDENCE
 
@@ -129,15 +160,22 @@ def build_validation_human_message(
     extraction: InvoiceData,
     parsed_text: str | None = None,
     document_number: str | None = None,
+    document_exception: str | None = None,
 ) -> HumanMessage:
     """Build the validation message for a single, already-extracted document.
 
     Includes the extracted invoice data plus the deterministically parsed text,
     and asks the model to validate the former against the latter.
 
-    `document_number` is passed separately because it is read at CLASSIFICATION
-    rather than at extraction — it is not a field of `InvoiceData`.
+    `document_number` and `document_exception` are passed separately because they
+    are read at CLASSIFICATION rather than at extraction — neither is a field of
+    `InvoiceData`.
     """
+    exception_block = (
+        f"\nDOCUMENT EXCEPTION\n{document_exception} — apply the matching rule from DOCUMENT EXCEPTIONS.\n"
+        if document_exception
+        else ""
+    )
     extracted_data = {
         "supplier_name": extraction.supplier_name.value if extraction.supplier_name else None,
         "supplier_vat": extraction.supplier_vat.value if extraction.supplier_vat else None,
@@ -166,7 +204,7 @@ parsed text — absence alone is not proof a value is wrong.
 
 EXTRACTED DATA
 {extracted_data}
-
+{exception_block}
 PARSED TEXT
 {parsed_text if parsed_text else "No parsed text available for this document."}
 

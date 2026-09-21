@@ -41,7 +41,11 @@ class InvoiceData(BaseModel):
         description="""
         Tax identification number (VAT/NIF/NIPC/BRN/Legal person/Registration) of the supplier.
 
-        Usually appears close to the supplier name.
+        Usually appears close to the supplier name, but not every number printed
+        there is it: suppliers may also show licence or packer
+        registrations, sometimes prefixed. Prefer one explicitly labelled
+        NIF/NIPC/VAT, even when it sits in the footer among the registered
+        office details.
 
         Value = digits/prefix only. Strip label words like "NIF", "CIF",
         "VAT No." and separators (e.g. "NIF·A-48084909" -> "A48084909").
@@ -53,6 +57,10 @@ class InvoiceData(BaseModel):
         NL800822274B01
 
         For Portuguese invoices:
+
+        A NIF/NIPC is always nine digits, so a PT-prefixed number of any other
+        length is a different registration — do not return it. Digits may be
+        printed spaced apart.
 
         If exactly nine digits are shown without country prefix,
         normalize as:
@@ -90,7 +98,11 @@ class InvoiceData(BaseModel):
         description="""
         VAT number of the customer.
 
-        Usually appears close to the customer name.
+        Usually appears close to the customer name, but may instead sit in a
+        header table under a label such as "V/N.º Contrib.", "V/NIF" or
+        "Nº Contribuinte" — "V/" meaning yours, i.e. the customer's. In a
+        column layout the value is on the line below its label, not beside it,
+        and OCR may mangle the label itself.
 
         Value = digits/prefix only. Strip label words like "NIF", "CIF",
         "VAT No." and separators (e.g. "C.I.F. 511011911" -> "511011911").
@@ -203,7 +215,7 @@ class InvoiceData(BaseModel):
     total_amount: Confident[float] | None = Field(
         default=None,
         description="""
-        Final payable amount including VAT.
+        Total amount invoiced, including VAT and before any withholding.
 
         Usually labelled:
 
@@ -211,7 +223,7 @@ class InvoiceData(BaseModel):
         Total Invoice
         Valor Total
         Total da Fatura
-        Amount Due
+        Preço Total
 
         For zero-VAT invoices:
 
@@ -219,8 +231,11 @@ class InvoiceData(BaseModel):
 
         Do not return intermediate subtotals.
 
-        When invoice has both Preço Total and Total Pagar, consider Preço total as the 
-        corret - Total Pagar deducts retentions, which we do not care. 
+        Withholding tax (retenção na fonte, IRS/IR retido) is deducted by the
+        customer, not discounted by the supplier: it lowers what is remitted,
+        never what is owed. Ignore it. Where a document shows both, take
+        "Preço Total" and not "Total Pagar"/"Amount Due", which is already net
+        of the retention.
         """,
     )
 

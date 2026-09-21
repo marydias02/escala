@@ -22,6 +22,9 @@ from config.settings import settings
 GRAPH_SCOPE = "https://graph.microsoft.com/.default"
 GRAPH_BASE = "https://graph.microsoft.com/v1.0"
 
+# Default message ids change when a message moves folders.  Immutable ids survive the move.
+IMMUTABLE_ID_PREFER = 'IdType="ImmutableId"'
+
 _delegated_credential: DeviceCodeCredential | None = None
 _app_only_credential: ClientSecretCredential | None = None
 
