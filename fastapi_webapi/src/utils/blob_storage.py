@@ -60,14 +60,21 @@ def get_container_client() -> ContainerClient:
     return _container_client
 
 
-def build_email_prefix(reception_date: datetime | None, folder_name: str) -> str:
+def build_email_prefix(
+    reception_date: datetime | None,
+    folder_name: str,
+    prefix: str = PROCESSED_EMAILS_PREFIX,
+) -> str:
     """The blob prefix for one email folder, partitioned by reception year/month.
 
     Reception date, not upload date, so a late-processed email files under the
     period it belongs to. No usable date falls back to today.
+
+    `prefix` separates one use case's artifacts from another's within the same
+    container; it defaults to the invoice pipeline's.
     """
     stamp = reception_date or datetime.now(timezone.utc)
-    return f"{PROCESSED_EMAILS_PREFIX}/{stamp:%Y}/{stamp:%m}/{folder_name}"
+    return f"{prefix}/{stamp:%Y}/{stamp:%m}/{folder_name}"
 
 
 def upload_email_folder(folder: Path, prefix: str) -> list[str]:

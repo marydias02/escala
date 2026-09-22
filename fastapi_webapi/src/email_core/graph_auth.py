@@ -82,6 +82,20 @@ class MailboxConfig:
         return self.address or "me"
 
 
+def graph_app_from_settings() -> GraphAppConfig:
+    """The app registration in `.env`, shared by every use case.
+
+    Imported lazily so this module stays importable without settings loaded.
+    """
+    from config.settings import settings
+
+    return GraphAppConfig(
+        tenant_id=settings.GRAPH_TENANT_ID,
+        client_id=settings.GRAPH_CLIENT_ID,
+        client_secret=settings.GRAPH_CLIENT_SECRET,
+    )
+
+
 _credentials: dict[GraphAppConfig, ClientSecretCredential | DeviceCodeCredential] = {}
 
 

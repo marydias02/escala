@@ -50,6 +50,11 @@ class Settings(BaseSettings):
     GRAPH_CLIENT_SECRET: Optional[str] = None
     GRAPH_MAILBOX: Optional[str] = None
 
+    # The payment-matching mailbox. Same app registration as above (one is
+    # granted access to both mailboxes), so only the address differs; the
+    # GRAPH_TENANT_ID/CLIENT_ID/CLIENT_SECRET trio is shared.
+    PAYMENT_GRAPH_MAILBOX: Optional[str] = None
+
     # LLM license credentials
     OPENAI_API_KEY: Optional[str] = None
     OPENAI_API_BASE: Optional[str] = None
