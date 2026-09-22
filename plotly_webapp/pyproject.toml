@@ -6,13 +6,27 @@ readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
     "plotly",
-    "dash>=3.1.1",
+    "dash>=4.1.0",
     "dash-iconify>=0.1.2",
     "ruff>=0.12.1",
     "dash-ag-grid>=31.3.1",
     "pandas>=2.2.3",
     "gunicorn>=23.0.0",
+    "requests>=2.32.3",
+    "python-dotenv>=1.2.3",
+    "msal>=1.31.0",
+    "psycopg[binary,pool]>=3.2.0",
+    "cryptography>=44.0.0",
 ]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.3.0",
+]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]
 
 [tool.ruff]
 line-length = 120

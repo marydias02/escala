@@ -13,7 +13,7 @@ dash.register_page(
 )
 
 example_team = [
-    {"username": "Elisa Sampaio", "progress": 50, "is_you": True},
+    {"username": "Carolina Melim", "progress": 50, "is_you": True},
     {"username": "Jamie Santos", "progress": 100},
     {"username": "Nico Zamidi", "progress": 25},
 ]

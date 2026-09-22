@@ -13,22 +13,27 @@ def Breadcrumb():
 
 
 def build_breadcrumb_items(pathname: str):
+    route_labels = {
+        "validation": "Validação",
+    }
+
     if not pathname or pathname == "/":
-        return [("Home", "/")]
+        return [("Extração", "/")]
 
     parts = pathname.strip("/").split("/")
     links = []
     for i in range(len(parts)):
-        label = parts[i].replace("-", " ").capitalize()
+        part = parts[i]
+        label = route_labels.get(part, part.replace("-", " ").capitalize())
         href = "/" + "/".join(parts[: i + 1])
         links.append((label, href))
 
-    return [("Home", "/")] + links
+    return [("Extração", "/")] + links
 
 
 def build_breadcrumb_content(label):
     if label == "Home":
-        return [DashIconify(icon="lucide:house"), html.Span(label, className="breadcrumb__text")]
+        return [DashIconify(icon="lucide:scan-text"), html.Span(label, className="breadcrumb__text")]
     return html.Span(label, className="breadcrumb__text")
 
 

@@ -44,3 +44,14 @@
   gap: var(--spacing-2);
   align-items: flex-end;
 }
+
+.indicator-card__footer {
+  display: flex;
+  gap: var(--spacing-4);
+  align-items: center;
+}
+
+.indicator-card__caption {
+  color: var(--text-icon-tertiary);
+  font-weight: normal;
+}

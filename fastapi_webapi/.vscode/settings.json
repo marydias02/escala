@@ -1,0 +1,9 @@
+{
+  "ruff.importStrategy": "fromEnvironment",
+  "ruff.interpreter": ["${workspaceFolder}/.venv/Scripts/python.exe"],
+  "ruff.configuration": "${workspaceFolder}/pyproject.toml",
+
+  "python.testing.pytestEnabled": true,
+  "python.testing.cwd": "${workspaceFolder}",
+  "python.testing.pytestArgs": ["."]
+}

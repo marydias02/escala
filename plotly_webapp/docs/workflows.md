@@ -190,6 +190,7 @@ def StatusChip(
 ```
 
 Conventions to follow:
+
 - Function-based (not a class)
 - Typed props with Python type hints
 - `Literal` for constrained string choices
@@ -244,12 +245,12 @@ Compact inline status indicator for displaying categorical states.
 
 ## Props
 
-| Prop | Type | Default | Description |
-|---|---|---|---|
-| label | str | required | Display text |
-| variant | "positive" / "warning" / "negative" / "neutral" | "neutral" | Visual style |
-| id | str or dict | "status-chip" | Component ID — use dict for pattern-matching |
-| className | str or None | None | Additional CSS classes appended to base classes |
+| Prop      | Type                                            | Default       | Description                                     |
+| --------- | ----------------------------------------------- | ------------- | ----------------------------------------------- |
+| label     | str                                             | required      | Display text                                    |
+| variant   | "positive" / "warning" / "negative" / "neutral" | "neutral"     | Visual style                                    |
+| id        | str or dict                                     | "status-chip" | Component ID — use dict for pattern-matching    |
+| className | str or None                                     | None          | Additional CSS classes appended to base classes |
 
 ## Usage
 
@@ -300,18 +301,18 @@ This is the **only** permitted change in the frozen base layer.
 
 ### Hue Reference
 
-| Hue | Color |
-|---|---|
-| 0 | Red |
-| 28 | Orange |
-| 48 | Yellow |
-| 135 | Green |
-| 174 | Turquoise |
-| 190 | Aqua |
-| 208 | Blue |
+| Hue | Color                 |
+| --- | --------------------- |
+| 0   | Red                   |
+| 28  | Orange                |
+| 48  | Yellow                |
+| 135 | Green                 |
+| 174 | Turquoise             |
+| 190 | Aqua                  |
+| 208 | Blue                  |
 | 233 | Blue-Indigo (default) |
-| 293 | Purple |
-| 320 | Pink |
+| 293 | Purple                |
+| 320 | Pink                  |
 
 ### What Updates Automatically
 
@@ -335,11 +336,13 @@ Neutral colors (black, white, surface, border, text, status colors) are independ
 ### Steps
 
 1. Create a focused CSS file in `assets/css/custom/` with a descriptive name:
+
    ```
    assets/css/custom/export-panel.css
    ```
 
 2. Write CSS using only token variables:
+
    ```css
    .export-panel {
      background: var(--surface-medium);
@@ -362,6 +365,7 @@ Neutral colors (black, white, surface, border, text, status colors) are independ
    ```
 
 3. Apply the class in your component or page:
+
    ```python
    from components.button.button import Button
    from dash import html
@@ -431,6 +435,7 @@ Icons come from **DashIconify** using the **Lucide** icon set.
    Icon names use `kebab-case`: `arrow-down-up`, `triangle-alert`, `file-text`
 
 2. Use in Python with the `lucide:` prefix:
+
    ```python
    from dash_iconify import DashIconify
 
@@ -440,9 +445,10 @@ Icons come from **DashIconify** using the **Lucide** icon set.
    ```
 
 3. Most DS components have an `icon` prop that accepts the same string directly:
+
    ```python
    Button("Save", icon="lucide:save", variant="primary", id="save-btn")
-   Menu(title="Home", href="/", icon="lucide:home")
+   Menu(title="Extraction", href="/", icon="lucide:scan-text")
    PageHeader(title="Reports", icon="lucide:file-text", ...)
    ```
 
@@ -512,13 +518,13 @@ Container([
 
 ### Breakpoints
 
-| Prop | Min-width | Meaning |
-|---|---|---|
-| `xs` | 0px | All screen sizes (mobile-first default) |
-| `sm` | 640px | Small tablets and up |
-| `md` | 768px | Tablets and up |
-| `lg` | 1024px | Laptops and up |
-| `xl` | 1280px | Large displays |
+| Prop | Min-width | Meaning                                 |
+| ---- | --------- | --------------------------------------- |
+| `xs` | 0px       | All screen sizes (mobile-first default) |
+| `sm` | 640px     | Small tablets and up                    |
+| `md` | 768px     | Tablets and up                          |
+| `lg` | 1024px    | Laptops and up                          |
+| `xl` | 1280px    | Large displays                          |
 
 Column values are 1–12, where 12 = full width. Unset breakpoints inherit from the smaller breakpoint.
 

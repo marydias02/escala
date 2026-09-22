@@ -1,0 +1,1025 @@
+<meta name="color-scheme" content="dark">
+<title>Invoice Extraction — Process Documentation</title>
+<style>
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; }
+
+  :root {
+    --ltp-navy: #19105f;
+    --ltp-teal: #007474;
+    --ltp-mint: #00a590;
+    --ltp-orange: #ff6b00;
+    --ltp-white: #ffffff;
+    --ltp-off-white: #f4f7f9;
+    --ltp-gray-100: #eaecf0;
+    --ltp-gray-500: #666666;
+    --ltp-black: #000000;
+    --ltp-charcoal: #1c1f27;
+
+    /* Dark technology mode (LTP DESIGN.md §3) */
+    --color-bg: #060816;
+    --color-surface: #0b1024;
+    --color-surface-muted: #10162c;
+    --color-surface-card: #10162c;
+    --color-text: #ffffff;
+    --color-text-muted: #c7ccd6;
+    --color-heading: #ffffff;
+    --color-accent: var(--ltp-orange);
+    --color-interactive: var(--ltp-mint);
+    --color-interactive-soft: var(--ltp-teal);
+    --color-border: rgb(255 255 255 / 14%);
+
+    --font-sans: "Bw Modelica", "Arial", sans-serif;
+    --font-mono: "SFMono-Regular", "Consolas", "Liberation Mono", monospace;
+
+    --space-1: 6px; --space-2: 8px; --space-3: 16px; --space-4: 24px;
+    --space-5: 32px; --space-6: 48px; --space-7: 72px; --space-8: 96px;
+    --content-max: 1280px;
+    --gutter: clamp(20px, 4vw, 64px);
+
+    --radius-sm: 4px; --radius-md: 8px; --radius-lg: 12px; --radius-xl: 16px;
+    --radius-card: 24px; --radius-pill: 9999px;
+    --shadow-soft: 0 8px 24px rgb(0 0 0 / 30%);
+    --shadow-float: 0 16px 40px rgb(0 0 0 / 45%);
+  }
+
+  body {
+    margin: 0;
+    background: var(--color-bg);
+    color: var(--color-text);
+    font-family: var(--font-sans);
+    font-size: 16px;
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  h1, h2, h3, h4, p, figure, ul, ol, dl { margin: 0; }
+  h1, h2, h3, h4 { color: var(--color-heading); font-weight: 400; }
+
+  .container {
+    width: min(calc(100% - 2 * var(--gutter)), var(--content-max));
+    margin-inline: auto;
+  }
+
+  code, .mono { font-family: var(--font-mono); font-size: 0.92em; }
+
+  /* ---------- Report index (jump nav) ---------- */
+
+  .index-toggle {
+    position: fixed; top: 24px; left: 24px; z-index: 50;
+    width: 44px; height: 44px; border-radius: var(--radius-md);
+    background: var(--color-surface); border: 1px solid var(--color-border);
+    box-shadow: var(--shadow-soft);
+    display: flex; align-items: center; justify-content: center;
+    cursor: pointer;
+  }
+  .index-toggle span, .index-toggle span::before, .index-toggle span::after {
+    content: ""; display: block; width: 18px; height: 2px;
+    background: var(--ltp-white); position: relative; transition: background-color 160ms ease;
+  }
+  .index-toggle span::before { position: absolute; top: -6px; }
+  .index-toggle span::after { position: absolute; top: 6px; }
+  .index-toggle:hover span, .index-toggle:hover span::before, .index-toggle:hover span::after {
+    background: var(--ltp-mint);
+  }
+
+  .index-panel {
+    position: fixed; top: 0; left: 0; height: 100%; width: min(340px, 84vw);
+    background: var(--color-surface); box-shadow: var(--shadow-float);
+    transform: translateX(-100%); transition: transform 220ms ease;
+    z-index: 52; padding: var(--space-6) var(--space-5);
+    overflow-y: auto;
+  }
+  .index-panel.open { transform: translateX(0); }
+  .index-panel-header {
+    display: flex; justify-content: space-between; align-items: center;
+    margin-bottom: var(--space-5);
+  }
+  .index-panel-header h4 { font-size: 14px; letter-spacing: 0.04em; text-transform: uppercase; }
+  .index-close { border: none; background: none; cursor: pointer; font-size: 20px; color: var(--color-text-muted); line-height: 1; padding: 4px; }
+  .index-list { list-style: none; padding: 0; display: flex; flex-direction: column; gap: var(--space-2); }
+  .index-list a {
+    display: flex; gap: var(--space-3); align-items: baseline;
+    text-decoration: none; color: var(--color-text);
+    padding: var(--space-2) var(--space-1); border-radius: var(--radius-sm);
+    font-size: 14px;
+  }
+  .index-list a:hover { background: var(--color-surface-muted); }
+  .index-num { color: var(--ltp-mint); font-weight: 500; font-size: 12px; min-width: 20px; }
+
+  .index-overlay {
+    position: fixed; inset: 0; background: rgb(0 0 0 / 50%);
+    opacity: 0; pointer-events: none; transition: opacity 220ms ease; z-index: 51;
+  }
+  .index-overlay.open { opacity: 1; pointer-events: auto; }
+
+  /* ---------- Header ---------- */
+
+  header.page-header {
+    padding: var(--space-7) 0 var(--space-6);
+  }
+  .eyebrow {
+    font-size: 12px; font-weight: 500; letter-spacing: 0.04em; text-transform: uppercase;
+    color: var(--ltp-mint); margin-bottom: var(--space-3); display: block;
+  }
+  h1.title { font-size: clamp(2rem, 3.4vw, 2.5rem); line-height: 1.25; letter-spacing: -0.02em; max-width: 46ch; }
+  .subtitle { margin-top: var(--space-3); color: var(--color-text-muted); font-size: 17px; max-width: 62ch; }
+  .meta-row { display: flex; gap: var(--space-4); margin-top: var(--space-5); flex-wrap: wrap; }
+  .meta-chip {
+    font-size: 12px; font-weight: 500; letter-spacing: 0.02em;
+    padding: 6px 12px; border-radius: var(--radius-pill);
+    background: var(--color-surface-muted); color: var(--color-text-muted);
+  }
+
+  /* ---------- Sections ---------- */
+
+  section { padding: var(--space-7) 0; border-top: 1px solid var(--color-border); }
+  section:first-of-type { border-top: none; }
+  .section-head { margin-bottom: var(--space-5); }
+  .section-num {
+    font-size: 12px; font-weight: 500; color: var(--ltp-mint);
+    letter-spacing: 0.04em; margin-bottom: var(--space-2); display: block;
+  }
+  h2 { font-size: clamp(1.5rem, 2.4vw, 1.9rem); letter-spacing: -0.01em; }
+  .section-desc { margin-top: var(--space-3); color: var(--color-text-muted); max-width: 72ch; font-size: 15px; }
+
+  /* ---------- Pipeline flow ---------- */
+
+  .flow {
+    display: flex; flex-wrap: wrap; gap: var(--space-3); align-items: stretch;
+    margin-top: var(--space-5);
+  }
+  .flow-stage {
+    flex: 1 1 200px; background: var(--color-surface); border: 1px solid var(--color-border);
+    border-radius: var(--radius-lg); padding: var(--space-4);
+    display: flex; flex-direction: column; gap: var(--space-2);
+  }
+  .flow-stage .stage-tag {
+    font-size: 11px; font-weight: 500; letter-spacing: 0.04em; text-transform: uppercase;
+    color: var(--ltp-mint);
+  }
+  .flow-stage h4 { font-size: 15px; }
+  .flow-stage p { font-size: 13px; color: var(--color-text-muted); line-height: 1.5; }
+  .flow-stage code { font-size: 11px; color: var(--ltp-mint); background: var(--color-surface-muted); padding: 1px 5px; border-radius: 4px; }
+  .flow-arrow {
+    display: flex; align-items: center; justify-content: center;
+    color: var(--color-border); font-size: 20px; flex: 0 0 20px;
+  }
+  @media (max-width: 860px) { .flow-arrow { display: none; } }
+
+  /* ---------- Stage detail cards ---------- */
+
+  .stage-card {
+    background: var(--color-surface); border: 1px solid var(--color-border);
+    border-radius: var(--radius-lg); padding: var(--space-5);
+    margin-top: var(--space-4);
+  }
+  .stage-card-head { display: flex; align-items: baseline; gap: var(--space-3); flex-wrap: wrap; margin-bottom: var(--space-3); }
+  .stage-badge {
+    font-size: 11px; font-weight: 500; letter-spacing: 0.03em;
+    background: var(--color-surface-muted); color: var(--ltp-mint);
+    padding: 3px 9px; border-radius: var(--radius-pill);
+  }
+  .stage-card h3 { font-size: 18px; font-weight: 500; }
+  .stage-card .span-name { font-size: 12px; color: var(--color-text-muted); }
+  .stage-card p { color: var(--color-text); font-size: 14.5px; margin-top: var(--space-2); }
+  .stage-card p.muted { color: var(--color-text-muted); }
+  .stage-card ul { margin-top: var(--space-3); padding-left: 20px; font-size: 14px; }
+  .stage-card li { margin-bottom: var(--space-1); }
+  .stage-card .config-ref {
+    margin-top: var(--space-3); padding: var(--space-3);
+    background: var(--color-surface-muted); border-radius: var(--radius-md);
+    font-size: 13px;
+  }
+  .stage-card .config-ref .label { font-weight: 500; color: var(--ltp-mint); display: block; margin-bottom: 4px; font-size: 11px; letter-spacing: 0.03em; text-transform: uppercase; }
+
+  /* ---------- Threshold callouts ---------- */
+
+  .threshold-box {
+    background: var(--color-surface-muted); border-radius: var(--radius-md);
+    padding: var(--space-3) var(--space-4); margin-top: var(--space-3);
+    display: flex; gap: var(--space-3); align-items: baseline; flex-wrap: wrap;
+  }
+  .threshold-box .thr-label { font-size: 11px; font-weight: 500; text-transform: uppercase; letter-spacing: 0.03em; color: var(--ltp-mint); }
+  .threshold-box .thr-value { font-family: var(--font-mono); font-size: 14px; color: var(--ltp-orange); font-weight: 500; }
+  .threshold-box .thr-note { font-size: 13px; color: var(--color-text-muted); flex-basis: 100%; }
+
+  /* ---------- Required fields grid ---------- */
+
+  .field-grid {
+    display: grid; grid-template-columns: repeat(4, 1fr); gap: var(--space-2);
+    margin-top: var(--space-3);
+  }
+  @media (max-width: 760px) { .field-grid { grid-template-columns: repeat(2, 1fr); } }
+  .field-chip {
+    font-family: var(--font-mono); font-size: 12.5px;
+    background: var(--color-surface-muted); border: 1px solid var(--color-border);
+    border-radius: var(--radius-sm); padding: 6px 10px; text-align: center;
+  }
+
+  /* ---------- Case matrix table ---------- */
+
+  .table-wrap { overflow-x: auto; margin-top: var(--space-4); border-radius: var(--radius-lg); border: 1px solid var(--color-border); }
+  table.matrix { border-collapse: collapse; width: 100%; min-width: 760px; font-size: 13.5px; }
+  table.matrix caption { text-align: left; padding: var(--space-3) var(--space-4) var(--space-2); font-weight: 500; color: var(--ltp-mint); background: var(--color-surface-muted); font-size: 13px; }
+  table.matrix th, table.matrix td { text-align: left; padding: 10px 16px; border-bottom: 1px solid var(--color-border); vertical-align: top; }
+  table.matrix th { font-size: 11px; font-weight: 500; text-transform: uppercase; letter-spacing: 0.03em; color: var(--color-text-muted); background: var(--color-surface); position: sticky; top: 0; }
+  table.matrix tbody tr:last-child td { border-bottom: none; }
+  table.matrix tbody tr:hover { background: var(--color-surface-muted); }
+  .case-id { font-family: var(--font-mono); font-weight: 500; color: var(--ltp-mint); white-space: nowrap; }
+  .action-pill {
+    display: inline-block; font-size: 11.5px; font-weight: 500; padding: 3px 10px;
+    border-radius: var(--radius-pill); white-space: nowrap;
+  }
+  .action-ingest { background: rgb(0 165 144 / 22%); color: #5eeedb; }
+  .action-reply { background: rgb(255 107 0 / 20%); color: #ffab66; }
+  .action-treasury { background: rgb(255 255 255 / 14%); color: #ffffff; }
+  .action-manual { background: rgb(255 176 102 / 18%); color: #ffcb94; }
+  .action-inbox { background: rgb(255 255 255 / 10%); color: var(--color-text-muted); }
+
+  /* ---------- Architecture / tracing diagram ---------- */
+
+  .trace-tree {
+    margin-top: var(--space-4); background: #000000; border: 1px solid var(--color-border); border-radius: var(--radius-lg);
+    padding: var(--space-5); overflow-x: auto;
+  }
+  .trace-tree pre {
+    font-family: var(--font-mono); font-size: 13px; line-height: 1.7; color: #d7dbe4; margin: 0;
+    white-space: pre;
+  }
+  .trace-tree .tag-chain { color: #6fd6c9; }
+  .trace-tree .tag-llm { color: #ffb066; }
+  .trace-tree .tag-parser { color: #9aa4c0; }
+  .trace-tree .tag-tool { color: #f0e58c; }
+
+  /* ---------- Two-col layout ---------- */
+
+  .two-col { display: grid; grid-template-columns: 1.1fr 0.9fr; gap: var(--space-5); margin-top: var(--space-4); align-items: start; }
+  @media (max-width: 860px) { .two-col { grid-template-columns: 1fr; } }
+
+  .note-box {
+    background: var(--color-surface-muted); border-radius: var(--radius-md);
+    padding: var(--space-4); font-size: 13.5px; color: var(--color-text);
+  }
+  .note-box .label { font-weight: 500; color: var(--ltp-mint); font-size: 11px; text-transform: uppercase; letter-spacing: 0.03em; display: block; margin-bottom: 6px; }
+
+  /* ---------- Ops / how-to ---------- */
+
+  .cmd-block {
+    background: #000000; border: 1px solid var(--color-border); color: #e6e9f0; border-radius: var(--radius-md);
+    padding: var(--space-4); font-family: var(--font-mono); font-size: 13px;
+    overflow-x: auto; margin-top: var(--space-3); white-space: pre-wrap; word-break: break-word;
+  }
+
+  .card-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: var(--space-3); margin-top: var(--space-4); }
+  @media (max-width: 860px) { .card-grid { grid-template-columns: 1fr; } }
+  .mini-card { background: var(--color-surface); border: 1px solid var(--color-border); border-radius: var(--radius-lg); padding: var(--space-4); }
+  .mini-card h4 { font-size: 14.5px; margin-bottom: var(--space-2); }
+  .mini-card p { font-size: 13px; color: var(--color-text-muted); }
+
+  /* ---------- Footer ---------- */
+
+  footer { margin-top: var(--space-7); }
+  .footer-card {
+    background: var(--ltp-charcoal); border-radius: var(--radius-card) var(--radius-card) 0 0;
+    padding: var(--space-6) var(--gutter); margin: 0;
+    display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: var(--space-4);
+  }
+  .footer-logo svg { height: 28px; width: auto; display: block; }
+  .footer-text { color: #c7ccd6; font-size: 13px; }
+
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; scroll-behavior: auto !important; }
+  }
+</style>
+
+<!-- Report index -->
+<div class="index-toggle" id="indexToggle" role="button" aria-label="Open section index"><span></span></div>
+<div class="index-overlay" id="indexOverlay"></div>
+<nav class="index-panel" id="indexPanel" aria-label="Section index">
+  <div class="index-panel-header">
+    <h4>Contents</h4>
+    <button class="index-close" id="indexClose" aria-label="Close">&times;</button>
+  </div>
+  <ul class="index-list">
+    <li><a href="#sec-01"><span class="index-num">01</span>Overview</a></li>
+    <li><a href="#sec-02"><span class="index-num">02</span>Pipeline flow</a></li>
+    <li><a href="#sec-03"><span class="index-num">03</span>Ingestion — stage detail</a></li>
+    <li><a href="#sec-04"><span class="index-num">04</span>Extraction — stage detail</a></li>
+    <li><a href="#sec-05"><span class="index-num">05</span>Ingestion gate — required fields &amp; confidence</a></li>
+    <li><a href="#sec-06"><span class="index-num">06</span>Routing decision — case matrix</a></li>
+    <li><a href="#sec-07"><span class="index-num">07</span>Persistence</a></li>
+    <li><a href="#sec-08"><span class="index-num">08</span>Tracing &amp; observability</a></li>
+    <li><a href="#sec-09"><span class="index-num">09</span>Operating the pipeline</a></li>
+  </ul>
+</nav>
+
+<header class="page-header">
+  <div class="container">
+    <span class="eyebrow">Invoice Extraction — Engineering Reference</span>
+    <h1 class="title">Existing process: email ingestion, extraction and routing</h1>
+    <p class="subtitle">
+      Documents the pipeline as implemented today — stage by stage, with the gating
+      thresholds and routing rules currently in force. Written for engineers maintaining
+      or extending <code>invoice_extraction</code>; module/function names are used directly.
+    </p>
+    <div class="meta-row">
+      <span class="meta-chip">Module: invoice_extraction</span>
+      <span class="meta-chip">Entry point: email_pipeline.py</span>
+      <span class="meta-chip">Rules: decisions.py</span>
+    </div>
+  </div>
+</header>
+
+<main class="container">
+
+  <section id="sec-01">
+    <div class="section-head">
+      <span class="section-num">01 — Overview</span>
+      <h2>Three stages, one orchestrator</h2>
+      <p class="section-desc">
+        <code>email_pipeline.EmailPipeline.run()</code> is the entry point for one email. It
+        composes two independently runnable pipelines — <code>ingestion_pipeline</code> and
+        <code>extraction_pipeline</code> — then applies pure routing logic
+        (<code>decisions.decide_email</code>) and persists the outcome. Every stage is wrapped
+        in an MLflow span (see §08), so a single trace answers "what happened to this email,
+        and why".
+      </p>
+    </div>
+    <div class="two-col">
+      <div class="note-box">
+        <span class="label">Design intent</span>
+        Ingestion and extraction stay decoupled on purpose: ingestion classifies and extracts
+        nothing, extraction never sees the whole email — only one already-split PDF. The
+        orchestrator is what restores the per-email view, so ingestion/extraction can still be
+        run and tested independently of routing.
+      </div>
+      <div class="note-box">
+        <span class="label">Where things live</span>
+        Prompts per stage: <code>prompts/</code>. One LLM call per stage: <code>nodes/</code>.
+        Tunable constants (paths, limits, confidence threshold): <code>config.py</code>.
+        Pydantic schemas: <code>models/</code>.
+      </div>
+    </div>
+  </section>
+
+  <section id="sec-02">
+    <div class="section-head">
+      <span class="section-num">02 — Pipeline flow</span>
+      <h2>End-to-end, per email</h2>
+      <p class="section-desc">
+        <code>EmailPipeline.run(email)</code>, in order, driven by <code>main()</code>. Dedup runs
+        once per run, before fetch: every <code>message_id</code> already in
+        <code>fct_processes</code> is collected (<code>_processed_message_ids</code>) and passed to
+        <code>fetch_inbox_emails</code> as <code>skip_message_ids</code>, so a known message is
+        skipped by the Graph loader itself — no attachment download, no LLM call.
+      </p>
+    </div>
+    <div class="flow">
+      <div class="flow-stage">
+        <span class="stage-tag">Ingest</span>
+        <h4>Load &amp; segment</h4>
+        <p>Fetch from Outlook via Graph, find document boundaries per PDF attachment.</p>
+        <code>ingestion_pipeline.py</code>
+      </div>
+      <div class="flow-arrow">→</div>
+      <div class="flow-stage">
+        <span class="stage-tag">Ingest</span>
+        <h4>Split &amp; persist</h4>
+        <p>One PDF per document + <code>email_content.json</code> manifest.</p>
+        <code>ingestion_pipeline.py</code>
+      </div>
+      <div class="flow-arrow">→</div>
+      <div class="flow-stage">
+        <span class="stage-tag">Extract</span>
+        <h4>Classify → extract → validate</h4>
+        <p>Per split PDF: type/state, structured fields, confidence-scored validation.</p>
+        <code>extraction_pipeline.py</code>
+      </div>
+      <div class="flow-arrow">→</div>
+      <div class="flow-stage">
+        <span class="stage-tag">Decide</span>
+        <h4>Route</h4>
+        <p>Per-document action, rolled up into one email-level outcome.</p>
+        <code>decisions.py</code>
+      </div>
+      <div class="flow-arrow">→</div>
+      <div class="flow-stage">
+        <span class="stage-tag">Store</span>
+        <h4>Upload to blob</h4>
+        <p>The whole email folder to Azure Blob Storage, before any DB write or send.</p>
+        <code>utils/blob_storage.py</code>
+      </div>
+      <div class="flow-arrow">→</div>
+      <div class="flow-stage">
+        <span class="stage-tag">Persist</span>
+        <h4>Write to Postgres</h4>
+        <p>One <code>fct_processes</code> row, one <code>fct_documents</code> row per PDF, then send &amp; settle.</p>
+        <code>email_pipeline.py</code>
+      </div>
+    </div>
+    <div class="note-box" style="margin-top: var(--space-4);">
+      <span class="label">Concurrency</span>
+      <code>EmailPipeline.run_batch</code> runs emails concurrently, bounded by
+      <code>EMAIL_MAX_WORKERS</code>, but the unit of concurrency is the <strong>thread</strong>, not the
+      email: emails sharing a Graph <code>conversationId</code> contend on <code>thread_message_count</code>
+      (a read-then-write <code>count(*) + 1</code>) and on <code>close_prior_processes</code>, so they are
+      grouped and run in order while groups run in parallel. Within one email,
+      <code>EXTRACTION_MAX_WORKERS</code> documents extract at once — the two multiply.
+    </div>
+  </section>
+
+  <section id="sec-03">
+    <div class="section-head">
+      <span class="section-num">03 — Ingestion</span>
+      <h2>LOAD → SEGMENT → SPLIT → PERSIST</h2>
+      <p class="section-desc">
+        Classifies and extracts nothing. The only judgement call is where one document ends
+        and the next begins inside a multi-document attachment — and even that is checked
+        deterministically before being trusted.
+      </p>
+    </div>
+
+    <div class="stage-card">
+      <div class="stage-card-head">
+        <span class="stage-badge">LOAD</span>
+        <h3>Fetch from Outlook</h3>
+        <span class="span-name mono">invoice_utils.outlook_loader.fetch_inbox_emails</span>
+      </div>
+      <p class="muted">Messages are pulled live via Microsoft Graph (app or delegated auth) into sender, subject, body, reception date, <code>message_id</code>, <code>thread_id</code> and raw attachments — including zip expansion, bounded by <code>MAX_ZIP_*</code> in <code>config.py</code>. The standalone <code>.msg</code> file loader has been removed; Graph is the only ingestion source now. <code>skip_message_ids</code> lets the loader skip downloading attachments for messages already in the database (see §02).</p>
+    </div>
+
+    <div class="stage-card">
+      <div class="stage-card-head">
+        <span class="stage-badge">SEGMENT</span>
+        <h3>Document boundary detection</h3>
+        <span class="span-name mono">nodes.segment_document · span 1-chunking</span>
+      </div>
+      <p>An LLM call reads the whole attachment PDF (base64) and proposes page-range boundaries for each accounting document it contains — one attachment can hold several invoices back to back.</p>
+      <ul>
+        <li>Page count is <strong>never</strong> asked of the model — it is computed deterministically (<code>invoice_utils.pdf_splitter.count_pages</code>), since VLMs cannot count pages reliably.</li>
+        <li>Malformed PDFs (broken xref tables) are repaired up front via <code>ensure_readable()</code> so the page count, the model and the splitter all see the same bytes.</li>
+      </ul>
+      <div class="config-ref">
+        <span class="label">Validation</span>
+        <code>invoice_utils.pdf_splitter.validate_segmentation(documents, total_pages)</code> checks the model's proposed boundaries against the real page count. A gap loses a document; an overlap duplicates one — both are logged as coverage problems and surfaced in <code>EmailIngestionResult.problems</code>, but do not block ingestion.
+      </div>
+    </div>
+
+    <div class="stage-card">
+      <div class="stage-card-head">
+        <span class="stage-badge">SPLIT</span>
+        <h3>Cut into single-document PDFs</h3>
+        <span class="span-name mono">invoice_utils.pdf_splitter.split_pdf</span>
+      </div>
+      <p class="muted">One PDF written per detected document boundary. Non-PDF attachments are stored as-is (counted as annexes, not segmented).</p>
+    </div>
+
+    <div class="stage-card">
+      <div class="stage-card-head">
+        <span class="stage-badge">PERSIST</span>
+        <h3>Write the manifest</h3>
+        <span class="span-name mono">IngestionPipeline.ingest_email</span>
+      </div>
+      <p>Writes <code>docs/processed_emails/&lt;YYYYMMDD-HHMMSS&gt;_&lt;sanitized subject&gt;/email_content.json</code> (sender, subject, body, reception date, <code>message_id</code>, <code>thread_id</code>, annex/PDF counts) plus every split PDF. The timestamp is the email's own <strong>reception</strong> date, not <code>now()</code>, so reprocessing one email always produces the same name; it also sorts the output directory chronologically and separates the same-subject emails that collide routinely. <code>IngestionPipeline.run()</code> always ingests — there is no manifest/skip check at this layer any more. Dedup happens once, upstream, in <code>email_pipeline.main()</code>, keyed on <code>message_id</code> (see §02); a genuine collision (one subject received in one second, and every manual reprocess) is resolved by <code>_reserve_folder</code> suffixing <code>_2</code>, <code>_3</code>, ... rather than skipping. <code>_reserve_folder</code> uses <code>mkdir(exist_ok=False)</code> — one atomic syscall — so two concurrent emails cannot both see a name free and share a folder, overwriting each other's manifest and with it the <code>message_id</code> outbound replies are addressed to.</p>
+      <p class="muted">This folder is working storage, not the record: once <code>_persist</code> has uploaded it to blob storage and written the rows, <code>_discard_local_folder</code> deletes it (see §07).</p>
+      <div class="config-ref">
+        <span class="label">Config (config.py)</span>
+        <code>MAX_FOLDER_NAME = 80</code> — folder names truncated (Windows' 260-char path cap).<br>
+        <code>INGEST_LIMIT</code> — cap emails processed per run (<code>None</code> = all); currently <code>1</code> for smoke testing.<br>
+        <code>DEFAULT_FETCH_LIMIT</code> — how many messages <code>fetch_inbox_emails</code> pulls from Graph per run (currently <code>1</code>).
+      </div>
+    </div>
+  </section>
+
+  <section id="sec-04">
+    <div class="section-head">
+      <span class="section-num">04 — Extraction</span>
+      <h2>DETECT → CLASSIFY → GATE → EXTRACT → PARSE → VALIDATE</h2>
+      <p class="section-desc">
+        Runs on one already-split PDF. <code>ExtractionPipeline.run(pdf_path)</code> in
+        <code>extraction_pipeline.py</code>.
+      </p>
+    </div>
+
+    <div class="stage-card">
+      <div class="stage-card-head">
+        <span class="stage-badge">DETECT</span>
+        <h3>Scan detection — PDF or page images</h3>
+        <span class="span-name mono">invoice_utils.page_mode.is_scanned_pdf</span>
+      </div>
+      <p>Deterministic, no LLM, and it decides what the classification and extraction stages actually <em>see</em>. A scanned page is one large image XObject covering the sheet, so any text layer it carries is the scanner's own OCR — well-formed and possibly wrong. The signal is therefore <strong>coverage</strong>, not character statistics: the fraction of the page area covered by image XObjects, taken as the max over the first <code>COVERAGE_SCAN_PAGES</code> pages (a scanned bundle can open with a clean cover sheet). Overlaps are counted rather than unioned and the ratio is left unclamped — scanners emit overlapping strips, so &gt; 1.0 is itself a scan fingerprint.</p>
+      <p class="muted">When it reads as scanned, <code>document_content_parts</code> sends the LLM stages rasterized page images instead of the PDF, because the API extracts a PDF's text layer rather than reading its pixels — whatever the scanner misread would simply be absent from what the model sees. Rendering produces nothing? It falls back to sending the PDF, so a rendering failure degrades rather than sending no document. The coverage ratio is put on the <code>extract:</code> span (and as the <code>input_mode</code> trace tag) precisely so a document near the threshold tells you the threshold needs tuning.</p>
+      <div class="config-ref">
+        <span class="label">Config (config.py)</span>
+        <code>SCANNED_COVERAGE_THRESHOLD = 1.0</code> — at or above this, read as image.<br>
+        <code>COVERAGE_SCAN_PAGES = 5</code> — pages inspected for coverage.<br>
+        <code>RENDER_DPI = 110</code> — 72 already reads correctly on the known scans; 110 is margin for finer print.<br>
+        <code>RENDER_MAX_PAGES = 5</code> — caps the pages sent as images (the information is usually at the start).
+      </div>
+    </div>
+
+    <div class="stage-card">
+      <div class="stage-card-head">
+        <span class="stage-badge">CLASSIFY</span>
+        <h3>Document type &amp; state</h3>
+        <span class="span-name mono">nodes.classify_document · span 2-classification</span>
+      </div>
+      <p>Produces a <code>DocumentClassification</code>: <code>document_type</code> (invoice / credit_note / debit_note / receipt / other), <code>document_state</code> (original / proforma / copy / cancelled, nullable), <code>document_number</code> (the supplier's own reference for this document), and <code>document_exception</code> (only meaningful on receipts — condominio / insurance / bank extract).</p>
+      <p class="muted"><code>document_number</code> is read here, at classification, rather than at extraction — deliberately. It is read on <strong>every</strong> document, whatever its type or state, because routing needs it to match a proforma or copy (which never reach extraction) against the original in the same email. See §06.</p>
+    </div>
+
+    <div class="stage-card">
+      <div class="stage-card-head">
+        <span class="stage-badge">GATE</span>
+        <h3>Deterministic go/no-go on extraction</h3>
+        <span class="span-name mono">extraction_pipeline.should_extract</span>
+      </div>
+      <p>Not an LLM judgement — an auditable, testable rule. A document proceeds to extraction only if:</p>
+      <ul>
+        <li><code>document_type</code> in <code>{invoice, credit_note, debit_note}</code> <strong>and</strong> state reads as <em>original</em> — a <code>null</code> state is treated as original, since real documents may omit the word "Original"; <em>or</em></li>
+        <li>it is a receipt carrying a non-null <code>document_exception</code> (booked like an invoice — see case matrix C1–C3).</li>
+      </ul>
+      <p class="muted">Everything else (proformas, copies, cancelled, plain receipts, "other") is gated out here and routed downstream purely from its classification — no extraction/validation cost spent on it.</p>
+    </div>
+
+    <div class="stage-card">
+      <div class="stage-card-head">
+        <span class="stage-badge">EXTRACT</span>
+        <h3>Structured field extraction</h3>
+        <span class="span-name mono">nodes.extract_document · span 4-extraction</span>
+      </div>
+      <p>Produces <code>InvoiceData</code> (<code>models/invoice.py</code>) — every field a <code>Confident[T]</code> carrying <code>value</code>, <code>confidence</code> and an <code>evidence</code> snippet. Fields: <code>supplier_name</code>, <code>supplier_vat</code>, <code>client_name</code>, <code>client_vat</code>, <code>purchase_order[]</code>, <code>issue_date</code>, <code>base_amount</code>, <code>vat_amount</code>, <code>total_amount</code>, <code>currency</code>. Never guessed — null whenever ambiguous. <code>document_number</code> is <strong>not</strong> here — it now lives on <code>DocumentClassification</code> (§03), read earlier so routing has it even for documents that are gated out before extraction.</p>
+    </div>
+
+    <div class="stage-card">
+      <div class="stage-card-head">
+        <span class="stage-badge">PARSE</span>
+        <h3>Deterministic text baseline</h3>
+        <span class="span-name mono">invoice_utils.pdf_parser.build_attachment_evidence · span 3-parsing</span>
+      </div>
+      <p>No LLM. Extracts raw text from the PDF to give the validator ground truth to check the extraction against; it is told whether the document is scanned (§04 DETECT) so it can take the OCR route rather than trusting an authored text layer that isn't there. Non-fatal — a parser failure just means validation proceeds without a text baseline (a common root cause of low-confidence results, visible in the trace).</p>
+    </div>
+
+    <div class="stage-card">
+      <div class="stage-card-head">
+        <span class="stage-badge">VALIDATE</span>
+        <h3>Cross-check &amp; correct</h3>
+        <span class="span-name mono">nodes.validate_document · spans 5-validation / 5a-validation:tools / 5b-validation:shaping / 5c-validation:registry</span>
+      </div>
+      <p>Produces the pipeline's final output, <code>ValidationReport</code> (<code>models/validation.py</code>) — the CORRECTED view (e.g. a swapped supplier/client is fixed here), each field a <code>Checked[T]</code> with <code>{value, confidence}</code>. Runs a tool-use loop (<code>5a-validation:tools</code>) that can independently call VAT/PO registry lookups (<code>tools/vat_registry.py</code>, <code>tools/po_confirmation.py</code>) before shaping the final structured report (<code>5b-validation:shaping</code>). After shaping, <code>nodes.validate.resolve_registry_ids</code> runs deterministically in its own span (<code>5c-validation:registry</code>, no LLM) and fills <code>supplier_id</code>/<code>bu_id</code> from <code>dim_suppliers</code>/<code>dim_business_units</code> — VAT-first, name-fallback, since the registry (not the LLM) is the source of truth for id/name/VAT. Never raises: a failed lookup just leaves that party's id/name/vat as they were.</p>
+      <p class="muted">Naming note: <code>bu_name</code> / <code>bu_vat</code> in <code>ValidationReport</code> correspond to <code>client_name</code> / <code>client_vat</code> in <code>InvoiceData</code> — "BU" is the business unit being billed. <code>supplier_id</code> / <code>bu_id</code> are never read from the document itself — they only ever come from the registry lookup above, so a non-null VAT/name with a still-null id means "not found in the registry" (see §05).</p>
+    </div>
+  </section>
+
+  <section id="sec-05">
+    <div class="section-head">
+      <span class="section-num">05 — Ingestion gate</span>
+      <h2>Required fields &amp; confidence threshold</h2>
+      <p class="section-desc">
+        A <code>status == "validated"</code> result only means the three stages ran without
+        raising — it says nothing about whether the numbers are trustworthy. A second,
+        deterministic gate (<code>decisions.ingestion_blockers</code>) decides whether a
+        document is confident enough to book to SAP. Deliberately not an LLM judgement:
+        auditable and testable.
+      </p>
+    </div>
+
+    <div class="threshold-box">
+      <span class="thr-label">MIN_CONFIDENCE</span>
+      <span class="thr-value">0.7</span>
+      <span class="thr-note">config.py — every required field below must be present <strong>and</strong> clear this threshold, or the document is blocked from auto-ingestion. Chosen to keep only the upper half of the validator's own "0.70–0.89 = probably correct but some ambiguity" band — money-moving data, so ambiguity goes to a human.</span>
+    </div>
+
+    <div class="stage-card">
+      <h3 style="margin-bottom: var(--space-2);">REQUIRED_FIELDS (decisions.py)</h3>
+      <p class="muted">Every field here must be non-null and ≥ 0.7 confidence for the document to be auto-ingested. <code>supplier_id</code> / <code>bu_id</code> are checked separately, right below — a missing id means "not found in the registry", not "low confidence", so it gets its own blocker rather than being folded into this list.</p>
+      <div class="field-grid">
+        <span class="field-chip">supplier_vat</span>
+        <span class="field-chip">bu_vat</span>
+        <span class="field-chip">issue_date</span>
+        <span class="field-chip">base_amount</span>
+        <span class="field-chip">vat_amount</span>
+        <span class="field-chip">total_amount</span>
+        <span class="field-chip">currency</span>
+      </div>
+    </div>
+
+    <div class="stage-card">
+      <h3 style="margin-bottom: var(--space-2);">Registry blockers — supplier_id / bu_id</h3>
+      <p><code>ingestion_blockers</code> also blocks when <code>supplier_id</code> (or <code>bu_id</code>) is still <code>null</code> after <code>resolve_registry_ids</code> (§04) despite a VAT or name having been read — i.e. the party could not be matched in <code>dim_suppliers</code> / <code>dim_business_units</code>. Same treatment as a low-confidence field: routes to <span class="action-pill action-manual">Validate Manually</span>, never to the supplier — a registry miss is ours to resolve, not theirs.</p>
+    </div>
+
+    <div class="stage-card">
+      <h3 style="margin-bottom: var(--space-2);">Outcome of a blocked document</h3>
+      <p>Any missing field or sub-threshold confidence produces a human-readable blocker string (e.g. <code>"total_amount confidence 0.62 &lt; 0.7"</code>) and the document routes to <span class="action-pill action-manual">Validate Manually</span> instead of <span class="action-pill action-ingest">Ingest in SAP</span> — never to the supplier, since the document itself may be fine and it is our reading of it that fell short.</p>
+    </div>
+
+    <div class="stage-card">
+      <h3 style="margin-bottom: var(--space-2);">PO check — is_financial-aware, routes rather than just alerting</h3>
+      <p><code>decisions.missing_pos</code> is a second, independent deterministic check — it can only disagree with the LLM's own tool-informed conclusion (formed with the same tools during validation) if the LLM got it wrong. What a PO on the document means depends on <code>tools.po_confirmation.supplier_is_financial(supplier_vat)</code>, read from <code>dim_suppliers.is_financial</code>:</p>
+      <ul>
+        <li><strong>logistics (0)</strong> — a PO is required; every one carried is checked against <code>po_exists()</code>.</li>
+        <li><strong>financial (1)</strong> — there should be no PO at all; any PO read is dropped as a likely misread (logged), never routes the document anywhere.</li>
+        <li><strong>both (2)</strong> — no PO is demanded, but any carried is still checked as usual.</li>
+      </ul>
+      <p>The function returns one of three things, and each routes differently in <code>_ingest_or_escalate</code>:</p>
+      <ul>
+        <li><code>None</code> — no PO required (financial supplier, or nothing carried by a non-requiring one), or every PO on the document resolves via <code>po_exists()</code> → proceeds to <span class="action-pill action-ingest">Ingest in SAP</span>.</li>
+        <li><code>[]</code> — a PO-requiring supplier (logistics or both) and the document carries none → <span class="action-pill action-reply">Sent back to Supplier</span> ("Documento sem nota de encomenda...") — the supplier's omission, only they can fix it.</li>
+        <li>a non-empty list — PO references on the document that don't resolve → <span class="action-pill action-manual">Validate Manually</span> — ours to investigate, not the supplier's.</li>
+      </ul>
+      <p>Existence is only half the question. A PO that resolves is then checked for <strong>ownership</strong> — see the next card.</p>
+      <p class="muted"><code>missing_pos</code> runs ONCE per document, in <code>_ingest_or_escalate</code>, and its answer is carried on the <code>DocumentDecision</code> as <code>po_problems</code>. <code>build_alerts_list</code> reads it back from there rather than repeating the lookups, so an alert and its routing action are the same answer by construction, not two answers that happen to agree. A document stopped by an earlier hurdle (did not validate, or failed <code>REQUIRED_FIELDS</code>) never reaches the PO check: it carries <code>NOT_CHECKED</code>, always routes to <span class="action-pill action-manual">Validate Manually</span>, and gets the alert <em>"Falha na validação de existência de pedido de compra"</em> so the reviewer knows the check never ran rather than reading its silence as "no PO problem". A supplier VAT we never read is not a PO problem — it's already caught by the <code>REQUIRED_FIELDS</code> gate above. The tools are invoked directly here (not via the LLM's tool calls), so the answer never depends on the LLM having actually called them during validation; a lookup failure is swallowed and logged rather than blocking routing.</p>
+    </div>
+
+    <div class="stage-card">
+      <h3 style="margin-bottom: var(--space-2);">PO ownership — does the PO belong to the parties we extracted?</h3>
+      <p>A PO can exist and still be the wrong one. <code>decisions.mismatched_pos</code> runs immediately after the existence check, on the POs that check already resolved, and asks whose the PO actually is. <code>tools.po_confirmation.po_conflicts(po, supplier_id, bu_id)</code> reads SAP's <code>EKKO</code> header and compares:</p>
+      <ul>
+        <li><code>EKKO.LIFNR</code> (vendor) against the document's <code>supplier_id</code> — both are <code>LFA1.LIFNR</code>, so they compare directly.</li>
+        <li><code>EKKO.BUKRS</code> (company code) against the document's <code>bu_id</code> — both are <code>T001.BUKRS</code>.</li>
+      </ul>
+      <p>Those two ids are the ones <code>resolve_registry_ids</code> (§04) already resolved from the document, so this is an id-to-id comparison — no VAT or name matching involved. Padding is ignored (<code>0000001015</code> and <code>1015</code> are the same vendor). A mismatch on <strong>either</strong> party routes the document to <span class="action-pill action-manual">Validate Manually</span> — never back to the supplier: a PO belonging to someone else is our data to investigate, exactly like an unresolvable PO above. One mismatch among several POs is enough to escalate the whole document.</p>
+      <p>The reviewer gets the two ids side by side, so the disagreement can be judged without opening SAP: <em>"Nota de encomenda com id do fornecedor 0000001015, mas extração identificou fornecedor com id 0000002030"</em> (and the <code>cliente</code> wording for a company-code mismatch).</p>
+      <p class="muted">Like every check on this path, it only ever escalates on <strong>positive evidence of a conflict</strong>. An unknown PO, a blank <code>LIFNR</code>/<code>BUKRS</code> on the EKKO row (≈7,000 real rows carry no vendor), an unresolved <code>supplier_id</code>/<code>bu_id</code>, or a failed lookup all read as "no mismatch" and let the document proceed. Degraded master data therefore makes the system miss mismatches; it never sends every invoice to manual review. Mismatches are carried on the <code>DocumentDecision</code> as <code>po_mismatches</code>, and <code>build_alerts_list</code> reads them back from there — same construction as <code>po_problems</code>, so alert and action cannot disagree.</p>
+    </div>
+  </section>
+
+  <section id="sec-06">
+    <div class="section-head">
+      <span class="section-num">06 — Routing decision</span>
+      <h2>Case matrix (decisions.py)</h2>
+      <p class="section-desc">
+        Two vocabularies, because the layers answer different questions. A <code>DocumentAction</code>
+        is what happens to one piece of paper — <code>decide_document(result, original_keys)</code>
+        routes it, pure and LLM-free. An <code>EmailAction</code> is what the email as a whole owes
+        someone — <code>decide_email(...)</code> rolls the per-document actions up into a
+        <strong>list</strong> (<code>EmailDecision.actions</code>), since one email can warrant
+        several things at once: a reply for one document AND a treasury forward for another. A
+        third layer, <code>close_prior_process</code>, is the only rule that looks BACKWARDS: whether
+        an earlier email of the same thread is settled by this newer one arriving.
+      </p>
+    </div>
+
+    <div class="stage-card">
+      <h3 style="margin-bottom: var(--space-2);">Duplicate filing, ahead of every type rule</h3>
+      <p><code>original_document_keys(extractions)</code> collects the <code>(document_type, normalized document_number)</code>
+      of every document in the email whose state reads as <em>original</em> (explicit <code>original</code>, or a
+      NULL state — real documents rarely print the word). Every document is then decided against that
+      same set via <code>decide_document(result, original_keys)</code>: a non-original whose key matches
+      one already in the set is filed away as
+      <span class="action-pill action-manual" style="background: rgb(255 255 255 / 10%); color: var(--color-text-muted);">Ignore (has original)</span>
+      before any type/state rule runs — there is nothing to ask for and nothing to book twice.</p>
+      <p class="muted">The type is part of the key, not just the number, because numbering is per document
+      series — an invoice and a receipt can legitimately share a number. <code>document_number</code> is read at
+      <strong>classification</strong> (not extraction) specifically so this comparison covers documents that never
+      reach extraction at all, like a proforma or a copy. Numbers are compared via
+      <code>normalize_document_number</code> — casefolded, spaces/dots/hyphens stripped — since suppliers rarely
+      print the same reference identically twice.</p>
+    </div>
+
+    <div class="table-wrap">
+      <table class="matrix">
+        <caption>A — Email-level (no usable PDF extracted)</caption>
+        <thead>
+          <tr><th>Case</th><th>Condition</th><th>Action</th><th>Reason</th></tr>
+        </thead>
+        <tbody>
+          <tr><td class="case-id">A1</td><td>No attachments at all</td><td><span class="action-pill action-inbox">body decides</span></td><td>reply if the body delivers a document with no link, else Inbox</td></tr>
+          <tr><td class="case-id">A2</td><td>Attachments present, none is a PDF</td><td><span class="action-pill action-inbox">body decides</span></td><td>same as A1</td></tr>
+          <tr><td class="case-id">A3</td><td>Ingestion itself failed</td><td><span class="action-pill action-inbox">Left in Inbox</span></td><td>nothing was ever read</td></tr>
+          <tr><td class="case-id">A4</td><td>Ingestion skipped (already processed)</td><td><span class="action-pill action-inbox">Left in Inbox</span></td><td>earlier run owns the decision</td></tr>
+          <tr><td class="case-id">A5</td><td>PDFs reported chunked but none extracted</td><td><span class="action-pill action-inbox">Left in Inbox</span></td><td>defensive — splitter bug, not supplier's fault</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="table-wrap" style="margin-top: var(--space-4);">
+      <table class="matrix">
+        <caption>B — Invoice-like documents (invoice / credit_note / debit_note)</caption>
+        <thead>
+          <tr><th>Case</th><th>State</th><th>Confidence / PO</th><th>Action</th></tr>
+        </thead>
+        <tbody>
+          <tr><td class="case-id">B0</td><td>Non-original, key matches an original elsewhere in the email</td><td>—</td><td><span class="action-pill action-inbox">Ignore (has original)</span> — checked first, ahead of every other rule</td></tr>
+          <tr><td class="case-id">B1 / B5 / B7</td><td>Original (null state reads as original)</td><td>All required fields ≥ 0.7, PO satisfied</td><td><span class="action-pill action-ingest">Ingest in SAP</span></td></tr>
+          <tr><td class="case-id">B1 / B5 / B7</td><td>Original</td><td>Any field missing or &lt; 0.7</td><td><span class="action-pill action-manual">Validate Manually</span></td></tr>
+          <tr><td class="case-id">B1 / B5 / B7</td><td>Original, confident</td><td>Supplier requires PO, document has none</td><td><span class="action-pill action-reply">Sent back to Supplier</span> — "Documento sem nota de encomenda..."</td></tr>
+          <tr><td class="case-id">B1 / B5 / B7</td><td>Original, confident</td><td>PO(s) present but not found in the PO list</td><td><span class="action-pill action-manual">Validate Manually</span></td></tr>
+          <tr><td class="case-id">B1 / B5 / B7</td><td>Original, confident</td><td>PO(s) found, but belonging to another supplier or business unit</td><td><span class="action-pill action-manual">Validate Manually</span> — ours to investigate, never the supplier's</td></tr>
+          <tr><td class="case-id">B2</td><td>Proforma</td><td>—</td><td><span class="action-pill action-reply">Sent back to Supplier</span> — "Documento proforma, por favor enviar o original"</td></tr>
+          <tr><td class="case-id">B3</td><td>Copy</td><td>—</td><td><span class="action-pill action-reply">Sent back to Supplier</span> — "Documento duplicado, por favor enviar o original"</td></tr>
+          <tr><td class="case-id">B4 / B6 / B8</td><td>Cancelled</td><td>—</td><td><span class="action-pill action-inbox">Left in Inbox</span> — nothing to ask for, nothing to book</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="table-wrap" style="margin-top: var(--space-4);">
+      <table class="matrix">
+        <caption>C — Receipts and other document types</caption>
+        <thead>
+          <tr><th>Case</th><th>Condition</th><th>Action</th></tr>
+        </thead>
+        <tbody>
+          <tr><td class="case-id">C0</td><td>Non-original, key matches an original elsewhere in the email</td><td><span class="action-pill action-inbox">Ignore (has original)</span></td></tr>
+          <tr><td class="case-id">C1–C3</td><td>Receipt with exception (condominio / insurance / bank extract), confident, PO satisfied</td><td><span class="action-pill action-ingest">Ingest in SAP</span> — booked exactly like an invoice</td></tr>
+          <tr><td class="case-id">C1–C3</td><td>Receipt with exception, not confident</td><td><span class="action-pill action-manual">Validate Manually</span></td></tr>
+          <tr><td class="case-id">C1–C3</td><td>Receipt with exception, confident, PO problem</td><td>same PO split as B1/B5/B7 above</td></tr>
+          <tr><td class="case-id">C4</td><td>Ordinary receipt, no exception</td><td><span class="action-pill action-treasury">Forward to Treasury</span> — not ours to book</td></tr>
+          <tr><td class="case-id">C5</td><td>"Other" — shipping docs, POs, bank statements</td><td><span class="action-pill action-inbox">Left in Inbox</span> — not processed</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="table-wrap" style="margin-top: var(--space-4);">
+      <table class="matrix">
+        <caption>D — Pipeline failure</caption>
+        <thead>
+          <tr><th>Case</th><th>Condition</th><th>Action</th></tr>
+        </thead>
+        <tbody>
+          <tr><td class="case-id">D1–D3</td><td>A stage raised, or no classification available</td><td><span class="action-pill action-manual">Validate Manually</span> — a human triages rather than blaming the supplier for a possible LLM/parse error</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="stage-card">
+      <h3 style="margin-bottom: var(--space-2);">Email-level roll-up (roll_up_actions)</h3>
+      <p><code>EmailDecision.actions</code> is a <strong>list</strong>, built by <code>roll_up_actions</code> from
+      <code>EMAIL_ACTION_RULES</code> — an email can owe several things at once (a reply for one document, a
+      treasury forward for another), so both appear rather than one dominating.</p>
+      <div class="table-wrap">
+        <table class="matrix">
+          <thead><tr><th>Email action</th><th>Triggered by any document action</th></tr></thead>
+          <tbody>
+            <tr><td><span class="action-pill action-reply">Reply to supplier</span></td><td><code>REPLY</code></td></tr>
+            <tr><td><span class="action-pill action-treasury">Forward to treasury</span></td><td><code>TREASURY</code></td></tr>
+            <tr><td><span class="action-pill action-inbox">Keep in Inbox</span></td><td><code>INBOX</code> or <code>MANUAL</code></td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="muted"><span class="action-pill action-inbox" style="background: rgb(0 165 144 / 22%); color: #5eeedb;">Archive</span>
+      is the exception — checked first and exclusive of the rules above. It fires only when
+      <strong>every</strong> document in the email resolved to <code>INGEST</code> or <code>IGNORE</code>: nothing is
+      booked-and-pending, nothing is owed to anyone, so the email leaves the inbox entirely. An email with no
+      documents at all falls back to <span class="action-pill action-inbox">Keep in Inbox</span> rather than
+      Archive — "nothing to do" and "everything done" are different states. This replaces the old suppression rule
+      (downgrading a REPLY when an INGEST was present in the same email) — that case is now handled earlier, by
+      duplicate filing against <code>original_keys</code> (B0/C0 above).</p>
+    </div>
+
+    <div class="stage-card">
+      <h3 style="margin-bottom: var(--space-2);">Thread escalation — when to stop chasing</h3>
+      <p><code>_thread_message_count</code> (email_pipeline.py) counts this email's position in its Graph
+      <code>conversationId</code> thread, queried once per email against <code>fct_processes.thread_id</code>. From
+      <code>THREAD_ESCALATION_COUNT</code> (currently <strong>3</strong>, config.py) on, the thread is considered
+      not to have converged, and <code>_downgrade_to_inbox</code> parks anything that would otherwise go
+      <span class="action-pill action-reply">outward</span> (REPLY or TREASURY, including the A1/A2 body-decided
+      reply) as <span class="action-pill action-inbox">Keep in Inbox</span> instead — a human reads it rather than
+      the supplier/treasury being chased a third time. <code>INGEST</code> / <code>MANUAL</code> / <code>IGNORE</code>
+      are untouched; only outbound actions are downgraded.</p>
+    </div>
+
+    <div class="stage-card">
+      <h3 style="margin-bottom: var(--space-2);">Email status — a separate lifecycle axis</h3>
+      <p><code>EmailDecision.status</code> answers a different question than <code>actions</code>: not what the
+      email warrants, but whether anyone still owes it something. Written to
+      <code>fct_processes.email_status</code>.</p>
+      <div class="table-wrap">
+        <table class="matrix">
+          <thead><tr><th>Status</th><th>When</th></tr></thead>
+          <tbody>
+            <tr><td><span class="action-pill action-ingest">Fechado</span></td><td>Archived, or the only action is TREASURY, or the email is <code>out_of_scope</code> (no document and the body isn't delivering one) — closed wins even on an escalated thread.</td></tr>
+            <tr><td><span class="action-pill action-manual">Requer Ação</span></td><td>Something is still outstanding (REPLY/TREASURY/INBOX) AND the thread has hit <code>THREAD_ESCALATION_COUNT</code> — no further automatic reply will go out, so it is waiting on a human instead of the pipeline.</td></tr>
+            <tr><td><span class="action-pill action-inbox">Aberto</span></td><td>Something is still outstanding, thread not escalated — the normal in-progress state.</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="stage-card">
+      <h3 style="margin-bottom: var(--space-2);">Reply language (reply_language)</h3>
+      <p>One email gets one reply, so something must settle what language it is written in.
+      <code>reply_language(decisions, extractions)</code> asks only the documents that actually
+      <strong>drove</strong> the reply, and the FIRST of those to answer wins. Per document, in order:</p>
+      <ul>
+        <li><code>dim_suppliers.preferred_language</code> — the supplier told us. Asked only when
+        <code>resolve_registry_ids</code> identified them (§04), so it is silent for an unknown supplier.</li>
+        <li>the document's own <code>language</code>, read at classification — which is what covers proformas
+        and duplicates, neither of which reaches the registry lookup.</li>
+      </ul>
+      <p class="muted"><code>pt</code> and <code>en</code> are the only two letters that exist
+      (<code>REPLY_LETTER_TEMPLATES</code>), so anything else falls back to
+      <code>DEFAULT_REPLY_LANGUAGE</code> (<code>en</code>) — a French supplier gets the default rather than a
+      half-translated one. Each document carries EVERY wording and none of the choice: a
+      <code>DocumentDecision.reply_text</code> is a <code>{language: text}</code> mapping, deduped across
+      documents so two proformas in one email yield one reason, and only resolved to a single language when
+      <code>EmailDecision.reply_body</code> slots the reasons into that language's letter. For A1/A2 (no
+      document at all) the body classification is the only language evidence, so <code>intent.language</code>
+      decides. The treasury letter is always Portuguese — it goes to our own team, so the supplier's language
+      does not apply.</p>
+    </div>
+
+    <div class="stage-card">
+      <h3 style="margin-bottom: var(--space-2);">Layer 3 — closing an EARLIER process (close_prior_process)</h3>
+      <p>Every rule above decides the email in front of us. This one looks backwards: a supplier answering
+      on a thread is exactly what an earlier <span class="action-pill action-reply">Retornado ao
+      Fornecedor</span> was waiting for, so that process is revisited now rather than staying
+      <code>Aberto</code> forever. <code>email_pipeline.close_prior_processes</code> reads the candidates and
+      writes <code>Fechado</code>; the rule itself is pure.</p>
+      <p class="muted">Only still-<code>Aberto</code> processes on the same <code>thread_id</code> are
+      considered, and never the row just written — a <code>Requer Ação</code> process is waiting on a human,
+      and a supplier answering does not discharge that.</p>
+      <div class="table-wrap">
+        <table class="matrix">
+          <thead><tr><th>Earlier process's email_action</th><th>Closed?</th></tr></thead>
+          <tbody>
+            <tr><td>REPLY alone, or REPLY + TREASURY</td><td>Yes — what it was waiting for has arrived.</td></tr>
+            <tr><td>REPLY + INBOX</td><td>Only if EVERY document is settled: an <code>INGEST</code> document counts only once its <code>status</code> is <code>Ingerido</code>; <code>INBOX</code>/<code>REPLY</code>/<code>TREASURY</code>/<code>IGNORE</code> need nothing further. <code>MANUAL</code> is deliberately absent — a human has not looked at it yet.</td></tr>
+            <tr><td>anything without REPLY</td><td>No — nothing was ever asked of the supplier, so their answer settles nothing.</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="muted"><code>close_process_after_manual_send</code> applies the same settled-document test
+      from the other direction: whether a process is finished once a human has pushed one of its documents to
+      SAP.</p>
+    </div>
+  </section>
+
+  <section id="sec-07">
+    <div class="section-head">
+      <span class="section-num">07 — Persistence</span>
+      <h2>What gets written, and when</h2>
+      <p class="section-desc">
+        One blob upload and three tables, written from <code>EmailPipeline._persist</code> in that order,
+        then the sends and the backward-looking close. Booking to SAP is <strong>not</strong> part of this —
+        see the standalone pipeline callout below.
+      </p>
+    </div>
+    <div class="card-grid">
+      <div class="mini-card">
+        <h4>Blob storage — first, before anything else</h4>
+        <p>The whole email folder (<code>email_content.json</code> plus every split PDF) is uploaded to Azure Blob Storage under <code>processed_emails/&lt;YYYY&gt;/&lt;MM&gt;/&lt;email folder&gt;/</code> — partitioned by <strong>reception</strong> date, so a late-processed email files under the period it belongs to. It runs FIRST on purpose: raising here leaves no row pointing at a missing blob and no supplier/treasury mail sent for an email we dropped. The container is not part of the key (it comes from settings), so the same path resolves in any environment. <code>utils/blob_storage.py</code>.</p>
+      </div>
+      <div class="mini-card">
+        <h4>fct_processes</h4>
+        <p>One row per email: <code>sender_email</code>, <code>email_subject</code>, <code>email_content</code>, <code>reception_date</code>, <code>message_id</code>, <code>thread_id</code>, <code>thread_message_count</code>, <code>email_status</code> (Aberto/Fechado/Requer Ação, §06), <code>email_action</code> (the rolled-up action list). <code>process_id</code> is DB-generated and returned to key the documents below.</p>
+      </div>
+      <div class="mini-card">
+        <h4>fct_documents</h4>
+        <p>One row per extracted PDF, inserted at its day-one status (<code>derive_status</code>): "Failed" if the pipeline broke on it, "Ignorado" for an <code>IGNORE</code> or <code>INBOX</code> document (no follow-up and nothing pending), otherwise "Criado". Also: document type/state label, final <code>action</code>, flattened <code>ValidationReport</code> as JSONB (<code>document_content</code>), <code>alerts_list</code>, and <code>file_path</code> — the blob key of this document's own PDF, which is how the API reads it back. <code>document_id</code> is generated in code (<code>uuid.uuid4()</code>), not left to the column default, so the whole batch inserts in one call yet every id is already known for the follow-up UPDATE below.</p>
+      </div>
+      <div class="mini-card">
+        <h4>fct_document_first_action</h4>
+        <p>One immutable row per document, written once right after <code>fct_documents</code>, from the same <code>action</code> values — before any follow-up send or later manual review can change them. Always reflects the document's ORIGINAL routing, unlike <code>fct_documents.action</code>, which manual review overwrites.</p>
+      </div>
+      <div class="mini-card">
+        <h4>Follow-ups: reply / treasury forward / archive</h4>
+        <p><code>_send_followups</code> runs after every row above already exists at "Criado". It sends the supplier reply and/or treasury forward — each ONCE per email, as a Graph reply/forward on the original <code>message_id</code>, deduped/joined across every REPLY/TREASURY document — then UPDATEs just those documents' <code>fct_documents.status</code> to "Comunicado" on success (left at "Criado" on send failure, e.g. <code>Mail.Send</code> not yet granted). <code>INGEST</code> rows are deliberately left at "Criado" here. The archive move runs last and acts on the message itself rather than on any document, so it touches no status.</p>
+      </div>
+      <div class="mini-card">
+        <h4>Then: settle earlier processes, drop the local folder</h4>
+        <p><code>close_prior_processes</code> runs last, after the row just written exists (so it cannot count itself): it revisits this thread's still-<code>Aberto</code> earlier processes and closes the ones this email settles — see §06, Layer 3. Once everything above has succeeded, <code>_discard_local_folder</code> deletes the working folder under <code>docs/processed_emails/</code>: blob storage holds the artifacts now. A failed delete is logged, never raised — the upload and the rows are already correct.</p>
+      </div>
+      <div class="mini-card">
+        <h4>sap_pipeline.py — booking, separate and in bulk</h4>
+        <p>SAP booking is a standalone pipeline (<code>sap_pipeline.py</code>), run manually/separately (no scheduler yet), NOT invoked inline from <code>email_pipeline</code>. It finds every <code>fct_documents</code> row at <code>action = "Ingerir em SAP"</code>, <code>status = "Criado"</code> — regardless of which email wrote it — and books each via <code>invoice_utils.sap_sender.book_in_sap</code>, advancing successes to <code>status = "Ingerido"</code>. Kept separate because a document can reach that state well after its email was processed, e.g. after manual review flips a MANUAL document's action outside this codebase.</p>
+      </div>
+      <div class="mini-card">
+        <h4>WRITE_TO_DB (config.py)</h4>
+        <p>Currently <code>True</code> in the checked-in default. When off, the pipeline can still run (and trace) without a database — no pool is opened, and dedup falls back to an empty skip set, so every fetched email runs unconditionally. It gates the whole of <code>_persist</code>, so the blob upload, the sends and the local-folder deletion are all skipped too: the working folders stay on disk for inspection.</p>
+      </div>
+    </div>
+  </section>
+
+  <section id="sec-08">
+    <div class="section-head">
+      <span class="section-num">08 — Tracing &amp; observability</span>
+      <h2>MLflow spans (tracing.py)</h2>
+      <p class="section-desc">
+        Development instrumentation only — never shown to a client. Degrades to a no-op when
+        <code>MLFLOW_TRACKING_URI</code> is unset, so the pipelines run unchanged without it.
+        <code>ENABLE_TRACING</code> (config.py) is a second, independent master switch — flip it off
+        to run with zero tracing overhead (e.g. a large batch) without touching the <code>.env</code>
+        tracking URI. Every email is one trace; the span tree below is what one email with a single PDF
+        produces.
+      </p>
+    </div>
+    <div class="trace-tree">
+<pre><span class="tag-chain">email:&lt;source&gt;</span>                          (CHAIN, trace root)
+  <span class="tag-chain">ingest:&lt;attachment.pdf&gt;</span>               (CHAIN, one per attachment)
+    <span class="tag-llm">1-chunking</span>                          (LLM — segmentation)
+  <span class="tag-chain">extract:&lt;document.pdf&gt;</span>               (CHAIN, one per split document)
+    <span class="tag-llm">2-classification</span>                    (LLM)
+    <span class="tag-parser">3-parsing</span>                           (PARSER — deterministic, no LLM)
+    <span class="tag-llm">4-extraction</span>                        (LLM)
+    <span class="tag-llm">5-validation</span>                        (LLM)
+      <span class="tag-chain">5a-validation:tools</span>               (CHAIN — bind_tools loop)
+        <span class="tag-tool">verify_client_nif</span>               (TOOL)
+        <span class="tag-tool">verify_supplier_nif</span>             (TOOL)
+      <span class="tag-llm">5b-validation:shaping</span>               (LLM)
+      <span class="tag-chain">5c-validation:registry</span>              (CHAIN — deterministic, no LLM)
+  <span class="tag-llm">email-intent</span>                        (LLM — only when no PDF was usable)
+  <span class="tag-chain">6-decision</span>                          (CHAIN — pure business rules)</pre>
+    </div>
+    <div class="two-col">
+      <div class="note-box">
+        <span class="label">Why numbered stage spans exist</span>
+        <code>mlflow.langchain.autolog()</code> names spans after the LangChain class it
+        intercepted (<code>ChatOpenAI</code>, <code>RunnableSequence</code>, ...), never after
+        the pipeline step, and a span's name has no setter. Each stage is wrapped in its own
+        named span so the readable graph sits above the autolog plumbing, and the UI doesn't
+        collapse every LLM call in an email into one badged node.
+      </div>
+      <div class="note-box">
+        <span class="label">Base64 redaction</span>
+        A registered span processor (<code>_strip_base64</code>) strips inline
+        <code>data:...;base64,...</code> URIs ≥ 200 chars from every span's inputs/outputs
+        before export — the safety net for cases MLflow's own attachment extraction doesn't
+        cover.
+      </div>
+    </div>
+  </section>
+
+  <section id="sec-09">
+    <div class="section-head">
+      <span class="section-num">09 — Operating the pipeline</span>
+      <h2>Local commands</h2>
+    </div>
+
+    <div class="stage-card">
+      <h3 style="margin-bottom: var(--space-2);">Run MLflow locally</h3>
+      <p class="muted">SQLite-backed, no license or company server needed for local dev.</p>
+      <div class="cmd-block">cd .\fastapi_webapi\
+uv sync
+mlflow server --backend-store-uri sqlite:///mlflow.db --default-artifact-root ./mlruns --port 5000</div>
+      <p class="muted">Then set <code>MLFLOW_TRACKING_URI=http://127.0.0.1:5000</code> in <code>.env</code>.</p>
+    </div>
+
+    <div class="stage-card">
+      <h3 style="margin-bottom: var(--space-2);">Rebuild the trace viewer</h3>
+      <p class="muted"><code>scripts/build_trace_viewer.py</code> reads the MLflow SQLite backend + source PDFs on disk and writes one self-contained, shareable HTML file — relabels stages into business language and strips confidence/cost/evidence by default.</p>
+      <div class="cmd-block">cd fastapi_webapi
+.venv/Scripts/python.exe scripts/build_trace_viewer.py</div>
+    </div>
+
+    <div class="stage-card">
+      <h3 style="margin-bottom: var(--space-2);">Run the pipelines</h3>
+      <p class="muted"><code>email_pipeline.py</code> is the production entry point — fetch, ingest, extract, decide, persist. <code>sap_pipeline.py</code> is a separate, later step: bulk-books every pending row (§07) and must be run on its own, since there is no scheduler in this repo yet to trigger it automatically.</p>
+      <div class="cmd-block">cd fastapi_webapi
+.venv/Scripts/python.exe -m invoice_extraction.email_pipeline
+.venv/Scripts/python.exe -m invoice_extraction.sap_pipeline</div>
+    </div>
+
+    <div class="stage-card">
+      <h3 style="margin-bottom: var(--space-2);">Score the extraction (eval/)</h3>
+      <p class="muted"><code>eval/</code> runs the pipeline over a hand-labelled ground truth
+      (<code>docs/eval_ground_truth.json</code>) with MLflow GenAI evaluation — one scorer per field
+      (<code>eval/scorers.py</code>), plus the extraction gate itself, with amounts compared to a tolerance so a
+      float round-trip cannot fail a match. Unlike tracing, this needs a real tracking server: datasets require a
+      backend store, so an unset <code>MLFLOW_TRACKING_URI</code> is a hard error rather than a silent no-op.
+      Each scored row still leaves a full span tree, so a failed field is one click from the prompt that produced
+      it.</p>
+      <div class="cmd-block">cd fastapi_webapi
+.venv/Scripts/python.exe -m invoice_extraction.eval.create_dataset
+.venv/Scripts/python.exe -m invoice_extraction.eval.run_evaluation</div>
+    </div>
+  </section>
+
+</main>
+
+<footer>
+  <div class="container">
+    <div class="footer-card">
+      <div class="footer-logo">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 685.48 251.1" aria-label="LTP logo">
+          <g fill="#fff">
+            <polygon points="96.88 0 0 0 0 251.1 195.4 251.1 195.4 154.22 96.88 154.22 96.88 0"/>
+            <path d="M685.48,96.88h0C685.48,43.38,642.11,0,588.61,0h-133.34v96.88h96.88,0s0,0,0,0c-53.5,0-96.88,43.37-96.88,96.88v57.34h96.88v-57.34h36.46c53.5,0,96.88-43.37,96.88-96.88h0Z"/>
+            <polygon points="244.23 0 244.23 0 244.23 0 165.58 0 165.58 96.88 249.56 96.88 249.56 251.1 346.44 251.1 346.44 96.88 426.14 96.88 426.14 0 244.23 0 244.23 0"/>
+          </g>
+        </svg>
+      </div>
+      <span class="footer-text">invoice_extraction — internal engineering documentation</span>
+    </div>
+  </div>
+</footer>
+
+<script>
+  (function () {
+    var toggle = document.getElementById('indexToggle');
+    var panel = document.getElementById('indexPanel');
+    var overlay = document.getElementById('indexOverlay');
+    var closeBtn = document.getElementById('indexClose');
+
+    function open() { panel.classList.add('open'); overlay.classList.add('open'); }
+    function close() { panel.classList.remove('open'); overlay.classList.remove('open'); }
+
+    toggle.addEventListener('click', open);
+    closeBtn.addEventListener('click', close);
+    overlay.addEventListener('click', close);
+    document.addEventListener('keydown', function (e) { if (e.key === 'Escape') close(); });
+    panel.querySelectorAll('a').forEach(function (a) { a.addEventListener('click', close); });
+  })();
+</script>

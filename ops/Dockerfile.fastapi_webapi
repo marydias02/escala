@@ -16,10 +16,10 @@ WORKDIR /app
 # Copy dependency files only (better layer caching)
 COPY fastapi_webapi/pyproject.toml fastapi_webapi/uv.lock fastapi_webapi/.python-version ./
 
-RUN uv sync --frozen
-
 # Copy application code
 COPY ./fastapi_webapi/ .
+
+RUN uv sync --frozen
 
 # Run command
 CMD ["uv", "run", "uvicorn", "--host", "0.0.0.0", "--port", "8000", "--workers", "2", "api.main:app"]

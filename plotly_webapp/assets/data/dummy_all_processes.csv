@@ -1,0 +1,7 @@
+Número de Referência,Unidade de Negócio,Fornecedor,Valor da Fatura,Data de Receção,Data de Processamento,Estado
+1230149,Name of Business unit,Name of supplier,1059€,13/07/2026,13/07/2026,Carregada em SAP
+1230150,Sales,Acme Corp,2540€,15/08/2026,15/08/2026,Devolvida ao fornecedor
+1230151,Name of Business unit,Name of Supplier,3125€,23/07/2026,22/09/2026,Necessita de Validação
+1230152,Marketing,Beta LLC,3125€,22/09/2026,20/07/2026,Necessita de Validação
+1230153,Name of Business unit,Name of Supplier,3125€,17/07/2026,22/09/2026,Necessita de Validação
+1230154,Marketing,Beta LLC,3125€,22/09/2026,29/06/2026,Necessita de Validação

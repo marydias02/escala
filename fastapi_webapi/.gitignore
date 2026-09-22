@@ -28,7 +28,8 @@ __pypackages__/ # Local packages directory created by Poetry
 *.swp
 *.swo
 .idea/
-.vscode/
+.vscode/*
+!.vscode/settings.json
 *.iml
 
 # OS generated files
@@ -47,6 +48,22 @@ Thumbs.db
 *.egg-info
 *.egg-info/
 *.xlsx
+*.csv
 *.lp
 *.ilp
 *.mps
+
+
+#Ignore pdfs
+**/invoice_extraction/docs/*.pdf
+**/invoice_extraction/docs/*
+**/downloads/*
+
+# ...except the evaluation set: the labels and the documents they describe are
+# the eval dataset, and hand-labelling them is work that must survive a clone.
+!**/invoice_extraction/docs/eval_ground_truth.json
+!**/invoice_extraction/docs/example_pdfs/
+!**/invoice_extraction/docs/example_pdfs/**
+
+#Ignore traces
+**/traces/*
