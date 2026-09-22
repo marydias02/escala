@@ -10,6 +10,9 @@ from assets.api_calls.extraction_api import (
     get_document_details,
     get_document_email,
     get_next_priority_document,
+    search_business_units,
+    search_purchase_orders,
+    search_suppliers,
 )
 from auth.msal_client import get_access_token
 from components.banner.banner import TableBanner
@@ -110,12 +113,8 @@ def layout(ref_number=None, **_kwargs):
     return html.Div(
         [
             dcc.Store(id="email-detail-ref-number", data=str(ref_number)),
-            dcc.Loading(
-                id="email-detail-loading",
-                type="default",
-                color="var(--primary-color-13)",
-                children=html.Div(id="email-detail-content"),
-            ),
+            dcc.Store(id="email-detail-export-trigger"),
+            html.Div(id="email-detail-content"),
         ]
     )
 
@@ -126,6 +125,153 @@ def layout(ref_number=None, **_kwargs):
 )
 def load_email_detail(ref_number):
     return _build_email_detail(get_access_token(), ref_number)
+
+
+def _party_options(rows, id_key):
+    return [
+        {
+            "label": html.Div(
+                [html.Strong(row.get("name") or ""), html.Small(f"{row.get(id_key) or ''} · {row.get('vat') or ''}")]
+            ),
+            "value": row.get(id_key),
+            "_row": row,
+        }
+        for row in rows
+    ]
+
+
+@dash.callback(
+    Output("bu_selector", "options"),
+    Output("bu_name", "value"),
+    Output("bu-selection", "data"),
+    Output("bu_selector", "labels"),
+    Input("bu_selector", "search_value"),
+    Input("bu_selector", "value"),
+    State("bu_selector", "options"),
+    prevent_initial_call=True,
+)
+def update_bu_selector(search_value, selected, options):
+    if selected:
+        row = next((option.get("_row", {}) for option in (options or []) if option.get("value") == selected), {})
+        if not row:
+            matches = search_business_units(get_access_token(), str(selected), limit=10)
+            row = next((match for match in matches if str(match.get("bu_id")) == str(selected)), {})
+        selected_options = options or []
+        if not any(option.get("value") == selected for option in selected_options):
+            selected_options = _party_options([row], "bu_id") if row else [{"label": str(selected), "value": selected}]
+        return selected_options, row.get("name"), {"id": row.get("bu_id", selected), "vat": row.get("vat")}, {"no_options_found": "A procurar..."}
+    if not search_value or len(search_value.strip()) < 2:
+        # Keep the selected option when Dash clears search_value after a
+        # selection; returning [] makes the dropdown discard its value.
+        return options or [], no_update, no_update, {"no_options_found": "A procurar..."}
+    rows = search_business_units(get_access_token(), search_value)
+    new_options = _party_options(rows, "bu_id")
+    # Dash does not render a value that is missing from the options list.
+    new_values = {str(option.get("value")) for option in new_options}
+    new_options.extend(
+        option
+        for option in (options or [])
+        if str(option.get("value")) not in new_values
+    )
+    return new_options, no_update, no_update, {"no_options_found": "Não encontrado"}
+
+
+@dash.callback(
+    Output("supplier_selector", "options"),
+    Output("supplier_name", "value"),
+    Output("supplier-selection", "data"),
+    Output("supplier_selector", "labels"),
+    Input("supplier_selector", "search_value"),
+    Input("supplier_selector", "value"),
+    State("supplier_selector", "options"),
+    prevent_initial_call=True,
+)
+def update_supplier_selector(search_value, selected, options):
+    if selected:
+        row = next((option.get("_row", {}) for option in (options or []) if option.get("value") == selected), {})
+        if not row:
+            matches = search_suppliers(get_access_token(), str(selected), limit=10)
+            row = next((match for match in matches if str(match.get("supplier_id")) == str(selected)), {})
+        selected_options = options or []
+        if not any(option.get("value") == selected for option in selected_options):
+            selected_options = _party_options([row], "supplier_id") if row else [{"label": str(selected), "value": selected}]
+        return selected_options, row.get("name"), {"id": row.get("supplier_id", selected), "vat": row.get("vat")}, {"no_options_found": "A procurar..."}
+    if not search_value or len(search_value.strip()) < 3:
+        return options or [], no_update, no_update, {"no_options_found": "A procurar..."}
+    rows = search_suppliers(get_access_token(), search_value)
+    new_options = _party_options(rows, "supplier_id")
+    new_values = {str(option.get("value")) for option in new_options}
+    new_options.extend(option for option in (options or []) if str(option.get("value")) not in new_values)
+    return new_options, no_update, no_update, {"no_options_found": "Não encontrado"}
+
+
+@dash.callback(
+    Output("po_selector", "options"),
+    Output("po_selector", "labels", allow_duplicate=True),
+    Input("po_selector", "search_value"),
+    State("po_selector", "value"),
+    State("po_selector", "options"),
+    prevent_initial_call=True,
+)
+def update_purchase_order_selector(search_value, selected, current_options):
+    if not search_value or len(search_value.strip()) < 3:
+        return no_update, {"no_options_found": "Não encontrado"}
+    rows = search_purchase_orders(get_access_token(), search_value)
+    po_options = [
+        {
+            "label": html.Div([
+                html.Strong(row.get("po_code") or ""),
+                html.Small(f"{row.get('supplier_name') or ''} · {row.get('bu_id') or ''}"),
+            ]),
+            "value": row.get("po_code"),
+        }
+        for row in rows
+    ]
+    selected = selected or []
+    existing = {str(option.get("value")): option for option in (current_options or [])}
+    merged = [
+        existing.get(
+            str(value),
+            {"label": str(value), "value": value},
+        )
+        for value in selected
+    ]
+    merged_values = {str(option.get("value")) for option in merged}
+    merged.extend(option for option in po_options if str(option.get("value")) not in merged_values)
+    return merged, {"no_options_found": "Não encontrado", "select_all": "", "deselect_all": "Desmarcar todos"}
+
+
+@dash.callback(
+    Output("po_list", "value"),
+    Input("po_selector", "value"),
+    prevent_initial_call=True,
+)
+def update_purchase_order_value(selected):
+    return ", ".join(str(value) for value in (selected or []))
+
+
+dash.clientside_callback(
+    """
+    function (n_clicks, ref_number) {
+        if (!n_clicks || !ref_number) {
+            return window.dash_clientside.no_update;
+        }
+
+        const link = document.createElement("a");
+        link.href = "/pdf/" + encodeURIComponent(ref_number);
+        link.download = String(ref_number) + ".pdf";
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+
+        return window.dash_clientside.no_update;
+    }
+    """,
+    Output("email-detail-export-trigger", "data"),
+    Input("email-detail-export-button", "n_clicks"),
+    State("email-detail-ref-number", "data"),
+    prevent_initial_call=True,
+)
 
 
 def _build_email_detail(token, ref_number):
@@ -151,14 +297,18 @@ def _build_email_detail(token, ref_number):
         data_recepcao = pd.to_datetime(issue_date, dayfirst=True).date() if issue_date else None
 
         business_unit = field_value("bu_name")
-        # bu_vat = fields.get("bu_vat", {}).get("value")
+        bu_id = field_value("bu_id")
+        bu_vat = field_value("bu_vat")
+        document_number = field_value("document_number")
+        po_list = match.get("po_list") or []
+        po_values = [po.get("value") if isinstance(po, dict) else po for po in po_list]
 
         supplier_name = field_value("supplier_name")
+        supplier_id = field_value("supplier_id")
         supplier_vat = field_value("supplier_vat")
 
         total_amount = field_value("total_amount")
         vat_amount = field_value("vat_amount")
-        base_amount = field_value("base_amount")
         currency = field_value("currency")
 
     else:
@@ -169,15 +319,45 @@ def _build_email_detail(token, ref_number):
         business_unit = None
         # bu_vat = None
         supplier_name = None
+        supplier_id = None
         supplier_vat = None
         total_amount = None
         currency = None
+        bu_id = None
+        bu_vat = None
+        document_number = None
+        po_values = []
+
+    def hydrate_party(search_fn, query, id_key):
+        if not query:
+            return None
+        try:
+            rows = search_fn(token, str(query), limit=10)
+        except RequestException:
+            return None
+        if not rows:
+            return None
+        return next((row for row in rows if str(row.get(id_key)) == str(query)), rows[0])
+
+    bu_match = hydrate_party(search_business_units, business_unit or bu_id or bu_vat, "bu_id")
+    if bu_match:
+        business_unit = business_unit or bu_match.get("name")
+        bu_id = bu_id or bu_match.get("bu_id")
+        bu_vat = bu_vat or bu_match.get("vat")
+
+    supplier_match = hydrate_party(search_suppliers, supplier_name or supplier_id or supplier_vat, "supplier_id")
+    if supplier_match:
+        supplier_name = supplier_name or supplier_match.get("name")
+        supplier_id = supplier_id or supplier_match.get("supplier_id")
+        supplier_vat = supplier_vat or supplier_match.get("vat")
 
     return html.Div(
         [
             dcc.Store(id="document_id_store", data=str(ref_number)),
             dcc.Store(id="document_fields_store", data=fields),
             dcc.Store(id="document_alerts_store", data=alerts),
+            dcc.Store(id="bu-selection", data={"id": bu_id, "vat": bu_vat}),
+            dcc.Store(id="supplier-selection", data={"id": supplier_id, "vat": supplier_vat}),
             html.Div(
                 className="email_detail__container",
                 children=[
@@ -298,9 +478,41 @@ def _build_email_detail(token, ref_number):
                                                                 className="email_detail__field",
                                                                 children=[
                                                                     Label(label_text="Unidade de Negócio"),
+                                                                    dcc.Dropdown(
+                                                                        id="bu_selector",
+                                                                        value=bu_id,
+                                                                        options=(
+                                                                            [
+                                                                                {
+                                                                                    "label": html.Div(
+                                                                                        [
+                                                                                            html.Strong(business_unit),
+                                                                                            html.Small(
+                                                                                                f"{bu_id} · {bu_vat or ''}"
+                                                                                            ),
+                                                                                        ]
+                                                                                    ),
+                                                                                    "value": bu_id,
+                                                                                    "_row": {
+                                                                                        "bu_id": bu_id,
+                                                                                        "name": business_unit,
+                                                                                        "vat": bu_vat,
+                                                                                    },
+                                                                                }
+                                                                            ]
+                                                                            if bu_id
+                                                                            else []
+                                                                        ),
+                                                                        searchable=True,
+                                                                        clearable=True,
+                                                                        placeholder="Pesquisar por nome, ID ou NIF...",
+                                                                        labels={"no_options_found": "A procurar..."},
+                                                                        debounce=True,
+                                                                    ),
                                                                     dcc.Input(
                                                                         id="bu_name",
                                                                         value=business_unit,
+                                                                        style={"display": "none"},
                                                                         type="text",
                                                                         className="email_detail__input",
                                                                     ),
@@ -310,9 +522,41 @@ def _build_email_detail(token, ref_number):
                                                                 className="email_detail__field",
                                                                 children=[
                                                                     Label(label_text="Nome do Fornecedor"),
+                                                                    dcc.Dropdown(
+                                                                        id="supplier_selector",
+                                                                        value=supplier_id,
+                                                                        options=(
+                                                                            [
+                                                                                {
+                                                                                    "label": html.Div(
+                                                                                        [
+                                                                                            html.Strong(supplier_name),
+                                                                                            html.Small(
+                                                                                                f"{supplier_id} · {supplier_vat or ''}"
+                                                                                            ),
+                                                                                        ]
+                                                                                    ),
+                                                                                    "value": supplier_id,
+                                                                                    "_row": {
+                                                                                        "supplier_id": supplier_id,
+                                                                                        "name": supplier_name,
+                                                                                        "vat": supplier_vat,
+                                                                                    },
+                                                                                }
+                                                                            ]
+                                                                            if supplier_id
+                                                                            else []
+                                                                        ),
+                                                                        searchable=True,
+                                                                        clearable=True,
+                                                                        placeholder="Pesquisar por nome, ID ou NIF...",
+                                                                        labels={"no_options_found": "A procurar..."},
+                                                                        debounce=True,
+                                                                    ),
                                                                     dcc.Input(
                                                                         id="supplier_name",
                                                                         value=supplier_name,
+                                                                        style={"display": "none"},
                                                                         type="text",
                                                                         className="email_detail__input",
                                                                     ),
@@ -321,12 +565,37 @@ def _build_email_detail(token, ref_number):
                                                             html.Div(
                                                                 className="email_detail__field",
                                                                 children=[
-                                                                    Label(label_text="NIF do Fornecedor"),
+                                                                    Label(label_text="Número do Documento"),
                                                                     dcc.Input(
-                                                                        id="supplier_vat",
-                                                                        value=supplier_vat,
+                                                                        id="document_number",
+                                                                        value=document_number,
                                                                         type="text",
                                                                         className="email_detail__input",
+                                                                    ),
+                                                                ],
+                                                            ),
+                                                            html.Div(
+                                                                className="email_detail__field",
+                                                                children=[
+                                                                    Label(label_text="Ordem de Compra"),
+                                                                    dcc.Dropdown(
+                                                                        id="po_selector",
+                                                                        options=[{"label": str(po), "value": str(po)} for po in po_values if po],
+                                                                        value=[str(po) for po in po_values if po],
+                                                                        multi=True,
+                                                                        searchable=True,
+                                                                        clearable=True,
+                                                                        labels={"no_options_found": "A procurar...", "select_all": "", "deselect_all": "Desmarcar todos"},
+                                                                        placeholder="Insira pelo menos 3 dígitos",
+                                                                    ),
+                                                                    dcc.Input(
+                                                                        id="po_list",
+                                                                        value=", ".join(
+                                                                            str(po) for po in po_values if po
+                                                                        ),
+                                                                        type="text",
+                                                                        className="email_detail__input",
+                                                                        style={"display": "none"},
                                                                     ),
                                                                 ],
                                                             ),
@@ -368,18 +637,6 @@ def _build_email_detail(token, ref_number):
                                                             html.Div(
                                                                 className="email_detail__field",
                                                                 children=[
-                                                                    Label(label_text="Valor Base"),
-                                                                    dcc.Input(
-                                                                        id="base_amount",
-                                                                        value=base_amount,
-                                                                        type="number",
-                                                                        className="email_detail__input",
-                                                                    ),
-                                                                ],
-                                                            ),
-                                                            html.Div(
-                                                                className="email_detail__field",
-                                                                children=[
                                                                     Label(label_text="Moeda"),
                                                                     dcc.Dropdown(
                                                                         id="currency",
@@ -387,6 +644,7 @@ def _build_email_detail(token, ref_number):
                                                                         value=currency,
                                                                         clearable=False,
                                                                         className="email_detail__input email_detail__dropdown",
+                                                                        labels={"no_options_found": "..."},
                                                                     ),
                                                                 ],
                                                             ),
@@ -424,7 +682,12 @@ def _build_email_detail(token, ref_number):
                     html.Section(
                         className="email_detail__bottom_section",
                         children=[
-                            Button("Exportar", icon="lucide:file-down", variant="outline"),
+                            Button(
+                                "Exportar",
+                                id="email-detail-export-button",
+                                icon="lucide:file-down",
+                                variant="outline",
+                            ),
                             Button("Guardar", id="save-button", icon="lucide:circle-check", variant="outline"),
                             Button("Enviar para SAP", id="send-sap-button", icon="lucide:send"),
                             html.P(id="email-detail-update-status", className="body-sm email_detail__status"),
@@ -516,13 +779,20 @@ def load_email_drawer_content(_clicks, document_id):
     State("document_id_store", "data"),
     State("document_fields_store", "data"),
     State("document_alerts_store", "data"),
+    State("bu_selector", "value"),
+    State("bu_selector", "options"),
     State("bu_name", "value"),
+    State("bu-selection", "data"),
+    State("document_number", "value"),
+    State("po_selector", "value"),
+    State("po_list", "value"),
+    State("supplier_selector", "value"),
+    State("supplier_selector", "options"),
     State("supplier_name", "value"),
-    State("supplier_vat", "value"),
+    State("supplier-selection", "data"),
     State("issue_date", "date"),
     State("total_amount", "value"),
     State("vat_amount", "value"),
-    State("base_amount", "value"),
     State("currency", "value"),
     State("credit_note", "value"),
     prevent_initial_call=True,
@@ -533,13 +803,20 @@ def update_document_details(
     document_id,
     fields,
     alerts,
+    bu_selector,
+    bu_options,
     bu_name,
+    bu_id,
+    document_number,
+    po_selector,
+    po_list,
+    supplier_selector,
+    supplier_options,
     supplier_name,
-    supplier_vat,
+    supplier_id,
     issue_date,
     total_amount,
     vat_amount,
-    base_amount,
     currency,
     credit_note,
 ):
@@ -556,6 +833,36 @@ def update_document_details(
     button_id = triggered[0]["prop_id"].split(".")[0]
     token = get_access_token()
     updated_fields = fields.copy() if isinstance(fields, dict) else {}
+    # Read the selectors themselves. The hidden name/list inputs are outputs of
+    # separate callbacks and may still contain their previous values when the
+    # user clicks Guardar immediately after changing a dropdown.
+    bu_row = next(
+        (option.get("_row", {}) for option in (bu_options or [])
+         if str(option.get("value")) == str(bu_selector)),
+        {},
+    )
+    if bu_selector is not None:
+        bu_id = bu_selector
+        bu_name = bu_row.get("name") or bu_name
+        bu_vat = bu_row.get("vat")
+    else:
+        bu_id, bu_vat = None, None
+
+    supplier_row = next(
+        (option.get("_row", {}) for option in (supplier_options or [])
+         if str(option.get("value")) == str(supplier_selector)),
+        {},
+    )
+    if supplier_selector is not None:
+        supplier_id = supplier_selector
+        supplier_name = supplier_row.get("name") or supplier_name
+        supplier_vat = supplier_row.get("vat")
+    else:
+        supplier_id, supplier_vat = None, None
+
+    if po_selector is not None:
+        po_list = ", ".join(str(value) for value in po_selector)
+
 
     def update_field(name: str, value: object) -> None:
         existing = updated_fields.get(name)
@@ -563,8 +870,19 @@ def update_document_details(
 
     if bu_name is not None:
         update_field("bu_name", bu_name)
+    if bu_id is not None:
+        update_field("bu_id", bu_id)
+    if bu_vat is not None:
+        update_field("bu_vat", bu_vat)
+    if document_number is not None:
+        update_field("document_number", document_number)
+    if po_list is not None:
+        po_values = [value.strip() for value in po_list.replace("\n", ",").split(",") if value.strip()]
+        updated_fields["po_list"] = [{"value": value, "confidence": 1.0} for value in po_values]
     if supplier_name is not None:
         update_field("supplier_name", supplier_name)
+    if supplier_id is not None:
+        update_field("supplier_id", supplier_id)
     if supplier_vat is not None:
         update_field("supplier_vat", supplier_vat)
     if issue_date is not None:
@@ -573,8 +891,6 @@ def update_document_details(
         update_field("total_amount", total_amount)
     if vat_amount is not None:
         update_field("vat_amount", vat_amount)
-    if base_amount is not None:
-        update_field("base_amount", base_amount)
     if currency is not None:
         update_field("currency", currency)
     if credit_note is not None:
@@ -587,7 +903,6 @@ def update_document_details(
         "Data da Fatura": issue_date,
         "Valor Total": total_amount,
         "Valor do IVA": vat_amount,
-        "Valor Base": base_amount,
         "Moeda": currency,
         "Nota de Crédito": credit_note,
     }

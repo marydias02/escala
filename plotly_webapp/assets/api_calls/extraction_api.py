@@ -95,6 +95,18 @@ def get_document_email(token: str, doc_id: str):
     return data
 
 
+def search_suppliers(token: str, query: str, limit: int = 10):
+    return _request("GET", "/suppliers/search", token, params={"q": query, "limit": limit}).json()
+
+
+def search_business_units(token: str, query: str, limit: int = 10):
+    return _request("GET", "/business-units/search", token, params={"q": query, "limit": limit}).json()
+
+
+def search_purchase_orders(token: str, query: str, limit: int = 10):
+    return _request("GET", "/purchase-orders/search", token, params={"q": query, "limit": limit}).json()
+
+
 def alter_document_details(
     token: str,
     document_id: str,
