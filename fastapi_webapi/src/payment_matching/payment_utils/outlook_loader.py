@@ -22,8 +22,8 @@ from pathlib import Path
 import httpx
 from loguru import logger
 
-from email_core.attachments import expand_zip
-from email_core.models import EmailAttachment, LoadedEmail
+from invoice_extraction.invoice_utils.attachments import _expand_zip
+from invoice_extraction.models import EmailAttachment, LoadedEmail
 from utils.graph_auth import GRAPH_BASE, IMMUTABLE_ID_PREFER, get_graph_token, graph_user_path
 
 _MESSAGE_SELECT = ",".join(
@@ -129,7 +129,9 @@ async def _list_messages(client: httpx.AsyncClient, headers: dict, top: int) -> 
     return response.json().get("value", [])
 
 
-async def _fetch_attachment_bytes(client: httpx.AsyncClient, headers: dict, message_id: str, attachment_id: str) -> bytes:
+async def _fetch_attachment_bytes(
+    client: httpx.AsyncClient, headers: dict, message_id: str, attachment_id: str
+) -> bytes:
     response = await client.get(
         f"{GRAPH_BASE}/{graph_user_path()}/messages/{message_id}/attachments/{attachment_id}/$value",
         headers=headers,
@@ -167,7 +169,7 @@ async def _list_attachments(client: httpx.AsyncClient, headers: dict, message_id
             continue
 
         if filename.lower().endswith(".zip"):
-            attachments.extend(expand_zip(filename, data))
+            attachments.extend(_expand_zip(filename, data))
         else:
             attachments.append(EmailAttachment(filename=filename, data=data))
 
@@ -256,9 +258,7 @@ async def fetch_message(client: httpx.AsyncClient, headers: dict, message_id: st
     )
 
 
-async def fetch_inbox_emails(
-    limit: int, skip_message_ids: set[str] | None = None
-) -> list[LoadedEmail]:
+async def fetch_inbox_emails(limit: int, skip_message_ids: set[str] | None = None) -> list[LoadedEmail]:
     """Fetch the most recent `limit` messages from the inbox, then process oldest first.
 
     Messages whose id is in `skip_message_ids` are skipped before their
@@ -298,8 +298,5 @@ async def fetch_inbox_emails(
                 )
             )
 
-    logger.info(
-        f"Fetched {len(messages)} message(s): {skipped} skipped (already processed), "
-        f"{len(loaded_emails)} new"
-    )
+    logger.info(f"Fetched {len(messages)} message(s): {skipped} skipped (already processed), {len(loaded_emails)} new")
     return loaded_emails

@@ -9,12 +9,23 @@ import base64
 import io
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Protocol
 
 import fitz
 from pypdf import PdfReader, PdfWriter
 
-from invoice_extraction.models import DocumentBoundary
+
+class DocumentBoundary(Protocol):
+    """Where one document starts and ends inside a multi-document PDF.
+
+    A Protocol rather than an import: the concrete boundary model belongs to
+    whichever use case ran segmentation (`invoice_extraction.models`), and the
+    cutting mechanics here need only these two page numbers. This keeps
+    `email_core` free of any use-case import.
+    """
+
+    start_page: int
+    end_page: int
 
 
 @dataclass

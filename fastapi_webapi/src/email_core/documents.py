@@ -1,14 +1,20 @@
+"""One already-split PDF, base64-encoded for the LLM.
+
+Moved from `invoice_extraction.invoice_utils.documents` and renamed: a payment
+note is not an invoice, and the type is the same either way.
+"""
+
 import base64
 from dataclasses import dataclass
 from pathlib import Path
 
 
 @dataclass
-class InvoiceDocument:
-    """A single, already-split accounting document ready for the pipeline.
+class LoadedDocument:
+    """A single, already-split document ready for a pipeline.
 
-    The pipeline starts here: one PDF == one document. Splitting a multi-document
-    PDF into these units is the job of the upstream ingestion pipeline.
+    One file == one document. Splitting a multi-document PDF into these units is
+    the job of the use case's upstream ingestion step.
     """
 
     filename: str
@@ -20,12 +26,12 @@ class InvoiceDocument:
         return f"data:application/pdf;base64,{self.encoded_pdf}"
 
 
-def load_document(pdf_path: Path) -> InvoiceDocument:
+def load_document(pdf_path: Path) -> LoadedDocument:
     """Read a single-document PDF from disk and base64-encode it for the LLM."""
     pdf_path = Path(pdf_path)
     pdf_bytes = pdf_path.read_bytes()
 
-    return InvoiceDocument(
+    return LoadedDocument(
         filename=pdf_path.name,
         path=pdf_path,
         encoded_pdf=base64.b64encode(pdf_bytes).decode("utf-8"),

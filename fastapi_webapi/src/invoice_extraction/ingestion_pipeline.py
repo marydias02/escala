@@ -21,6 +21,12 @@ from typing import Literal, Optional
 from langchain_core.language_models import BaseChatModel
 
 from config.settings import settings
+from email_core.pdf.splitter import (
+    count_pages,
+    ensure_readable,
+    split_pdf,
+    validate_segmentation,
+)
 from invoice_extraction.config import (
     DEFAULT_FETCH_LIMIT,
     INGEST_LIMIT,
@@ -29,12 +35,6 @@ from invoice_extraction.config import (
     PROCESSED_EMAILS_DIR,
 )
 from invoice_extraction.invoice_utils.outlook_loader import fetch_inbox_emails
-from invoice_extraction.invoice_utils.pdf_splitter import (
-    count_pages,
-    ensure_readable,
-    split_pdf,
-    validate_segmentation,
-)
 from invoice_extraction.models import EmailAttachment, EmailContent, LoadedEmail
 from invoice_extraction.nodes import segment_document
 from invoice_extraction.tracing import span

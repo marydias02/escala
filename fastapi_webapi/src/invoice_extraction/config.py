@@ -9,6 +9,31 @@ import math
 from datetime import timedelta
 from pathlib import Path
 
+# Shared with payment matching, so these live in `email_core.config` and are
+# re-exported here: they are still the invoice pipeline's settings, and its own
+# modules keep importing them from this module.
+from email_core.config import (
+    COVERAGE_SCAN_PAGES,
+    MAX_ZIP_FILES,
+    MAX_ZIP_MEMBER_BYTES,
+    MAX_ZIP_TOTAL_BYTES,
+    RENDER_DPI,
+    RENDER_MAX_PAGES,
+    SCANNED_COVERAGE_THRESHOLD,
+    ZIP_CHUNK_SIZE,
+)
+
+__all__ = [
+    "COVERAGE_SCAN_PAGES",
+    "MAX_ZIP_FILES",
+    "MAX_ZIP_MEMBER_BYTES",
+    "MAX_ZIP_TOTAL_BYTES",
+    "RENDER_DPI",
+    "RENDER_MAX_PAGES",
+    "SCANNED_COVERAGE_THRESHOLD",
+    "ZIP_CHUNK_SIZE",
+]
+
 BASE_DIR = Path(__file__).parent
 
 # -- Paths -----------------------------------------------------------------
@@ -33,7 +58,7 @@ DEFAULT_FETCH_LIMIT = 1
 # How much LLM work one run does: at most N emails are processed per run (None =
 # every claimable row). Arrivals above it build a backlog in `email_messages`
 # that drains on quieter runs; it is a throughput cap, not a fetch limit.
-INGEST_LIMIT: int | None = 100
+INGEST_LIMIT: int | None = 1
 
 # Persist results to Postgres. Off lets the pipeline be exercised (and traced)
 # with no database running, and keeps test runs out of fct_processes.
@@ -67,15 +92,7 @@ INITIAL_SYNC_LOOKBACK = timedelta(minutes=10)
 # but fixed: a second run that cannot take it exits as `skipped`.
 RUN_LOCK_KEY = 3_141_592
 
-# -- Zip expansion limits --------------------------------------------------
-# Attachments are untrusted input. These bound what a malicious archive can cost
-# us, and are enforced against bytes actually decompressed rather than against the
-# archive's own declared sizes.
-
-MAX_ZIP_FILES = 30
-MAX_ZIP_MEMBER_BYTES = 15 * 1024 * 1024
-MAX_ZIP_TOTAL_BYTES = 100 * 1024 * 1024
-ZIP_CHUNK_SIZE = 64 * 1024
+# Zip expansion limits are shared — see the `email_core.config` import above.
 
 # -- Extraction (Phase 2) --------------------------------------------------
 
@@ -92,20 +109,8 @@ PARSER_KWARGS = {
     "min_font_size": 4,
 }
 
-# -- Scanned documents (vision path) ---------------------------------------
-# A scanned page is one large image XObject covering the sheet. It can contain text,
-# often incorrect. If the scanned coverage is above a treshold, should be read as image
-
-SCANNED_COVERAGE_THRESHOLD = 1.0
-
-# A scanned bundle can open with a clean cover sheet, so look past page 1.
-COVERAGE_SCAN_PAGES = 5
-
-# 72 DPI already reads correctly on the known scans; 110 is margin for finer print.
-RENDER_DPI = 110
-
-# Caps the number of pages sent as images (usually info is at start)
-RENDER_MAX_PAGES = 5
+# Scanned-document (vision path) settings are shared — see the `email_core.config`
+# import above.
 
 # -- Validation / decisions -------------------------------------------------
 

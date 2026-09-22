@@ -13,15 +13,15 @@ from typing import Literal
 from langchain_core.language_models import BaseChatModel
 
 from config.settings import settings
+from email_core.documents import load_document
+from email_core.pdf.page_mode import is_scanned_pdf
+from email_core.pdf.parser import build_attachment_evidence
 from invoice_extraction.config import (
     EXTRACTION_MAX_WORKERS,
     PARSER_KWARGS,
     PROCESSED_EMAILS_DIR,
     RENDER_DPI,
 )
-from invoice_extraction.invoice_utils.documents import load_document
-from invoice_extraction.invoice_utils.page_mode import is_scanned_pdf
-from invoice_extraction.invoice_utils.pdf_parser import build_attachment_evidence
 from invoice_extraction.models import (
     DocumentClassification,
     InvoiceData,

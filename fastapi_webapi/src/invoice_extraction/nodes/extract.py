@@ -1,6 +1,6 @@
 from langchain_core.language_models import BaseChatModel
 
-from invoice_extraction.invoice_utils.documents import InvoiceDocument
+from email_core.documents import LoadedDocument
 from invoice_extraction.invoice_utils.llm_retry import invoke_with_retry
 from invoice_extraction.models import DocumentClassification, InvoiceData
 from invoice_extraction.prompts import EXTRACTION_SYSTEM_MESSAGE, build_extraction_human_message
@@ -9,7 +9,7 @@ from invoice_extraction.tracing import STAGE_EXTRACTION, invoice_data_summary, s
 
 def extract_document(
     llm: BaseChatModel,
-    doc: InvoiceDocument,
+    doc: LoadedDocument,
     classification: DocumentClassification,
     *,
     scanned: bool = False,

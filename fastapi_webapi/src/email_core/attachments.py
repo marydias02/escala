@@ -1,20 +1,22 @@
-"""Zip expansion shared by every attachment loader (`.msg`, Graph).
+"""Zip expansion shared by every attachment loader.
 
-Attachments are untrusted input regardless of source, so this lives apart from
-any one loader.
+Attachments are untrusted input regardless of source or use case, so this lives
+apart from any one loader. Moved verbatim from
+`invoice_extraction.invoice_utils.attachments`; the limits now come from
+`email_core.config` rather than the invoice config.
 """
 
 import io
 import zipfile
 from pathlib import Path
 
-from invoice_extraction.config import (
+from email_core.config import (
     MAX_ZIP_FILES,
     MAX_ZIP_MEMBER_BYTES,
     MAX_ZIP_TOTAL_BYTES,
     ZIP_CHUNK_SIZE,
 )
-from invoice_extraction.models import EmailAttachment
+from email_core.models import EmailAttachment
 
 
 def _read_member(archive: zipfile.ZipFile, info: zipfile.ZipInfo, budget: int) -> bytes:
@@ -42,7 +44,7 @@ def _read_member(archive: zipfile.ZipFile, info: zipfile.ZipInfo, budget: int) -
     return b"".join(chunks)
 
 
-def _expand_zip(filename: str, data: bytes) -> list[EmailAttachment]:
+def expand_zip(filename: str, data: bytes) -> list[EmailAttachment]:
     """Expand a zip attachment into its member files.
 
     Zips are how bulk billing arrives — one member per invoice — so leaving them

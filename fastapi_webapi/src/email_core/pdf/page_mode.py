@@ -14,7 +14,7 @@ from pathlib import Path
 import fitz  # PyMuPDF
 from loguru import logger
 
-from invoice_extraction.config import (
+from email_core.config import (
     COVERAGE_SCAN_PAGES,
     RENDER_DPI,
     RENDER_MAX_PAGES,
