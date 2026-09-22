@@ -10,6 +10,8 @@ from assets.api_calls.extraction_api import (
     get_document_details,
     get_document_email,
     get_next_priority_document,
+    search_business_units,
+    search_suppliers,
 )
 from auth.msal_client import get_access_token
 from components.banner.banner import TableBanner
@@ -111,12 +113,7 @@ def layout(ref_number=None, **_kwargs):
         [
             dcc.Store(id="email-detail-ref-number", data=str(ref_number)),
             dcc.Store(id="email-detail-export-trigger"),
-            dcc.Loading(
-                id="email-detail-loading",
-                type="default",
-                color="var(--primary-color-13)",
-                children=html.Div(id="email-detail-content"),
-            ),
+            html.Div(id="email-detail-content"),
         ]
     )
 
@@ -127,6 +124,59 @@ def layout(ref_number=None, **_kwargs):
 )
 def load_email_detail(ref_number):
     return _build_email_detail(get_access_token(), ref_number)
+
+
+def _party_options(rows, id_key):
+    return [
+        {
+            "label": html.Div(
+                [html.Strong(row.get("name") or ""), html.Small(f"{row.get(id_key) or ''} · {row.get('vat') or ''}")]
+            ),
+            "value": row.get(id_key),
+            "_row": row,
+        }
+        for row in rows
+    ]
+
+
+@dash.callback(
+    Output("bu_selector", "options"),
+    Output("bu_name", "value"),
+    Output("bu-selection", "data"),
+    Output("bu_selector", "labels"),
+    Input("bu_selector", "search_value"),
+    Input("bu_selector", "value"),
+    State("bu_selector", "options"),
+    prevent_initial_call=True,
+)
+def update_bu_selector(search_value, selected, options):
+    if selected:
+        row = next((option.get("_row", {}) for option in (options or []) if option.get("value") == selected), {})
+        return options or [], row.get("name"), {"id": row.get("bu_id", selected), "vat": row.get("vat")}, {"no_options_found": "A procurar..."}
+    if not search_value or len(search_value.strip()) < 2:
+        return [], no_update, no_update, {"no_options_found": "A procurar..."}
+    rows = search_business_units(get_access_token(), search_value)
+    return _party_options(rows, "bu_id"), no_update, no_update, {"no_options_found": "Não encontrado" if not rows else "A procurar..."}
+
+
+@dash.callback(
+    Output("supplier_selector", "options"),
+    Output("supplier_name", "value"),
+    Output("supplier-selection", "data"),
+    Output("supplier_selector", "labels"),
+    Input("supplier_selector", "search_value"),
+    Input("supplier_selector", "value"),
+    State("supplier_selector", "options"),
+    prevent_initial_call=True,
+)
+def update_supplier_selector(search_value, selected, options):
+    if selected:
+        row = next((option.get("_row", {}) for option in (options or []) if option.get("value") == selected), {})
+        return options or [], row.get("name"), {"id": row.get("supplier_id", selected), "vat": row.get("vat")}, {"no_options_found": "A procurar..."}
+    if not search_value or len(search_value.strip()) < 3:
+        return [], no_update, no_update, {"no_options_found": "A procurar..."}
+    rows = search_suppliers(get_access_token(), search_value)
+    return _party_options(rows, "supplier_id"), no_update, no_update, {"no_options_found": "Não encontrado" if not rows else "A procurar..."}
 
 
 dash.clientside_callback(
@@ -207,11 +257,36 @@ def _build_email_detail(token, ref_number):
         document_number = None
         po_values = []
 
+    def hydrate_party(search_fn, query, id_key):
+        if not query:
+            return None
+        try:
+            rows = search_fn(token, str(query), limit=10)
+        except RequestException:
+            return None
+        if not rows:
+            return None
+        return next((row for row in rows if str(row.get(id_key)) == str(query)), rows[0])
+
+    bu_match = hydrate_party(search_business_units, business_unit or bu_id or bu_vat, "bu_id")
+    if bu_match:
+        business_unit = business_unit or bu_match.get("name")
+        bu_id = bu_id or bu_match.get("bu_id")
+        bu_vat = bu_vat or bu_match.get("vat")
+
+    supplier_match = hydrate_party(search_suppliers, supplier_name or supplier_id or supplier_vat, "supplier_id")
+    if supplier_match:
+        supplier_name = supplier_name or supplier_match.get("name")
+        supplier_id = supplier_id or supplier_match.get("supplier_id")
+        supplier_vat = supplier_vat or supplier_match.get("vat")
+
     return html.Div(
         [
             dcc.Store(id="document_id_store", data=str(ref_number)),
             dcc.Store(id="document_fields_store", data=fields),
             dcc.Store(id="document_alerts_store", data=alerts),
+            dcc.Store(id="bu-selection", data={"id": bu_id, "vat": bu_vat}),
+            dcc.Store(id="supplier-selection", data={"id": supplier_id, "vat": supplier_vat}),
             html.Div(
                 className="email_detail__container",
                 children=[
@@ -332,9 +407,36 @@ def _build_email_detail(token, ref_number):
                                                                 className="email_detail__field",
                                                                 children=[
                                                                     Label(label_text="Unidade de Negócio"),
+                                                                    dcc.Dropdown(
+                                                                        id="bu_selector",
+                                                                        value=bu_id,
+                                                                        options=(
+                                                                            [
+                                                                                {
+                                                                                    "label": html.Div(
+                                                                                        [
+                                                                                            html.Strong(business_unit),
+                                                                                            html.Small(
+                                                                                                f"{bu_id} · {bu_vat or ''}"
+                                                                                            ),
+                                                                                        ]
+                                                                                    ),
+                                                                                    "value": bu_id,
+                                                                                }
+                                                                            ]
+                                                                            if bu_id
+                                                                            else []
+                                                                        ),
+                                                                        searchable=True,
+                                                                        clearable=True,
+                                                                        placeholder="Pesquisar por nome, ID ou NIF...",
+                                                                        labels={"no_options_found": "A procurar..."},
+                                                                        debounce=True,
+                                                                    ),
                                                                     dcc.Input(
                                                                         id="bu_name",
                                                                         value=business_unit,
+                                                                        style={"display": "none"},
                                                                         type="text",
                                                                         className="email_detail__input",
                                                                     ),
@@ -344,45 +446,36 @@ def _build_email_detail(token, ref_number):
                                                                 className="email_detail__field",
                                                                 children=[
                                                                     Label(label_text="Nome do Fornecedor"),
+                                                                    dcc.Dropdown(
+                                                                        id="supplier_selector",
+                                                                        value=supplier_id,
+                                                                        options=(
+                                                                            [
+                                                                                {
+                                                                                    "label": html.Div(
+                                                                                        [
+                                                                                            html.Strong(supplier_name),
+                                                                                            html.Small(
+                                                                                                f"{supplier_id} · {supplier_vat or ''}"
+                                                                                            ),
+                                                                                        ]
+                                                                                    ),
+                                                                                    "value": supplier_id,
+                                                                                }
+                                                                            ]
+                                                                            if supplier_id
+                                                                            else []
+                                                                        ),
+                                                                        searchable=True,
+                                                                        clearable=True,
+                                                                        placeholder="Pesquisar por nome, ID ou NIF...",
+                                                                        labels={"no_options_found": "A procurar..."},
+                                                                        debounce=True,
+                                                                    ),
                                                                     dcc.Input(
                                                                         id="supplier_name",
                                                                         value=supplier_name,
-                                                                        type="text",
-                                                                        className="email_detail__input",
-                                                                    ),
-                                                                ],
-                                                            ),
-                                                            html.Div(
-                                                                className="email_detail__field email_detail__supplier_id_field",
-                                                                children=[
-                                                                    Label(label_text="ID do Fornecedor"),
-                                                                    dcc.Input(
-                                                                        id="supplier_id",
-                                                                        value=supplier_id,
-                                                                        type="text",
-                                                                        className="email_detail__input",
-                                                                    ),
-                                                                ],
-                                                            ),
-                                                            html.Div(
-                                                                className="email_detail__field",
-                                                                children=[
-                                                                    Label(label_text="ID da Unidade de Negócio"),
-                                                                    dcc.Input(
-                                                                        id="bu_id",
-                                                                        value=bu_id,
-                                                                        type="text",
-                                                                        className="email_detail__input",
-                                                                    ),
-                                                                ],
-                                                            ),
-                                                            html.Div(
-                                                                className="email_detail__field",
-                                                                children=[
-                                                                    Label(label_text="NIF da Unidade de Negócio"),
-                                                                    dcc.Input(
-                                                                        id="bu_vat",
-                                                                        value=bu_vat,
+                                                                        style={"display": "none"},
                                                                         type="text",
                                                                         className="email_detail__input",
                                                                     ),
@@ -403,24 +496,12 @@ def _build_email_detail(token, ref_number):
                                                             html.Div(
                                                                 className="email_detail__field",
                                                                 children=[
-                                                                    Label(label_text="Ordens de Compra"),
+                                                                    Label(label_text="Ordem de Compra"),
                                                                     dcc.Input(
                                                                         id="po_list",
                                                                         value=", ".join(
                                                                             str(po) for po in po_values if po
                                                                         ),
-                                                                        type="text",
-                                                                        className="email_detail__input",
-                                                                    ),
-                                                                ],
-                                                            ),
-                                                            html.Div(
-                                                                className="email_detail__field",
-                                                                children=[
-                                                                    Label(label_text="NIF do Fornecedor"),
-                                                                    dcc.Input(
-                                                                        id="supplier_vat",
-                                                                        value=supplier_vat,
                                                                         type="text",
                                                                         className="email_detail__input",
                                                                     ),
@@ -471,6 +552,7 @@ def _build_email_detail(token, ref_number):
                                                                         value=currency,
                                                                         clearable=False,
                                                                         className="email_detail__input email_detail__dropdown",
+                                                                        labels={"no_options_found": "..."},
                                                                     ),
                                                                 ],
                                                             ),
@@ -606,13 +688,11 @@ def load_email_drawer_content(_clicks, document_id):
     State("document_fields_store", "data"),
     State("document_alerts_store", "data"),
     State("bu_name", "value"),
-    State("bu_id", "value"),
-    State("bu_vat", "value"),
+    State("bu-selection", "data"),
     State("document_number", "value"),
     State("po_list", "value"),
     State("supplier_name", "value"),
-    State("supplier_id", "value"),
-    State("supplier_vat", "value"),
+    State("supplier-selection", "data"),
     State("issue_date", "date"),
     State("total_amount", "value"),
     State("vat_amount", "value"),
@@ -628,12 +708,10 @@ def update_document_details(
     alerts,
     bu_name,
     bu_id,
-    bu_vat,
     document_number,
     po_list,
     supplier_name,
     supplier_id,
-    supplier_vat,
     issue_date,
     total_amount,
     vat_amount,
@@ -653,6 +731,8 @@ def update_document_details(
     button_id = triggered[0]["prop_id"].split(".")[0]
     token = get_access_token()
     updated_fields = fields.copy() if isinstance(fields, dict) else {}
+    bu_id, bu_vat = (bu_id or {}).get("id"), (bu_id or {}).get("vat")
+    supplier_id, supplier_vat = (supplier_id or {}).get("id"), (supplier_id or {}).get("vat")
 
     def update_field(name: str, value: object) -> None:
         existing = updated_fields.get(name)
