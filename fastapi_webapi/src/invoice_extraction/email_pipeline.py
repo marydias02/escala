@@ -100,18 +100,13 @@ from invoice_extraction.ingestion_pipeline import (
 from invoice_extraction.ingestion_pipeline import (
     create_pipeline as create_ingestion_pipeline,
 )
+from email_core.graph_client import DeltaResyncRequired, GraphMailboxClient
 from invoice_extraction.invoice_utils.email_sender import (
     archive_message,
     forward_to_treasury,
     reply_to_supplier,
 )
-from invoice_extraction.invoice_utils.outlook_loader import (
-    DeltaResyncRequired,
-    auth_headers,
-    fetch_inbox_delta_page,
-    fetch_inbox_emails,
-    fetch_message,
-)
+from invoice_extraction.mailbox import invoice_client
 from invoice_extraction.invoice_utils.reporting import (
     buffered_output,
     install_buffering,
@@ -399,8 +394,8 @@ Cursor = tuple[str | None, datetime | None]
 
 
 def _sync_mailbox() -> str:
-    """The mailbox a run syncs: the configured one, or `me` for delegated auth."""
-    return settings.GRAPH_MAILBOX or "me"
+    """The mailbox a run syncs, as recorded in `email_sync_runs.mailbox`."""
+    return invoice_client().mailbox.label
 
 
 async def _load_cursor(mailbox: str) -> Cursor:
@@ -465,7 +460,9 @@ def _delta_entry_row(entry: dict) -> tuple | None:
     return entry["id"], received_at, sender, (entry.get("subject") or "").strip() or None
 
 
-async def _sync_inbox(pool: asyncpg.Pool, headers: dict, run_id: uuid.UUID, cursor: Cursor) -> SyncStats:
+async def _sync_inbox(
+    pool: asyncpg.Pool, client: GraphMailboxClient, headers: dict, run_id: uuid.UUID, cursor: Cursor
+) -> SyncStats:
     """Phase A: record every inbox addition since the last run in `email_messages`.
 
     Each delta page is committed together with the link Graph returned, on this
@@ -480,11 +477,11 @@ async def _sync_inbox(pool: asyncpg.Pool, headers: dict, run_id: uuid.UUID, curs
     since = last_received_at or datetime.now(UTC) - INITIAL_SYNC_LOOKBACK
     stats = SyncStats()
 
-    async with httpx.AsyncClient(timeout=60) as client:
+    async with httpx.AsyncClient(timeout=60) as http:
         while True:
             try:
-                entries, next_url, is_delta_link = await fetch_inbox_delta_page(
-                    client, headers, sync_url, since=since, page_size=DELTA_PAGE_SIZE
+                entries, next_url, is_delta_link = await client.fetch_delta_page(
+                    http, headers, sync_url, since=since, page_size=DELTA_PAGE_SIZE
                 )
             except DeltaResyncRequired:
                 if sync_url is None:
@@ -569,13 +566,15 @@ async def _claim_pending(pool: asyncpg.Pool, limit: int | None) -> list[str]:
     return [row["message_id"] for row in sorted(rows, key=lambda r: r["received_at"])]
 
 
-async def _load_claimed(headers: dict, message_ids: list[str]) -> tuple[list[LoadedEmail], list[str]]:
+async def _load_claimed(
+    client: GraphMailboxClient, headers: dict, message_ids: list[str]
+) -> tuple[list[LoadedEmail], list[str]]:
     """Full messages for the claimed ids, in the given order, plus the ids Graph no longer has."""
     emails: list[LoadedEmail] = []
     gone: list[str] = []
-    async with httpx.AsyncClient(timeout=60) as client:
+    async with httpx.AsyncClient(timeout=60) as http:
         for message_id in message_ids:
-            email = await fetch_message(client, headers, message_id)
+            email = await client.fetch_message(http, headers, message_id)
             if email is None:
                 gone.append(message_id)
             else:
@@ -657,9 +656,16 @@ async def _upsert_processed(pool: asyncpg.Pool, emails: list[LoadedEmail], resul
 class EmailPipeline:
     """Composes the ingestion and extraction pipelines and writes to Postgres."""
 
-    def __init__(self, ingestion: IngestionPipeline, extraction: ExtractionPipeline):
+    def __init__(
+        self,
+        ingestion: IngestionPipeline,
+        extraction: ExtractionPipeline,
+        client: GraphMailboxClient | None = None,
+    ):
         self.ingestion = ingestion
         self.extraction = extraction
+        # The mailbox replies/forwards/archives act on — the same one the run read from.
+        self.client = client or invoice_client()
 
     def _classify_body(self, email: LoadedEmail, ingestion: EmailIngestionResult) -> EmailIntent | None:
         """Classify the email body, for the cases where no usable PDF came out.
@@ -716,6 +722,7 @@ class EmailPipeline:
                 sent = False
             else:
                 send_result = await reply_to_supplier(
+                    self.client,
                     message_id=message_id,
                     subject=reply_subject,
                     comment=result.decision.reply_body,
@@ -745,6 +752,7 @@ class EmailPipeline:
                 sent = False
             else:
                 send_result = await forward_to_treasury(
+                    self.client,
                     message_id=message_id,
                     to=treasury_email,
                     subject=treasury_subject,
@@ -769,7 +777,7 @@ class EmailPipeline:
             if not EMAIL_ACTIONS:
                 print(f"  🚫 EMAIL_ACTIONS off — message NOT archived — subject={subject!r}")
             else:
-                send_result = await archive_message(message_id)
+                send_result = await archive_message(self.client, message_id)
                 if send_result.status == "sent":
                     print(f"  📦 Archived message — subject={subject!r}")
                 else:
@@ -1123,7 +1131,7 @@ async def _run_test(pool: asyncpg.Pool | None) -> None:
     # Dedup happens once, here, before fetch — an empty skip set with
     # WRITE_TO_DB off keeps that mode able to run with no database up.
     processed = await _processed_message_ids() if pool is not None else set()
-    emails = await fetch_inbox_emails(limit=DEFAULT_FETCH_LIMIT, skip_message_ids=processed)
+    emails = await invoice_client().fetch_recent(limit=DEFAULT_FETCH_LIMIT, skip_message_ids=processed)
     if INGEST_LIMIT is not None:
         emails = emails[:INGEST_LIMIT]
 
@@ -1134,7 +1142,8 @@ async def _run_test(pool: asyncpg.Pool | None) -> None:
 
 async def _run_cron(pool: asyncpg.Pool) -> None:
     """The scheduled run: lock, SYNC, PROCESS, log. See the module docstring."""
-    mailbox = _sync_mailbox()
+    client = invoice_client()
+    mailbox = client.mailbox.label
 
     # The lock is tied to this connection: it is released when the connection
     # goes, so a crash cannot leave it held. Nothing else runs on it.
@@ -1150,10 +1159,10 @@ async def _run_cron(pool: asyncpg.Pool) -> None:
         run_id = await _start_run(mailbox, RUN_RUNNING, cursor)
         sync = SyncStats()
         try:
-            headers = await auth_headers()
+            headers = await client.auth_headers()
 
             # --- SYNC -------------------------------------------------------------
-            sync = await _sync_inbox(pool, headers, run_id, cursor)
+            sync = await _sync_inbox(pool, client, headers, run_id, cursor)
 
             # --- PROCESS ----------------------------------------------------------
             reset = await _reset_stale_processing(pool)
@@ -1161,7 +1170,7 @@ async def _run_cron(pool: asyncpg.Pool) -> None:
                 print(f"  ♻️  {reset} row(s) left at processing by a dead run — back to pending")
 
             claimed = await _claim_pending(pool, INGEST_LIMIT)
-            emails, gone = await _load_claimed(headers, claimed)
+            emails, gone = await _load_claimed(client, headers, claimed)
             await _mark_gone(pool, gone, run_id)
 
             results = await _process_batch(emails)

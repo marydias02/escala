@@ -34,7 +34,7 @@ from invoice_extraction.config import (
     MAX_FOLDER_NAME,
     PROCESSED_EMAILS_DIR,
 )
-from invoice_extraction.invoice_utils.outlook_loader import fetch_inbox_emails
+from invoice_extraction.mailbox import invoice_client
 from invoice_extraction.models import EmailAttachment, EmailContent, LoadedEmail
 from invoice_extraction.nodes import segment_document
 from invoice_extraction.tracing import span
@@ -357,7 +357,7 @@ async def _fetch_and_run() -> list[EmailIngestionResult]:
     the ingestion step — but this is NOT the production entry point; that's
     `email_pipeline.main()`, which dedups on `message_id` before fetching.
     """
-    emails = await fetch_inbox_emails(limit=DEFAULT_FETCH_LIMIT)
+    emails = await invoice_client().fetch_recent(limit=DEFAULT_FETCH_LIMIT)
     if INGEST_LIMIT is not None:
         emails = emails[:INGEST_LIMIT]
 

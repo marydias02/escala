@@ -10,7 +10,6 @@ from invoice_extraction.invoice_utils.email_sender import (
     reply_to_supplier,
 )
 from invoice_extraction.invoice_utils.llm_retry import JSON_ONLY_NUDGE, PARSE_ERRORS, invoke_with_retry
-from invoice_extraction.invoice_utils.outlook_loader import fetch_inbox_emails
 from invoice_extraction.invoice_utils.sap_sender import BookResult, book_in_sap
 
 __all__ = [
@@ -19,7 +18,6 @@ __all__ = [
     "BookResult",
     "SendResult",
     "book_in_sap",
-    "fetch_inbox_emails",
     "forward_to_treasury",
     "invoke_with_retry",
     "reply_to_supplier",
