@@ -7,8 +7,8 @@
 
 /* 1. DATE PICKER BASE STYLES */
 .filter-flyout__datepicker {
-    margin-top: -2px;
-    margin-inline: auto;
+  margin-top: -2px;
+  margin-inline: auto;
 }
 
 /* 2. INPUT FIELD STYLING - Match the select and input styles */
@@ -16,150 +16,150 @@
 .filter-flyout__datepicker .SingleDatePickerInput_1,
 .filter-flyout__datepicker .SingleDatePickerInput__withBorder,
 .filter-flyout__datepicker .SingleDatePickerInput__withBorder_2 {
-    border: var(--border-normal) solid var(--border-medium) !important;
-    border-radius: var(--border-radius-sm) !important;
-    background: transparent !important;
-    font-size: var(--font-size-sm) !important;
-    height: auto !important;
-    line-height: normal !important;
+  border: var(--border-normal) solid var(--border-medium) !important;
+  border-radius: var(--border-radius-sm) !important;
+  background: transparent !important;
+  font-size: var(--font-size-sm) !important;
+  height: auto !important;
+  line-height: normal !important;
 }
 
 .filter-flyout__datepicker .DateInput_input,
 .filter-flyout__datepicker .DateInput_input_1 {
-    background: transparent !important;
-    border: none !important;
-    color: var(--text-icon-primary) !important;
-    font-size: var(--font-size-sm) !important;
-    font-weight: var(--font-weight-base) !important;
-    padding: var(--spacing-8) !important;
-    line-height: var(--line-height-none) !important;
-    width: 100% !important;
-    box-sizing: border-box !important;
+  background: transparent !important;
+  border: none !important;
+  color: var(--text-icon-primary) !important;
+  font-size: var(--font-size-sm) !important;
+  font-weight: var(--font-weight-base) !important;
+  padding: var(--spacing-8) !important;
+  line-height: var(--line-height-none) !important;
+  width: 100% !important;
+  box-sizing: border-box !important;
 }
 
 .filter-flyout__datepicker .DateInput_input::placeholder,
 .filter-flyout__datepicker .DateInput_input_1::placeholder {
-    color: var(--text-icon-secondary) !important;
-    font-size: var(--font-size-sm) !important;
+  color: var(--text-icon-secondary) !important;
+  font-size: var(--font-size-sm) !important;
 }
 
 /* Focus states to match other inputs */
 .filter-flyout__datepicker .SingleDatePickerInput__withBorder:focus-within,
 .filter-flyout__datepicker .SingleDatePickerInput__withBorder_2:focus-within {
-    border-color: var(--border-focus) !important;
-    box-shadow: 0 0 0 2px var(--focus-ring) !important;
+  border-color: var(--border-focus) !important;
+  box-shadow: 0 0 0 2px var(--focus-ring) !important;
 }
 
 .filter-flyout__datepicker .DateInput_input:focus,
 .filter-flyout__datepicker .DateInput_input_1:focus {
-    outline: none !important;
-    border: none !important;
+  outline: none !important;
+  border: none !important;
 }
 
 /* 3. CALENDAR POPUP STYLING */
 .DateRangePickerInput__withBorder,
 .DateInput__withBorder {
-    border-radius: var(--border-radius-sm) !important;
+  border-radius: var(--border-radius-sm) !important;
 }
 
 .DayPickerKeyboardShortcuts_panel {
-    background: var(--surface-modal) !important;
-    border: var(--border-normal) solid var(--border-modal) !important;
-    border-radius: var(--border-radius-lg) !important;
-    box-shadow: var(--shadow-md) !important;
+  background: var(--surface-modal) !important;
+  border: var(--border-normal) solid var(--border-modal) !important;
+  border-radius: var(--border-radius-lg) !important;
+  box-shadow: var(--shadow-md) !important;
 }
 
 .DayPicker {
-    background: var(--surface-modal) !important;
-    border: var(--border-normal) solid var(--border-modal) !important;
-    border-radius: var(--border-radius-lg) !important;
-    box-shadow: var(--shadow-md) !important;
+  background: var(--surface-modal) !important;
+  border: var(--border-normal) solid var(--border-modal) !important;
+  border-radius: var(--border-radius-lg) !important;
+  box-shadow: var(--shadow-md) !important;
 }
 
 .DayPicker__withBorder {
-    border: var(--border-normal) solid var(--border-modal) !important;
-    border-radius: var(--border-radius-lg) !important;
+  border: var(--border-normal) solid var(--border-modal) !important;
+  border-radius: var(--border-radius-lg) !important;
 }
 
 .CalendarDay__default {
-    background: transparent !important;
-    color: var(--text-icon-primary) !important;
-    border: none !important;
+  background: transparent !important;
+  color: var(--text-icon-primary) !important;
+  border: none !important;
 }
 
 .CalendarDay__default:hover {
-    background: var(--surface-hover) !important;
-    color: var(--text-icon-primary) !important;
+  background: var(--surface-hover) !important;
+  color: var(--text-icon-primary) !important;
 }
 
 .CalendarDay__selected,
 .CalendarDay__selected:active,
 .CalendarDay__selected:hover {
-    background: var(--primary) !important;
-    color: var(--text-on-primary) !important;
+  background: var(--primary) !important;
+  color: var(--text-on-primary) !important;
 }
 
 .CalendarDay__hovered_span {
-    background: var(--surface-hover) !important;
-    color: var(--text-icon-primary) !important;
+  background: var(--surface-hover) !important;
+  color: var(--text-icon-primary) !important;
 }
 
 .DayPickerNavigation_button {
-    background: transparent !important;
-    border: none !important;
-    color: var(--text-icon-primary) !important;
+  background: transparent !important;
+  border: none !important;
+  color: var(--text-icon-primary) !important;
 }
 
 .DayPickerNavigation_button:hover {
-    background: var(--surface-hover) !important;
+  background: var(--surface-hover) !important;
 }
 
 .DayPicker_weekHeader {
-    color: var(--text-icon-secondary) !important;
+  color: var(--text-icon-secondary) !important;
 }
 
 .CalendarMonth_caption {
-    color: var(--text-icon-primary) !important;
-    font-weight: var(--font-weight-heavy) !important;
+  color: var(--text-icon-primary) !important;
+  font-weight: var(--font-weight-heavy) !important;
 }
 
 /* 4. FILTER FLYOUT SPECIFIC STYLES */
 .filter-flyout .filter-flyout__datepicker {
-    width: 100%;
+  width: 100%;
 }
 
 .filter-flyout .filter-flyout__datepicker .SingleDatePickerInput,
 .filter-flyout .filter-flyout__datepicker .SingleDatePickerInput_1 {
-    width: 100% !important;
-    display: block !important;
+  width: 100% !important;
+  display: block !important;
 }
 
 .filter-flyout .filter-flyout__datepicker .DateInput,
 .filter-flyout .filter-flyout__datepicker .DateInput_1 {
-    width: 100% !important;
+  width: 100% !important;
 }
 
 /* Remove default react-dates styling that conflicts */
 .SingleDatePickerInput__display_start_date {
-    background: transparent !important;
+  background: transparent !important;
 }
 
 .DateInput__display_text {
-    background: transparent !important;
+  background: transparent !important;
 }
 
 /* Calendar positioning */
 .SingleDatePicker_picker {
-    z-index: 1001 !important;
+  z-index: 1001 !important;
 }
 
 /* Responsive adjustments */
 @media (max-width: 768px) {
-    .filter-flyout__datepicker .DateInput_input,
-    .filter-flyout__datepicker .DateInput_input_1 {
-        font-size: var(--font-size-xs) !important;
-        padding: var(--spacing-6) !important;
-    }
+  .filter-flyout__datepicker .DateInput_input,
+  .filter-flyout__datepicker .DateInput_input_1 {
+    font-size: var(--font-size-xs) !important;
+    padding: var(--spacing-6) !important;
+  }
 }
 
 /* BORDER RADIUS, EXTERNAL
@@ -167,38 +167,38 @@ DayPicker_transitionContainer DayPicker_transitionContainer_1 DayPicker_transiti
  */
 
 .DayPicker_transitionContainer {
-    border-radius: var(--border-radius-lg) !important;
-    box-shadow: var(--shadow-md);
+  border-radius: var(--border-radius-lg) !important;
+  box-shadow: var(--shadow-md);
 }
 
 .DayPickerKeyboardShortcuts_buttonReset {
-    display: none;
+  display: none;
 }
 
 /* CalendarMonth_caption CalendarMonth_caption_1 strong, MONTH+YEAR */
 
 .CalendarMonth_caption {
-    font-size: var(--font-size-sm);
+  font-size: var(--font-size-sm);
 }
 
 /* LI - small DayPicker_weekHeader_li DayPicker_weekHeader_li_1 Su, Mo, etc */
 
 .CalendarMonth_table {
-    margin-top: var(--spacing-16) !important;
+  margin-top: var(--spacing-16) !important;
 }
 
 .CalendarDay__default {
-    height: 30px !important;
-    padding-block: var(--spacing-10) !important;
-    border-radius: var(--border-radius-sm);
+  height: 30px !important;
+  padding-block: var(--spacing-10) !important;
+  border-radius: var(--border-radius-sm);
 }
 
 .CalendarDay__default:hover {
-    background: var(--surface-light) !important;
+  background: var(--surface-light) !important;
 }
 
 .CalendarDay__outside {
-    color: var(--text-icon-secondary) !important;
+  color: var(--text-icon-secondary) !important;
 }
 
 /* other months days

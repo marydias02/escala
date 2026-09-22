@@ -22,8 +22,8 @@ layout = html.Div([
   html.P("This is is defined on the general app layout page and is automatically rendered in each page", className="body-sm"),
   html.Br(),
   html.P([
-        DashIconify(icon="lucide:house"),
-        html.Span("Home"),
+        DashIconify(icon="lucide:scan-text"),
+        html.Span("Extraction"),
         DashIconify(icon="lucide:chevron-right", className="breadcrumb__arrow"),
         html.Span("Middle Page"),
         DashIconify(icon="lucide:chevron-right", className="breadcrumb__arrow"),
@@ -39,8 +39,8 @@ layout = html.Div([
   html.P("When viewport width is less than 790px and the bredcrumb has 3 or more items it collapses to show only the first and last one. This width is defined on the component page and can be adjusted if necessary", className="body-sm"),
   html.Br(),
   html.P([
-        DashIconify(icon="lucide:house"),
-        html.Span("Home"),
+        DashIconify(icon="lucide:scan-text"),
+        html.Span("Extraction"),
         DashIconify(icon="lucide:chevron-right", className="breadcrumb__arrow"),
         html.Span("..."),
         DashIconify(icon="lucide:chevron-right", className="breadcrumb__arrow"),

@@ -14,7 +14,7 @@
    ```bash
    uv run python -m app.main
    or
-   uvicorn api.main:app --reload
+   uv run uvicorn api.main:app --reload --app-dir src
    ```
    The API will be available at `http://localhost:8000`
    - Swagger UI: `http://localhost:8000/docs`
@@ -114,32 +114,32 @@ uv run ruff check --fix && uv run ruff format
 ```
 
 
-## Dev Commands
-
-### Generate API Key
-
-Generate a secure API key with its hash:
-
-```bash
-uv run generate_api_key
-```
-
-Output:
-```json
-{"HASHED_API_KEY": "argon2 hash", "X-API-KEY": "your-api-key"}
-```
-
-
 ## Environment Variables
 
-Create a `.env` file in the backend directory with required variables:
+Create a `.env` file in the backend directory with required variables. These are the
+ones the code actually reads (`src/api/properties.py` and `src/config/settings.py`):
 
 ```
-DATABASE_URL=postgresql://user:password@localhost:5432/database
-LOG_LEVEL=INFO
-API_HOST=0.0.0.0
-API_PORT=8000
+ENVIRONMENT=dev
+BIND_HOST=0.0.0.0
+BIND_PORT=8000
+BACKEND_CORS_ORIGINS=http://localhost:8050
+
+DB_SCHEME=postgresql
+DB_USER=user
+DB_PASSWORD=password
+DB_HOST=localhost
+DB_PORT=5432
+DB_NAME=postgres
+
+OIDC_METADATA_URL=https://login.microsoftonline.com/<tenant-id>/v2.0/.well-known/openid-configuration
+OIDC_CLIENT_ID=<client-id>
+OIDC_AUDIENCE=<client-id>
+OIDC_SCOPES=api://<client-id>/access_as_user
 ```
+
+`settings.py` rejects unknown keys, so any variable placed in `.env` must be declared
+there as well.
 
 ## Troubleshooting
 

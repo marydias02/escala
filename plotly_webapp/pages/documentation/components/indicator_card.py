@@ -42,12 +42,15 @@ PROPERTIES = [
      "description": "Optional tooltip text. "
                     "This is shown on hover on an info icon next to the label"},
 
-    {"name": "rows", "type": "(List of tuples[str | float, str | none, str | none, 'increase' | 'decrease' | none] ; required)",
+    {"name": "rows", "type": "(List of tuples[str | float, str | none, str | float | none, 'increase' | 'decrease' | none] ; required)",
      "description": "List to define the card rows. Each one includes a value with an optional caption and delta badge"
                       " - The fisrt element (str | float) represents the main value;"
                       " - The second element (str ; optional) represents the description text;"
-                      " - The third element (str ; optional) represents the delta badge text;"
+                      " - The third element (str | float ; optional) represents the delta badge value;"
                       " - The forth element ('increase' | 'decrease' ; optional) represents the the delta badge delta direction;"},
+
+    {"name": "badge_unit", "type": "('%' | 'pp' ; optional, default '%')",
+     "description": "Unit appended to delta badge values. Use '%' for a relative percentage difference or 'pp' for a percentage-point difference."},
 ]
 
 
@@ -174,9 +177,10 @@ IndicatorCard(
                 className="indicator_card_wrapper",
                 children = [
                     IndicatorCard(
-                        rows=[("13%", "Message with kpi description", "50%", "increase")],
+                        rows=[("13%", "Message with kpi description", 5, "increase")],
                         label_text="Label",
-                        label_tooltip="Additional info"
+                        label_tooltip="Additional info",
+                        badge_unit="pp"
                     )
                 ]
               )
@@ -185,9 +189,10 @@ IndicatorCard(
 from components.cards.indicator_card.indicator_card import IndicatorCard
 
 IndicatorCard(
-    rows=[("13%", "Message with kpi description", "50%", "increase")],
+    rows=[("13%", "Message with kpi description", 5, "increase")],
     label_text="Label",
-    label_tooltip="Additional info"
+    label_tooltip="Additional info",
+    badge_unit="pp"
 )
 """,
             section_id="delta_badge",
