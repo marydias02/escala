@@ -8,7 +8,6 @@ from rapidfuzz import fuzz
 
 from email_core.confidence import Checked
 from invoice_extraction.config import MIN_CONFIDENCE, failed_confidence
-from invoice_extraction.invoice_utils.llm_retry import invoke_with_retry
 from invoice_extraction.models import InvoiceData, ValidationReport
 from invoice_extraction.prompts import VALIDATION_SYSTEM_MESSAGE, build_validation_human_message
 from invoice_extraction.tools import VALIDATION_TOOLS
@@ -22,6 +21,7 @@ from invoice_extraction.tracing import (
     span,
     validation_summary,
 )
+from utils.llm_retry import invoke_with_retry
 from utils.utils_db import normalize_key
 
 # Below this, two names are considered unrelated rather than a match.

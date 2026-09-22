@@ -2,15 +2,13 @@ from typing import cast
 
 from langchain_core.language_models import BaseChatModel
 
-from invoice_extraction.invoice_utils.llm_retry import invoke_with_retry
-from invoice_extraction.tracing import span
 from payment_matching.models import PaymentEmailInfo
 from payment_matching.prompts import (
     PAYMENT_EMAIL_SYSTEM_MESSAGE,
     build_payment_email_human_message,
 )
-
-STAGE_PAYMENT_EMAIL = "1-payment-email"
+from payment_matching.tracing import STAGE_PAYMENT_EMAIL, payment_email_summary, span
+from utils.llm_retry import invoke_with_retry
 
 
 def extract_payment_email(llm: BaseChatModel, subject: str, body: str) -> PaymentEmailInfo:
@@ -24,11 +22,5 @@ def extract_payment_email(llm: BaseChatModel, subject: str, body: str) -> Paymen
             structured_llm, [PAYMENT_EMAIL_SYSTEM_MESSAGE, human_message], stage="payment email"
         )
         info = cast(PaymentEmailInfo, info)
-        stage_span.set_outputs(
-            {
-                "is_payment_related": info.is_payment_related.value,
-                "invoice_numbers": [n.value for n in info.invoice_numbers],
-                "total_amount_paid": info.total_amount_paid.value if info.total_amount_paid else None,
-            }
-        )
+        stage_span.set_outputs(payment_email_summary(info))
         return info

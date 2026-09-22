@@ -1,12 +1,12 @@
 from langchain_core.language_models import BaseChatModel
 
-from invoice_extraction.invoice_utils.llm_retry import invoke_with_retry
 from invoice_extraction.models import DocumentSegmentation
 from invoice_extraction.prompts import (
     build_segmentation_human_message,
     build_segmentation_system_message,
 )
 from invoice_extraction.tracing import STAGE_CHUNKING, segmentation_summary, span
+from utils.llm_retry import invoke_with_retry
 
 
 def segment_document(

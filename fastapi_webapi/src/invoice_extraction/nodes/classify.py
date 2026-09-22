@@ -3,13 +3,13 @@ from typing import cast
 from langchain_core.language_models import BaseChatModel
 
 from email_core.documents import LoadedDocument
-from invoice_extraction.invoice_utils.llm_retry import invoke_with_retry
 from invoice_extraction.models import DocumentClassification
 from invoice_extraction.prompts import (
     CLASSIFICATION_SYSTEM_MESSAGE,
     build_classification_human_message,
 )
 from invoice_extraction.tracing import STAGE_CLASSIFICATION, classification_summary, span
+from utils.llm_retry import invoke_with_retry
 
 
 def classify_document(llm: BaseChatModel, doc: LoadedDocument, *, scanned: bool = False) -> DocumentClassification:

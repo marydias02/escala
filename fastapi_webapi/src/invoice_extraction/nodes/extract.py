@@ -1,10 +1,10 @@
 from langchain_core.language_models import BaseChatModel
 
 from email_core.documents import LoadedDocument
-from invoice_extraction.invoice_utils.llm_retry import invoke_with_retry
 from invoice_extraction.models import DocumentClassification, InvoiceData
 from invoice_extraction.prompts import EXTRACTION_SYSTEM_MESSAGE, build_extraction_human_message
 from invoice_extraction.tracing import STAGE_EXTRACTION, invoice_data_summary, span
+from utils.llm_retry import invoke_with_retry
 
 
 def extract_document(

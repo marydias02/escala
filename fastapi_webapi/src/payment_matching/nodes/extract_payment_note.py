@@ -3,15 +3,13 @@ from typing import cast
 from langchain_core.language_models import BaseChatModel
 
 from email_core.documents import LoadedDocument
-from invoice_extraction.invoice_utils.llm_retry import invoke_with_retry
-from invoice_extraction.tracing import span
 from payment_matching.models import PaymentNoteDocument
 from payment_matching.prompts import (
     PAYMENT_NOTE_SYSTEM_MESSAGE,
     build_payment_note_human_message,
 )
-
-STAGE_PAYMENT_NOTE = "2-payment-note"
+from payment_matching.tracing import STAGE_PAYMENT_NOTE, payment_note_summary, span
+from utils.llm_retry import invoke_with_retry
 
 
 def extract_payment_note(
@@ -33,11 +31,5 @@ def extract_payment_note(
             structured_llm, [PAYMENT_NOTE_SYSTEM_MESSAGE, human_message], stage="payment note"
         )
         note = cast(PaymentNoteDocument, note)
-        stage_span.set_outputs(
-            {
-                "is_payment_note": note.is_payment_note.value,
-                "payment_note_code": note.payment_note_code.value if note.payment_note_code else None,
-                "lines": len(note.lines),
-            }
-        )
+        stage_span.set_outputs(payment_note_summary(note))
         return note

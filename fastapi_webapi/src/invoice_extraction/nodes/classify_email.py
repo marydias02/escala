@@ -1,12 +1,12 @@
 from langchain_core.language_models import BaseChatModel
 
-from invoice_extraction.invoice_utils.llm_retry import invoke_with_retry
 from invoice_extraction.models import EmailIntent
 from invoice_extraction.prompts import (
     EMAIL_INTENT_SYSTEM_MESSAGE,
     build_email_intent_human_message,
 )
 from invoice_extraction.tracing import STAGE_EMAIL_INTENT, span
+from utils.llm_retry import invoke_with_retry
 
 
 def classify_email_intent(llm: BaseChatModel, subject: str, body: str) -> EmailIntent:

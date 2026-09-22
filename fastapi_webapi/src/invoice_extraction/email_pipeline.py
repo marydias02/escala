@@ -47,6 +47,7 @@ import asyncpg
 import httpx
 
 from config.settings import settings
+from email_core.graph_client import DeltaResyncRequired, GraphMailboxClient
 from invoice_extraction.config import (
     DEFAULT_FETCH_LIMIT,
     DELTA_PAGE_SIZE,
@@ -100,18 +101,17 @@ from invoice_extraction.ingestion_pipeline import (
 from invoice_extraction.ingestion_pipeline import (
     create_pipeline as create_ingestion_pipeline,
 )
-from email_core.graph_client import DeltaResyncRequired, GraphMailboxClient
 from invoice_extraction.invoice_utils.email_sender import (
     archive_message,
     forward_to_treasury,
     reply_to_supplier,
 )
-from invoice_extraction.mailbox import invoice_client
 from invoice_extraction.invoice_utils.reporting import (
     buffered_output,
     install_buffering,
     print_pipeline_result,
 )
+from invoice_extraction.mailbox import invoice_client
 from invoice_extraction.models import DocumentClassification, EmailIntent, LoadedEmail, ValidationReport
 from invoice_extraction.nodes import classify_email_intent
 from invoice_extraction.tracing import (
