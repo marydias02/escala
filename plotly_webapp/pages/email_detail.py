@@ -153,11 +153,27 @@ def _party_options(rows, id_key):
 def update_bu_selector(search_value, selected, options):
     if selected:
         row = next((option.get("_row", {}) for option in (options or []) if option.get("value") == selected), {})
-        return options or [], row.get("name"), {"id": row.get("bu_id", selected), "vat": row.get("vat")}, {"no_options_found": "A procurar..."}
+        if not row:
+            matches = search_business_units(get_access_token(), str(selected), limit=10)
+            row = next((match for match in matches if str(match.get("bu_id")) == str(selected)), {})
+        selected_options = options or []
+        if not any(option.get("value") == selected for option in selected_options):
+            selected_options = _party_options([row], "bu_id") if row else [{"label": str(selected), "value": selected}]
+        return selected_options, row.get("name"), {"id": row.get("bu_id", selected), "vat": row.get("vat")}, {"no_options_found": "A procurar..."}
     if not search_value or len(search_value.strip()) < 2:
-        return [], no_update, no_update, {"no_options_found": "A procurar..."}
+        # Keep the selected option when Dash clears search_value after a
+        # selection; returning [] makes the dropdown discard its value.
+        return options or [], no_update, no_update, {"no_options_found": "A procurar..."}
     rows = search_business_units(get_access_token(), search_value)
-    return _party_options(rows, "bu_id"), no_update, no_update, {"no_options_found": "Não encontrado"}
+    new_options = _party_options(rows, "bu_id")
+    # Dash does not render a value that is missing from the options list.
+    new_values = {str(option.get("value")) for option in new_options}
+    new_options.extend(
+        option
+        for option in (options or [])
+        if str(option.get("value")) not in new_values
+    )
+    return new_options, no_update, no_update, {"no_options_found": "Não encontrado"}
 
 
 @dash.callback(
@@ -173,11 +189,20 @@ def update_bu_selector(search_value, selected, options):
 def update_supplier_selector(search_value, selected, options):
     if selected:
         row = next((option.get("_row", {}) for option in (options or []) if option.get("value") == selected), {})
-        return options or [], row.get("name"), {"id": row.get("supplier_id", selected), "vat": row.get("vat")}, {"no_options_found": "A procurar..."}
+        if not row:
+            matches = search_suppliers(get_access_token(), str(selected), limit=10)
+            row = next((match for match in matches if str(match.get("supplier_id")) == str(selected)), {})
+        selected_options = options or []
+        if not any(option.get("value") == selected for option in selected_options):
+            selected_options = _party_options([row], "supplier_id") if row else [{"label": str(selected), "value": selected}]
+        return selected_options, row.get("name"), {"id": row.get("supplier_id", selected), "vat": row.get("vat")}, {"no_options_found": "A procurar..."}
     if not search_value or len(search_value.strip()) < 3:
-        return [], no_update, no_update, {"no_options_found": "A procurar..."}
+        return options or [], no_update, no_update, {"no_options_found": "A procurar..."}
     rows = search_suppliers(get_access_token(), search_value)
-    return _party_options(rows, "supplier_id"), no_update, no_update, {"no_options_found": "Não encontrado"}
+    new_options = _party_options(rows, "supplier_id")
+    new_values = {str(option.get("value")) for option in new_options}
+    new_options.extend(option for option in (options or []) if str(option.get("value")) not in new_values)
+    return new_options, no_update, no_update, {"no_options_found": "Não encontrado"}
 
 
 @dash.callback(
@@ -468,6 +493,11 @@ def _build_email_detail(token, ref_number):
                                                                                         ]
                                                                                     ),
                                                                                     "value": bu_id,
+                                                                                    "_row": {
+                                                                                        "bu_id": bu_id,
+                                                                                        "name": business_unit,
+                                                                                        "vat": bu_vat,
+                                                                                    },
                                                                                 }
                                                                             ]
                                                                             if bu_id
@@ -507,6 +537,11 @@ def _build_email_detail(token, ref_number):
                                                                                         ]
                                                                                     ),
                                                                                     "value": supplier_id,
+                                                                                    "_row": {
+                                                                                        "supplier_id": supplier_id,
+                                                                                        "name": supplier_name,
+                                                                                        "vat": supplier_vat,
+                                                                                    },
                                                                                 }
                                                                             ]
                                                                             if supplier_id
@@ -744,10 +779,15 @@ def load_email_drawer_content(_clicks, document_id):
     State("document_id_store", "data"),
     State("document_fields_store", "data"),
     State("document_alerts_store", "data"),
+    State("bu_selector", "value"),
+    State("bu_selector", "options"),
     State("bu_name", "value"),
     State("bu-selection", "data"),
     State("document_number", "value"),
+    State("po_selector", "value"),
     State("po_list", "value"),
+    State("supplier_selector", "value"),
+    State("supplier_selector", "options"),
     State("supplier_name", "value"),
     State("supplier-selection", "data"),
     State("issue_date", "date"),
@@ -763,10 +803,15 @@ def update_document_details(
     document_id,
     fields,
     alerts,
+    bu_selector,
+    bu_options,
     bu_name,
     bu_id,
     document_number,
+    po_selector,
     po_list,
+    supplier_selector,
+    supplier_options,
     supplier_name,
     supplier_id,
     issue_date,
@@ -788,8 +833,36 @@ def update_document_details(
     button_id = triggered[0]["prop_id"].split(".")[0]
     token = get_access_token()
     updated_fields = fields.copy() if isinstance(fields, dict) else {}
-    bu_id, bu_vat = (bu_id or {}).get("id"), (bu_id or {}).get("vat")
-    supplier_id, supplier_vat = (supplier_id or {}).get("id"), (supplier_id or {}).get("vat")
+    # Read the selectors themselves. The hidden name/list inputs are outputs of
+    # separate callbacks and may still contain their previous values when the
+    # user clicks Guardar immediately after changing a dropdown.
+    bu_row = next(
+        (option.get("_row", {}) for option in (bu_options or [])
+         if str(option.get("value")) == str(bu_selector)),
+        {},
+    )
+    if bu_selector is not None:
+        bu_id = bu_selector
+        bu_name = bu_row.get("name") or bu_name
+        bu_vat = bu_row.get("vat")
+    else:
+        bu_id, bu_vat = None, None
+
+    supplier_row = next(
+        (option.get("_row", {}) for option in (supplier_options or [])
+         if str(option.get("value")) == str(supplier_selector)),
+        {},
+    )
+    if supplier_selector is not None:
+        supplier_id = supplier_selector
+        supplier_name = supplier_row.get("name") or supplier_name
+        supplier_vat = supplier_row.get("vat")
+    else:
+        supplier_id, supplier_vat = None, None
+
+    if po_selector is not None:
+        po_list = ", ".join(str(value) for value in po_selector)
+
 
     def update_field(name: str, value: object) -> None:
         existing = updated_fields.get(name)
