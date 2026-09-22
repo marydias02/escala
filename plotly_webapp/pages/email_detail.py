@@ -11,6 +11,7 @@ from assets.api_calls.extraction_api import (
     get_document_email,
     get_next_priority_document,
     search_business_units,
+    search_purchase_orders,
     search_suppliers,
 )
 from auth.msal_client import get_access_token
@@ -156,7 +157,7 @@ def update_bu_selector(search_value, selected, options):
     if not search_value or len(search_value.strip()) < 2:
         return [], no_update, no_update, {"no_options_found": "A procurar..."}
     rows = search_business_units(get_access_token(), search_value)
-    return _party_options(rows, "bu_id"), no_update, no_update, {"no_options_found": "Não encontrado" if not rows else "A procurar..."}
+    return _party_options(rows, "bu_id"), no_update, no_update, {"no_options_found": "Não encontrado"}
 
 
 @dash.callback(
@@ -176,7 +177,52 @@ def update_supplier_selector(search_value, selected, options):
     if not search_value or len(search_value.strip()) < 3:
         return [], no_update, no_update, {"no_options_found": "A procurar..."}
     rows = search_suppliers(get_access_token(), search_value)
-    return _party_options(rows, "supplier_id"), no_update, no_update, {"no_options_found": "Não encontrado" if not rows else "A procurar..."}
+    return _party_options(rows, "supplier_id"), no_update, no_update, {"no_options_found": "Não encontrado"}
+
+
+@dash.callback(
+    Output("po_selector", "options"),
+    Output("po_selector", "labels", allow_duplicate=True),
+    Input("po_selector", "search_value"),
+    State("po_selector", "value"),
+    State("po_selector", "options"),
+    prevent_initial_call=True,
+)
+def update_purchase_order_selector(search_value, selected, current_options):
+    if not search_value or len(search_value.strip()) < 3:
+        return no_update, {"no_options_found": "Não encontrado"}
+    rows = search_purchase_orders(get_access_token(), search_value)
+    po_options = [
+        {
+            "label": html.Div([
+                html.Strong(row.get("po_code") or ""),
+                html.Small(f"{row.get('supplier_name') or ''} · {row.get('bu_id') or ''}"),
+            ]),
+            "value": row.get("po_code"),
+        }
+        for row in rows
+    ]
+    selected = selected or []
+    existing = {str(option.get("value")): option for option in (current_options or [])}
+    merged = [
+        existing.get(
+            str(value),
+            {"label": str(value), "value": value},
+        )
+        for value in selected
+    ]
+    merged_values = {str(option.get("value")) for option in merged}
+    merged.extend(option for option in po_options if str(option.get("value")) not in merged_values)
+    return merged, {"no_options_found": "Não encontrado", "select_all": "", "deselect_all": "Desmarcar todos"}
+
+
+@dash.callback(
+    Output("po_list", "value"),
+    Input("po_selector", "value"),
+    prevent_initial_call=True,
+)
+def update_purchase_order_value(selected):
+    return ", ".join(str(value) for value in (selected or []))
 
 
 dash.clientside_callback(
@@ -497,6 +543,16 @@ def _build_email_detail(token, ref_number):
                                                                 className="email_detail__field",
                                                                 children=[
                                                                     Label(label_text="Ordem de Compra"),
+                                                                    dcc.Dropdown(
+                                                                        id="po_selector",
+                                                                        options=[{"label": str(po), "value": str(po)} for po in po_values if po],
+                                                                        value=[str(po) for po in po_values if po],
+                                                                        multi=True,
+                                                                        searchable=True,
+                                                                        clearable=True,
+                                                                        labels={"no_options_found": "A procurar...", "select_all": "", "deselect_all": "Desmarcar todos"},
+                                                                        placeholder="Insira pelo menos 3 dígitos",
+                                                                    ),
                                                                     dcc.Input(
                                                                         id="po_list",
                                                                         value=", ".join(
@@ -504,6 +560,7 @@ def _build_email_detail(token, ref_number):
                                                                         ),
                                                                         type="text",
                                                                         className="email_detail__input",
+                                                                        style={"display": "none"},
                                                                     ),
                                                                 ],
                                                             ),
