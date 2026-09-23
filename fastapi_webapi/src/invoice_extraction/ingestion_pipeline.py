@@ -11,16 +11,19 @@ deterministically before the result is trusted.
 
 import asyncio
 import base64
-import re
-import unicodedata
 from dataclasses import dataclass, field
-from datetime import datetime
 from pathlib import Path
 from typing import Literal, Optional
 
 from langchain_core.language_models import BaseChatModel
 
 from config.settings import settings
+from email_core.folders import (
+    email_folder_name,
+    parse_reception_date,
+    reserve_folder,
+    sanitize_folder_name,
+)
 from email_core.pdf.splitter import (
     count_pages,
     ensure_readable,
@@ -31,7 +34,6 @@ from invoice_extraction.config import (
     DEFAULT_FETCH_LIMIT,
     INGEST_LIMIT,
     MANIFEST_NAME,
-    MAX_FOLDER_NAME,
     PROCESSED_EMAILS_DIR,
 )
 from invoice_extraction.mailbox import invoice_client
@@ -40,8 +42,16 @@ from invoice_extraction.nodes import segment_document
 from invoice_extraction.tracing import span
 from utils.llm_factory import LLMFactory
 
-# Characters Windows forbids in a path component.
-INVALID_PATH_CHARS = r'[<>:"/\\|?*\x00-\x1f]'
+__all__ = [
+    "AttachmentResult",
+    "EmailIngestionResult",
+    "IngestionPipeline",
+    "create_pipeline",
+    "email_folder_name",
+    "parse_reception_date",
+    "print_summary",
+    "sanitize_folder_name",
+]
 
 
 @dataclass
@@ -79,79 +89,6 @@ class EmailIngestionResult:
     def problems(self) -> list[str]:
         """Segmentation coverage problems across every attachment."""
         return [f"{a.filename}: {problem}" for a in self.attachments for problem in a.problems]
-
-
-def parse_reception_date(value: str | None) -> datetime | None:
-    """Parse an ISO-8601 reception date to a datetime, or None.
-
-    `fct_processes.reception_date` is a timestamptz; asyncpg maps a datetime
-    straight through. A malformed/empty string becomes NULL (the column is
-    nullable) rather than failing the insert.
-    """
-    if not value:
-        return None
-    try:
-        return datetime.fromisoformat(value)
-    except ValueError:
-        return None
-
-
-def sanitize_folder_name(name: str, fallback: str = "email", limit: int = MAX_FOLDER_NAME) -> str:
-    """Turn an email subject into a safe, bounded directory name.
-
-    Subjects carry accents, doubled spaces and characters Windows rejects outright.
-    Normalising here (rather than at write time) keeps the folder name predictable.
-    """
-    name = unicodedata.normalize("NFC", name)
-    name = re.sub(INVALID_PATH_CHARS, "_", name)
-    name = re.sub(r"\s+", " ", name).strip()
-    # Windows silently drops trailing dots and spaces from directory names, which
-    # would make the folder we create and the folder we later look for differ.
-    name = name.rstrip(". ")
-
-    if len(name) > limit:
-        name = name[:limit].rstrip(". ")
-
-    return name or fallback
-
-
-def email_folder_name(email: LoadedEmail) -> str:
-    """`YYYYMMDD-HHMMSS_subject` for one email, bounded by `MAX_FOLDER_NAME`.
-
-    The timestamp comes from the email's own reception date, not from now(), so
-    reprocessing one email always produces the same name. It sorts the output
-    directory chronologically and distinguishes same-subject emails by something
-    readable, leaving `_reserve_folder`'s `_2` suffix for the genuine collision
-    of one subject received in one second.
-    """
-    received = parse_reception_date(email.reception_date)
-    if received is None:
-        return sanitize_folder_name(email.subject)
-
-    prefix = received.strftime("%Y%m%d-%H%M%S")
-    # Budget the prefix out of the cap rather than adding it on top.
-    subject = sanitize_folder_name(email.subject, limit=MAX_FOLDER_NAME - len(prefix) - 1)
-    return f"{prefix}_{subject}"
-
-
-def _reserve_folder(root: Path, name: str) -> Path:
-    """`root/name`, suffixed `_2`, `_3`... if taken. Creates the folder to reserve it.
-
-    `mkdir(exist_ok=False)` is one atomic syscall: it either creates the
-    directory or raises `FileExistsError`. Testing `.exists()` first would leave
-    a window in which two concurrent emails both see the name free and then
-    share a folder — overwriting each other's manifest, and with it the
-    `message_id` that outbound replies are addressed to.
-    """
-    for suffix in range(1, 1000):
-        candidate = root / (name if suffix == 1 else f"{name}_{suffix}")
-        try:
-            candidate.mkdir(parents=True, exist_ok=False)
-            return candidate
-        except FileExistsError:
-            continue
-
-    raise RuntimeError(f"Could not find a free folder name for {name!r} under {root}")
 
 
 class IngestionPipeline:
@@ -278,12 +215,12 @@ class IngestionPipeline:
 
         Always ingests — no skip check. Dedup happens once, upstream, in
         `email_pipeline.main()`, keyed on `message_id`. The timestamp separates
-        the same-subject emails that collide routinely; `_reserve_folder`
+        the same-subject emails that collide routinely; `reserve_folder`
         suffixes `_2`/`_3` for the rest, including every manual reprocess.
         """
         output_root = Path(output_root)
 
-        folder = _reserve_folder(output_root, email_folder_name(email))
+        folder = reserve_folder(output_root, email_folder_name(email))
         source = email.message_id or email.subject
 
         return self.ingest_email(email, folder, source=source)

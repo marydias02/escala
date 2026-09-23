@@ -15,9 +15,6 @@ PROCESSED_EMAILS_DIR = DOCS_DIR / "processed_emails"
 
 MANIFEST_NAME = "email_content.json"
 
-# Windows caps a full path at 260 characters; folder names are truncated well short.
-MAX_FOLDER_NAME = 80
-
 # -- Blob storage ----------------------------------------------------------
 
 # Key prefix for payment artifacts, keeping them apart from `processed_emails/`.
@@ -47,22 +44,28 @@ INITIAL_SYNC_LOOKBACK = timedelta(minutes=10)
 PAYMENT_RUN_LOCK_KEY = 1_618_033
 
 # How many messages `--test` pulls from Graph per run.
-DEFAULT_FETCH_LIMIT = 1
+DEFAULT_FETCH_LIMIT = 2
 
 # At most N messages processed per run (None = every claimable row).
-INGEST_LIMIT: int | None = 100
+INGEST_LIMIT: int | None = 2
 
 # How many messages run concurrently. Payment messages carry no thread-position
 # state, so they need no per-thread serialization.
 EMAIL_MAX_WORKERS = 7
 
-WRITE_TO_DB = True
+# How many note candidates within one message are read concurrently.
+NOTE_MAX_WORKERS = 3
+
+# Persistence is not implemented — the payment tables have no migrations yet.
+# See `email_pipeline._persist`. Off lets the pipeline run and trace with no
+# database up, which is how `--test` is exercised.
+WRITE_TO_DB = False
 
 # -- Body-to-PDF gate ------------------------------------------------------
 
 # A body shorter than this is a stub (signature, forwarded header) rather than a
 # payment note, whatever else was extracted from it.
-MIN_BODY_PDF_CHARS = 200
+MIN_BODY_PDF_CHARS = 50
 
 # -- Payment notes ---------------------------------------------------------
 
