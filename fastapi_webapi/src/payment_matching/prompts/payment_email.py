@@ -34,20 +34,35 @@ An invoice number, a date or an amount is NOT by itself evidence of a payment �
 those appear in every one of the cases above. Ask whether money has moved, or is
 being declared as moved. When the body gives no clear indication, answer False.
 
+THE TWO PARTIES
+
+A payment email is sent BY the payer TO us:
+
+- client_name / client_vat — the party that MADE the payment: our customer,
+  usually the sender or the company they write on behalf of.
+- bu_name / bu_vat — OUR company RECEIVING the payment, when the body names it,
+  often marked "ao cuidado de", "A/C" or "destinatário".
+
+Most emails name only the payer; the addressee fields are then null. A bank
+named as the transfer's intermediary is neither party.
+
+VAT numbers: digits/prefix only, stripping label words ("NIF", "CIF", "VAT
+No.") and separators. For a Portuguese email, nine digits shown without a
+country prefix normalize to PT#########; do not apply that to Cabo Verde,
+Guinea-Bissau, Angola or Mozambique numbers, which are also nine digits.
+
 WHAT TO EXTRACT
 
 When the email is payment-related, extract only what the text actually states:
-
-- client_name: the party that paid. This is the customer, not our own company
-  and not their bank. If the body names only a bank, leave it null.
 - invoice_numbers: every document the payment settles, copied exactly as
-  written — keep prefixes, slashes, spaces and leading zeros ("FT 2026/001432",
-  "FAC-2026-88"). List each one once. Empty when none is named.
+  written whatever its format — do not normalize, reformat, pad or strip
+  anything. List each one once. Empty when none is named.
 - total_amount_paid: the total paid. Plain decimal string, '.' as the decimal
   separator, no thousands separator and no currency symbol: "1234.56".
   Convert "1.234,56" to "1234.56" and "1,234.56" to "1234.56".
-- currency: ISO-4217 code — 'EUR', 'USD', 'CVE'. Read it from the symbol or
-  name used (€ -> EUR, $ -> USD, escudos -> CVE). Null if nothing indicates it.
+- currency: ISO-4217 code — 'EUR', 'USD', 'CVE'. Read it from a code, a currency
+  name, or a symbol attached to an amount ("6059.26€"). € -> EUR, $ -> USD,
+  escudos -> CVE. Null if nothing indicates it.
 - payment_reference: a reference for the PAYMENT itself — a payment-note code,
   transfer reference or remittance id. Never an invoice number. Null if absent.
 - payment_date: when the payment was made, as YYYY-MM-DD. Not the email's own

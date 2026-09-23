@@ -33,15 +33,28 @@ A document listing invoice numbers is not a payment note unless it declares they
 have been paid. When the document is not a payment note, set is_payment_note
 false, leave every other field null and return no lines.
 
+THE TWO PARTIES
+
+A payment note is issued BY the payer and addressed TO us. Getting these the
+right way round is the single most important thing in this task:
+
+- client_name / client_vat — the party that MADE the payment: our customer,
+  the document's issuer. Usually the top header, logo or company address block.
+- bu_name / bu_vat — OUR company RECEIVING the payment: the addressee. Usually
+  marked "ao cuidado de", "A/C", "destinatário" or "Exmo(s). Senhor(es)".
+
+The addressee is NOT the payer, even when it is the party shown with a NIF/VAT
+number. A bank named as the transfer's intermediary is neither. When the
+document names only one company, that is the payer and the addressee fields are
+null.
+
 WHAT TO EXTRACT
 
-- payment_note_code: the note's own reference or document number. Not an invoice
-  number. Null if it carries none.
-- client_name: the party that paid — the customer, not our own company and not
-  their bank.
+- payment_note_code: the reference identifying the PAYMENT as a whole, appearing
+  once, often as "referente ao pagamento X". Never a settled document's number.
 - total_payment_note: the total the note declares paid.
-- currency: ISO-4217 code — 'EUR', 'USD', 'CVE'. Read it from the symbol or name
-  used (€ -> EUR, $ -> USD, escudos -> CVE).
+- currency: ISO-4217 code — 'EUR', 'USD', 'CVE'. Read it from a code, a currency
+  name, or a symbol attached to an amount ("6059.26€"). 
 - payment_date: when the payment was made, as YYYY-MM-DD.
 - lines: ONE ENTRY PER DOCUMENT the note settles, in the order they appear.
 
@@ -50,8 +63,8 @@ LINES
 Most payment notes settle several invoices at once. Read every row of the
 table, not just the first:
 
-- document_number: the invoice or document number, copied exactly as written —
-  keep prefixes, slashes, spaces and leading zeros.
+- document_number: the invoice or document number, copied exactly as written
+  whatever its format — do not normalize, reformat, pad or strip anything.
 - value_paid: the amount applied to THAT document, not the note's total.
 
 Rows that reduce the payment — a discount, withholding tax, retention
@@ -68,8 +81,8 @@ thousands separator and no currency symbol: "1234.56". Convert "1.234,56" to
 "-12.50".
 
 Report the figures exactly as printed. Do not add them up, reconcile them
-against the total, or correct anything that looks wrong — a mismatch is checked
-outside this step and is useful evidence.
+against the total, or correct anything that looks wrong: a document whose lines
+do not sum to its own total is a fact worth recording, not an error to fix.
 
 CONFIDENCE
 
