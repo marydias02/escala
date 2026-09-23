@@ -263,7 +263,6 @@ policy = {
     "Admin": {
         "documents": {"read", "update"},
         "processes": {"read"},
-        "runs": {"read", "create"},
         "suppliers": {"read"},
         "business_units": {"read"},
         "purchase_orders": {"read"},
@@ -271,7 +270,6 @@ policy = {
     "User": {
         "documents": {"read", "update"},
         "processes": {"read"},
-        "runs": {"read"},
         "suppliers": {"read"},
         "business_units": {"read"},
         "purchase_orders": {"read"},

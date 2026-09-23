@@ -227,18 +227,6 @@ def stub_search_service(app):
     return stub
 
 
-class _StubAirService:
-    async def upload_template(self, file_content: bytes) -> int:
-        return 1
-
-
-@pytest.fixture
-def stub_air_service(app):
-    from api.dependencies.services import get_air_service
-
-    app.dependency_overrides[get_air_service] = lambda: _StubAirService()
-
-
 @pytest.fixture
 def counting_httpx(monkeypatch, jwks, oidc_urls):
     """Replace `security.httpx.get` with a per-URL call counter over a fake provider."""

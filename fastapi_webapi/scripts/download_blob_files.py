@@ -18,18 +18,13 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 
-from azure.core.exceptions import ResourceNotFoundError  # noqa: E402
-from loguru import logger  # noqa: E402
+from azure.core.exceptions import ResourceNotFoundError
+from loguru import logger
 
-from utils.blob_storage import download_document_bytes, get_container_client  # noqa: E402
+from utils.blob_storage import download_document_bytes, get_container_client
 
 # Default keys, used when none are passed on the command line.
-KEYS = [
-    "processed_emails/2026/09/20260915-145715_Fatura n 48000001188_LOGISLINK/01_Fatura n 48000001188_LOGISLINK_001.pdf",
-    "processed_emails/2026/09/20260915-145715_Fatura n 48000001188_LOGISLINK/01_Fatura n 48000001188_LOGISLINK_002.pdf",
-    "processed_emails/2026/09/20260915-145715_Fatura n 48000001188_LOGISLINK/01_Fatura n 48000001188_LOGISLINK_003.pdf",
-    "processed_emails/2026/09/20260915-145715_Fatura n 48000001188_LOGISLINK/01_Fatura n 48000001188_LOGISLINK_004.pdf",
-]
+KEYS = ["processed_emails/2026/09/20260923-171842_GuestCentric_ Documentos em Aberto/01_0290_Aviso_202609_001.PDF"]
 
 DEFAULT_OUT_DIR = Path(__file__).resolve().parent.parent / "downloads"
 
