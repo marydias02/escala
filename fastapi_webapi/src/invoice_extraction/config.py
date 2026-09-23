@@ -22,9 +22,11 @@ from email_core.config import (
     SCANNED_COVERAGE_THRESHOLD,
     ZIP_CHUNK_SIZE,
 )
+from email_core.folders import MAX_FOLDER_NAME
 
 __all__ = [
     "COVERAGE_SCAN_PAGES",
+    "MAX_FOLDER_NAME",
     "MAX_ZIP_FILES",
     "MAX_ZIP_MEMBER_BYTES",
     "MAX_ZIP_TOTAL_BYTES",
@@ -68,9 +70,7 @@ WRITE_TO_DB = True
 # what would have been sent, leaving the mailbox untouched.
 EMAIL_ACTIONS = False
 
-# Windows caps a full path at 260 characters by default. Email subjects in the
-# sample set reach 111 characters, so folder names are truncated well short of it.
-MAX_FOLDER_NAME = 80
+# Folder-name bound is shared — see the `email_core.folders` import above.
 
 # -- Inbox sync (cron path) ------------------------------------------------
 # `email_pipeline.main` walks a Graph delta query over the inbox, records each
