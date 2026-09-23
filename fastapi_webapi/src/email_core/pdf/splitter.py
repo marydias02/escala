@@ -7,6 +7,7 @@ segmentation verifiable.
 
 import base64
 import io
+from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional, Protocol
@@ -79,7 +80,7 @@ def count_pages(pdf_bytes: bytes) -> int:
     return len(reader.pages)
 
 
-def validate_segmentation(documents: list[DocumentBoundary], total_pages: int) -> list[str]:
+def validate_segmentation(documents: Sequence[DocumentBoundary], total_pages: int) -> list[str]:
     """Check the VLM boundaries against the deterministic page count.
 
     Returns a list of human-readable problems (empty == clean coverage).
@@ -112,7 +113,9 @@ def validate_segmentation(documents: list[DocumentBoundary], total_pages: int) -
     return problems
 
 
-def split_pdf(pdf_bytes: bytes, base_filename: str, boundaries: list[DocumentBoundary]) -> list[SplitDocument]:
+def split_pdf(
+    pdf_bytes: bytes, base_filename: str, boundaries: Sequence[DocumentBoundary]
+) -> list[SplitDocument]:
     """Cut a source PDF into one child PDF per detected document boundary.
 
     Output names are always `<stem>_NNN.pdf`, including when the source turned out

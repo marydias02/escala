@@ -10,9 +10,9 @@ The span tree for one message:
       1-payment-email                       (LLM, body classification + extraction)
         ChatOpenAI                          (from autolog)
       body-pdf                              (CHAIN, deterministic, no LLM)
-      note:<attachment.pdf>                 (CHAIN, one per candidate attachment)
-        2-payment-note                      (LLM, multimodal)
-        3-note-check                        (CHAIN, deterministic, no LLM)
+      ingest:<attachment.pdf>               (CHAIN, one per attachment)
+        2-segmentation                      (LLM, boundaries only)
+      3-payment-note                        (LLM, multimodal, one per split PDF)
 """
 
 from typing import Optional
@@ -34,13 +34,14 @@ __all__ = [
     "EXPERIMENT_NAME",
     "MLFLOW_AVAILABLE",
     "STAGE_BODY_PDF",
-    "STAGE_NOTE_CHECK",
     "STAGE_PAYMENT_EMAIL",
     "STAGE_PAYMENT_NOTE",
+    "STAGE_SEGMENTATION",
     "flush",
     "is_enabled",
     "payment_email_summary",
     "payment_note_summary",
+    "segmentation_summary",
     "set_span_attributes",
     "set_trace_tags",
     "setup_tracing",
@@ -65,8 +66,8 @@ def setup_tracing(
 # unordered set of siblings.
 
 STAGE_PAYMENT_EMAIL = "1-payment-email"
-STAGE_PAYMENT_NOTE = "2-payment-note"
-STAGE_NOTE_CHECK = "3-note-check"
+STAGE_SEGMENTATION = "2-segmentation"
+STAGE_PAYMENT_NOTE = "3-payment-note"
 
 # Off the numbered path: rendering the body to PDF happens only when the body
 # carries note-grade information, so numbering it would imply a usual step.
@@ -89,6 +90,30 @@ def _field(confident) -> Optional[dict]:
         "value": confident.value,
         "confidence": confident.confidence,
         "evidence": getattr(confident, "evidence", None),
+    }
+
+
+def segmentation_summary(segmentation, problems: Optional[list] = None) -> dict:
+    """A PaymentSegmentation as span output: the boundaries and their confidence.
+
+    Paired with the coverage `problems`: a gap loses a document and an overlap
+    duplicates one, so the boundaries are only meaningful next to the check run
+    against them.
+    """
+    if segmentation is None:
+        return {"segmentation": None}
+
+    return {
+        "documents": [
+            {
+                "start_page": boundary.start_page,
+                "end_page": boundary.end_page,
+                "confidence": boundary.confidence,
+            }
+            for boundary in segmentation.documents
+        ],
+        "count": len(segmentation.documents),
+        "problems": problems or [],
     }
 
 
