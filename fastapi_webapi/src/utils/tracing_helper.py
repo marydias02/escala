@@ -37,6 +37,16 @@ except ImportError:  # pragma: no cover - exercised only when mlflow is absent
     MLFLOW_AVAILABLE = False
 
 
+# Not-installed modules MLflow tries to import on every span/request, full dotted paths included
+_ABSENT_OPTIONAL_MODULES = (
+    "pyspark",
+    "dbruntime",
+    "dbruntime.databricks_repl_context",
+    "llama_index",
+    "llama_index.core.base.response.schema",
+    "llama_index.core.chat_engine.types",
+)
+
 # True once setup_tracing() has successfully connected. Every helper below checks
 # this, so an un-configured process silently produces no traces.
 _ENABLED = False
@@ -134,8 +144,9 @@ def setup_tracing(experiment_name: str, tracking_uri: Optional[str] = None) -> b
         print("ℹ️  MLFLOW_TRACKING_URI not set — tracing disabled")
         return False
 
-    # Marks pyspark as absent so MLflow's per-span import check can't deadlock threads
-    sys.modules.setdefault("pyspark", None)
+    # Marks MLflow's probed optional modules absent so threads can't deadlock on their imports
+    for module_name in _ABSENT_OPTIONAL_MODULES:
+        sys.modules.setdefault(module_name, None)
 
     try:
         mlflow.set_tracking_uri(tracking_uri)
@@ -149,6 +160,8 @@ def setup_tracing(experiment_name: str, tracking_uri: Optional[str] = None) -> b
         # (`utils.llm_factory`), so this — not gemini.autolog() — is what
         # produces the LLM spans, with prompts, responses and token usage.
         mlflow.langchain.autolog()
+        # Avoids tracing every call twice (Gemini SDK spans under the LangChain ones)
+        mlflow.gemini.autolog(disable=True)
     except Exception as exc:  # noqa: BLE001 - tracing must never break the pipeline
         print(f"⚠️  MLflow tracing unavailable ({type(exc).__name__}: {exc}) — continuing without it")
         return False

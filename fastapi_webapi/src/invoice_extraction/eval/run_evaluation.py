@@ -8,6 +8,7 @@ failed field is then one click away from the prompt that produced it.
 """
 
 import argparse
+import os
 
 from mlflow.genai import evaluate
 from mlflow.genai.datasets import search_datasets
@@ -16,6 +17,9 @@ from invoice_extraction.eval.config import DATASET_NAME, connect
 from invoice_extraction.eval.predict import predict_extraction
 from invoice_extraction.eval.scorers import ALL_SCORERS
 from invoice_extraction.tracing import flush, setup_tracing
+
+# Parallel documents per run; read by mlflow.genai.evaluate, a shell value overrides it
+MAX_WORKERS = 5
 
 
 def parse_args() -> argparse.Namespace:
@@ -45,6 +49,7 @@ def select_records(dataset, pdf: str) -> list[dict]:
 
 def main() -> None:
     args = parse_args()
+    os.environ.setdefault("MLFLOW_GENAI_EVAL_MAX_WORKERS", str(MAX_WORKERS))
     connect()
     setup_tracing()
 
