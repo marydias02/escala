@@ -1,0 +1,8 @@
+[
+  {"document_number": "2400000001", "posting_date": "24/01/2026", "document": "5634930283", "net_amount": 100, "paid_amount": 100},
+  {"document_number": "2400000002", "posting_date": "24/02/2026", "document": "5634930284", "net_amount": 200, "paid_amount": 200},
+  {"document_number": "2400000003", "posting_date": "24/09/2026", "document": "5634930285", "net_amount": 500, "paid_amount": 500},
+  {"document_number": "2400000004", "posting_date": "24/09/2026", "document": "5634930286", "net_amount": 200, "paid_amount": 200},
+  {"document_number": "2400000005", "posting_date": "24/09/2026", "document": "5634930287", "net_amount": 200, "paid_amount": 100},
+  {"document_number": "2400000006", "posting_date": "24/09/2026", "document": "5634930288", "net_amount": 100, "paid_amount": 0}
+]
