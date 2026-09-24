@@ -922,7 +922,7 @@ class EmailPipeline:
         with span(f"email:{source}", "CHAIN") as email_span:
             email_span.set_inputs({"source": source})
             # `model` makes a model swap a filter dimension.
-            set_trace_tags(email=source, model=self.extraction.llm_factory.openai_model)
+            set_trace_tags(email=source, model=self.extraction.llm_factory.model)
 
             # --- INGEST ---------------------------------------------------------
             # Threaded: sync and LLM-bound, so it would otherwise pin the loop.

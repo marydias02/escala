@@ -1,16 +1,49 @@
 """
-Clean LLM Factory for creating chat models and embeddings.
-Supports both OpenAI with automatic provider detection.
+Clean LLM Factory for creating chat models.
+Uses Google Vertex AI (Gemini), authenticated with a service account.
 """
 
-from langchain_core.embeddings import Embeddings
+from typing import Type
+
+from google.oauth2 import service_account
 from langchain_core.language_models import BaseChatModel
-from langchain_openai import (
-    ChatOpenAI,
-    OpenAIEmbeddings,
-)
+from langchain_core.runnables import Runnable
+from langchain_google_genai import ChatGoogleGenerativeAI
 from pydantic import BaseModel
-from typing import Optional, Type
+
+SCOPES = ["https://www.googleapis.com/auth/cloud-platform"]
+
+# Service-account JSON keys, read from `settings.GOOGLE_SA_<KEY>`
+SERVICE_ACCOUNT_KEYS = (
+    "type",
+    "project_id",
+    "private_key_id",
+    "private_key",
+    "client_email",
+    "client_id",
+    "auth_uri",
+    "token_uri",
+    "auth_provider_x509_cert_url",
+    "client_x509_cert_url",
+    "universe_domain",
+)
+
+
+def service_account_info(settings) -> dict[str, str]:
+    """Build the service-account JSON dict from the GOOGLE_SA_* settings."""
+    info: dict[str, str] = {}
+    for key in SERVICE_ACCOUNT_KEYS:
+        value = getattr(settings, f"GOOGLE_SA_{key.upper()}", None)
+        if not value:
+            raise KeyError(f"Missing required setting: GOOGLE_SA_{key.upper()}")
+        info[key] = value
+
+    # Env stores the key body only, with escaped newlines
+    body = info["private_key"].replace("\\n", "\n").strip()
+    if not body.startswith("-----BEGIN"):
+        body = f"-----BEGIN PRIVATE KEY-----\n{body}\n-----END PRIVATE KEY-----"
+    info["private_key"] = f"{body}\n"
+    return info
 
 
 class LLMFactory:
@@ -23,34 +56,35 @@ class LLMFactory:
 
         # Direct instantiation
         factory = LLMFactory(
-            use_azure=False,
-            openai_api_key="sk-...",
-            openai_model="gpt-5-mini"
+            credentials=creds,
+            project="my-gcp-project",
+            model="gemini-2.5-flash",
         )
 
         # Create models
         chat_model = factory.create_chat_model()
-        embeddings = factory.create_embeddings()
         structured_llm = factory.create_structured_llm(MySchema)
     """
 
     def __init__(
         self,
-        openai_api_key: Optional[str] = None,
-        openai_api_base: Optional[str] = None,
-        openai_model: str = None,
-        embeddings_model: str = None,
+        credentials: service_account.Credentials | None = None,
+        project: str | None = None,
+        location: str = "global",
+        model: str | None = None,
         temperature: float = 0.0,
-        max_tokens: int = 4000,
+        max_tokens: int = 16000,
         timeout: int = 60,
+        max_retries: int = 4,
     ):
-        self.openai_api_key = openai_api_key
-        self.openai_api_base = openai_api_base
-        self.openai_model = openai_model
-        self.embeddings_model = embeddings_model
+        self.credentials = credentials
+        self.project = project
+        self.location = location
+        self.model = model
         self.temperature = temperature
         self.max_tokens = max_tokens
         self.timeout = timeout
+        self.max_retries = max_retries
 
     @classmethod
     def from_settings(cls, settings) -> "LLMFactory":
@@ -68,73 +102,55 @@ class LLMFactory:
             >>> factory = LLMFactory.from_settings(settings)
             >>> chat_model = factory.create_chat_model()
         """
+        info = service_account_info(settings)
+        credentials = service_account.Credentials.from_service_account_info(info, scopes=SCOPES)
         return cls(
-            openai_api_key=settings.OPENAI_API_KEY,
-            openai_api_base=settings.OPENAI_API_BASE,
-            openai_model=settings.OPENAI_MODEL,
-            embeddings_model=settings.EMBEDDINGS_MODEL,
+            credentials=credentials,
+            project=info["project_id"],
+            location=settings.GOOGLE_LOCATION,
+            model=settings.LLM_MODEL,
             temperature=settings.LLM_TEMPERATURE,
             max_tokens=settings.LLM_MAX_TOKENS,
             timeout=settings.LLM_TIMEOUT,
+            max_retries=settings.LLM_MAX_RETRIES,
         )
 
     def create_chat_model(
         self,
-        model: Optional[str] = None,
-        temperature: Optional[float] = None,
-        max_tokens: Optional[int] = None,
+        model: str | None = None,
+        temperature: float | None = None,
+        max_tokens: int | None = None,
         streaming: bool = False,
         **kwargs,
     ) -> BaseChatModel:
         """
         Create a chat model instance.
         """
-        model = model or self.openai_model
+        model = model or self.model
         temperature = temperature if temperature is not None else self.temperature
         max_tokens = max_tokens or self.max_tokens
 
-        return ChatOpenAI(
+        return ChatGoogleGenerativeAI(
             model=model,
+            vertexai=True,
+            project=self.project,
+            location=self.location,
+            credentials=self.credentials,
             temperature=temperature,
-            max_tokens=max_tokens,
+            max_output_tokens=max_tokens,
             timeout=self.timeout,
-            api_key=self.openai_api_key,
-            base_url=self.openai_api_base,
+            max_retries=self.max_retries,
             streaming=streaming,
             **kwargs,
-        )
-
-    def create_embeddings(
-        self,
-        model: Optional[str] = None,
-    ) -> Embeddings:
-        """
-        Create an embeddings model instance.
-
-        Args:
-            model: Embeddings model name (uses default if not provided)
-
-        Returns:
-            OpenAIEmbeddings 
-        Example:
-            >>> embeddings = factory.create_embeddings()
-            >>> vectors = await embeddings.aembed_documents(["Hello", "World"])
-        """
-        model = model or self.embeddings_model
-
-        return OpenAIEmbeddings(
-            model=model,
-            api_key=self.openai_api_key,
-            base_url=self.openai_api_base,
         )
 
     def create_structured_llm(
         self,
         output_schema: Type[BaseModel],
-        model: Optional[str] = None,
-        temperature: Optional[float] = None,
+        model: str | None = None,
+        temperature: float | None = None,
         **kwargs,
-    ) -> BaseChatModel:
+    ) -> Runnable:
         """
         Create a chat model with structured output.
 
@@ -152,4 +168,4 @@ class LLMFactory:
             temperature=temperature,
             **kwargs,
         )
-        return chat_model.with_structured_output(output_schema, method="function_calling")
+        return chat_model.with_structured_output(output_schema)

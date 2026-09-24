@@ -91,16 +91,7 @@ def document_content_parts(doc, *, scanned: bool) -> list[dict]:
             return [{"type": "image_url", "image_url": {"url": url}} for url in urls]
         logger.warning(f"{doc.filename}: detected as scanned but rendered no pages; sending PDF")
 
-    return [
-        {
-            "type": "file",
-            "file": {
-                "file_data": doc.as_data_url(),
-                "filename": doc.filename,
-                "format": "application/pdf",
-            },
-        }
-    ]
+    return [{"type": "file", "base64": doc.encoded_pdf, "mime_type": "application/pdf"}]
 
 
 def render_page_data_urls(

@@ -21,6 +21,7 @@ Stage names and the span-payload summaries belong to each use case, in its own
 import functools
 import os
 import re
+import sys
 from typing import Callable, Optional
 
 # MLflow is an optional dependency: import failure disables tracing rather than
@@ -60,10 +61,10 @@ _ENABLED = False
 _DATA_URI = re.compile(r"data:[\w.+-]+/[\w.+-]+;base64,[A-Za-z0-9+/=]{200,}")
 
 
-# The two message-part keys our prompts use to carry file bytes: `file_data`
-# for a whole PDF, `url` for a rendered page image. Cleared unconditionally,
-# and before MLflow's autolog runs.
-_FILE_BYTES_KEYS = {"file_data", "url"}
+# The message-part keys our prompts use to carry file bytes: `base64` for a
+# whole PDF, `url` for a rendered page image, `file_data` for the legacy
+# OpenAI file part. Cleared unconditionally, and before MLflow's autolog runs.
+_FILE_BYTES_KEYS = {"base64", "file_data", "url"}
 
 
 def _redact(obj, parent_key: Optional[str] = None):
@@ -133,6 +134,9 @@ def setup_tracing(experiment_name: str, tracking_uri: Optional[str] = None) -> b
         print("ℹ️  MLFLOW_TRACKING_URI not set — tracing disabled")
         return False
 
+    # Marks pyspark as absent so MLflow's per-span import check can't deadlock threads
+    sys.modules.setdefault("pyspark", None)
+
     try:
         mlflow.set_tracking_uri(tracking_uri)
         mlflow.set_experiment(experiment_name)
@@ -141,8 +145,8 @@ def setup_tracing(experiment_name: str, tracking_uri: Optional[str] = None) -> b
         # spans, so no un-redacted span can be exported.
         mlflow.tracing.configure(span_processors=[_strip_base64])
 
-        # Our LLM calls all go through langchain's ChatOpenAI
-        # (`utils.llm_factory`), so this — not litellm.autolog() — is what
+        # Our LLM calls all go through langchain's ChatGoogleGenerativeAI
+        # (`utils.llm_factory`), so this — not gemini.autolog() — is what
         # produces the LLM spans, with prompts, responses and token usage.
         mlflow.langchain.autolog()
     except Exception as exc:  # noqa: BLE001 - tracing must never break the pipeline

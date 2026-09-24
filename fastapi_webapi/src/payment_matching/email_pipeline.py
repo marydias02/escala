@@ -116,7 +116,7 @@ class PaymentEmailPipeline:
 
         with span(f"payment-email:{source}", "CHAIN") as message_span:
             message_span.set_inputs({"source": source, "subject": email.subject})
-            set_trace_tags(message=source, model=self.notes.llm_factory.openai_model)
+            set_trace_tags(message=source, model=self.notes.llm_factory.model)
 
             # --- INGEST ---------------------------------------------------------
             # Threaded: sync and LLM-bound, so it would otherwise pin the loop.

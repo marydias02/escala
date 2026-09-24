@@ -63,13 +63,6 @@ def build_segmentation_human_message(filename: str, encoded_pdf: str, total_page
                     f"All page numbers must be between 1 and {total_pages}."
                 ),
             },
-            {
-                "type": "file",
-                "file": {
-                    "file_data": f"data:application/pdf;base64,{encoded_pdf}",
-                    "filename": filename,
-                    "format": "application/pdf",
-                },
-            },
+            {"type": "file", "base64": encoded_pdf, "mime_type": "application/pdf"},
         ]
     )

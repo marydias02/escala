@@ -21,10 +21,6 @@ class LoadedDocument:
     path: Path
     encoded_pdf: str
 
-    def as_data_url(self) -> str:
-        """The base64 payload in the data-URL form the chat models expect."""
-        return f"data:application/pdf;base64,{self.encoded_pdf}"
-
 
 def load_document(pdf_path: Path) -> LoadedDocument:
     """Read a single-document PDF from disk and base64-encode it for the LLM."""

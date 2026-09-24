@@ -9,7 +9,7 @@ The span tree for one email:
     email:<source>                          (CHAIN, the trace root)
       ingest:<attachment.pdf>               (CHAIN, one per attachment)
         1-chunking                          (LLM)
-          ChatOpenAI                        (from autolog)
+          ChatGoogleGenerativeAI            (from autolog)
       extract:<document.pdf>                (CHAIN, one per split document)
         2-classification                    (LLM)
         3-parsing                           (PARSER, deterministic, no LLM)
@@ -24,7 +24,7 @@ The span tree for one email:
       6-decision                            (CHAIN, pure business rules)
 
 The numbered STAGE_* spans exist because `mlflow.langchain.autolog()` names its
-spans after the LangChain class it intercepted (`ChatOpenAI`,
+spans after the LangChain class it intercepted (`ChatGoogleGenerativeAI`,
 `RunnableSequence`, ...), never after the pipeline step. Those names cannot be
 changed — `LiveSpan.name` has no setter — and a span processor can only mutate a
 span, not drop it. So the readable graph is built by wrapping each stage in a
