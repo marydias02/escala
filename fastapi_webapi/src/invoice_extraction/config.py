@@ -55,12 +55,12 @@ MANIFEST_NAME = "email_content.json"
 # How many messages fetch_inbox_emails pulls from Graph per run (the `$top` on
 # the message list request). `email_pipeline --test` only — the cron run pages a
 # delta query instead and never uses this.
-DEFAULT_FETCH_LIMIT = 100
+DEFAULT_FETCH_LIMIT = 1
 
 # How much LLM work one run does: at most N emails are processed per run (None =
 # every claimable row). Arrivals above it build a backlog in `email_messages`
 # that drains on quieter runs; it is a throughput cap, not a fetch limit.
-INGEST_LIMIT: int | None = 100
+INGEST_LIMIT: int | None = 1
 
 # Persist results to Postgres. Off lets the pipeline be exercised (and traced)
 # with no database running, and keeps test runs out of fct_processes.
@@ -100,7 +100,7 @@ RUN_LOCK_KEY = 3_141_592
 EXTRACTION_MAX_WORKERS = 3
 
 # How many email threads run concurrently; multiplies with EXTRACTION_MAX_WORKERS.
-EMAIL_MAX_WORKERS = 7
+EMAIL_MAX_WORKERS = 4
 
 # Deterministic parser settings, matching the notebook.
 PARSER_KWARGS = {

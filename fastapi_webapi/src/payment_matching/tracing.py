@@ -8,7 +8,7 @@ The span tree for one message:
 
     payment-email:<source>                  (CHAIN, the trace root)
       1-payment-email                       (LLM, body classification + extraction)
-        ChatOpenAI                          (from autolog)
+        ChatGoogleGenerativeAI              (from autolog)
       body-pdf                              (CHAIN, deterministic, no LLM)
       ingest:<attachment.pdf>               (CHAIN, one per attachment)
         2-segmentation                      (LLM, boundaries only)
