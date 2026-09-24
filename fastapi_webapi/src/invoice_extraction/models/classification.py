@@ -2,7 +2,7 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
-from invoice_extraction.models.common import Confident
+from email_core.confidence import Confident
 
 
 class DocumentClassification(BaseModel):
@@ -43,16 +43,18 @@ class DocumentClassification(BaseModel):
 
     Documents "Anexos" (Annexes) are considered other.
 
-    Settlement/reconciliation statements (Liquidação, IATA CASS, statement of
-    account) are to be considered as invoice, when they actually settle a
-    balance between two parties.
+    Settlement/reconciliation statements (statement of account and similar)
+    are to be considered as invoice, when they actually settle a balance
+    between two parties.
 
-    RESUMO VENDA DE CARGA are other, whatever else the document carries. They
-    report an agent's own sales to the airlines, so there is nothing billed to
-    us. These arrive bundled behind a CASS/IATA cover page full of settlement
-    and billing-period wording: that cover page describes the scheme, not this
-    document. Where "RESUMO VENDA DE CARGA" appears anywhere in the document,
-    the type is other and the settlement rule above does not apply.
+    IATA CASS documents — decide on the header title only:
+    - "LIQUIDAÇÃO DE VENDAS DE CARGAS/AJUSTES" is invoice: one airline settled
+      against the agent, with its own DOCUMENTO NO. Its "RESUMO" totals page
+      is part of the same invoice.
+    - "RESUMO VENDA DE CARGA - AGENTE" is other: the agent's sales across many
+      airlines, one row each, usually behind a "CASS Output for billing
+      period" cover page.
+    A bare "RESUMO" heading is not the RESUMO VENDA DE CARGA title.
 
     billing_document is a demand for payment issued under its own collection
     reference rather than an invoice number — Documento Único de Cobrança (DUC)

@@ -1,3 +1,10 @@
+"""The email shapes every use case reads: attachment, loaded message, manifest.
+
+Moved verbatim from `invoice_extraction.models.email`, which now re-exports
+them. Nothing here is invoice-specific: a payment email is loaded into the same
+`LoadedEmail` and written out with the same `EmailContent`.
+"""
+
 from dataclasses import dataclass, field
 
 from pydantic import BaseModel, Field
@@ -19,9 +26,8 @@ class EmailAttachment:
 class LoadedEmail:
     """A parsed email, before anything has been written to disk.
 
-    Produced by the loaders in `invoice_extraction.invoice_utils.outlook_loader`;
-    consumed by the ingestion pipeline, which is what decides where the bytes
-    land.
+    Produced by the Graph loaders; consumed by a use case's ingestion pipeline,
+    which is what decides where the bytes land.
     """
 
     sender_email: str

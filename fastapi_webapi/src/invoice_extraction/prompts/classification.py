@@ -1,7 +1,7 @@
 from langchain_core.messages import HumanMessage, SystemMessage
 
-from invoice_extraction.invoice_utils.documents import InvoiceDocument
-from invoice_extraction.invoice_utils.page_mode import document_content_parts
+from email_core.documents import LoadedDocument
+from email_core.pdf.page_mode import document_content_parts
 
 CLASSIFICATION_SYSTEM_PROMPT = """
 You are an expert document understanding system specialized in invoices and accounting documents.
@@ -36,10 +36,23 @@ insurance certificates, purchase orders, etc.).
 
 Settlement and reconciliation statements are considered as invoices. They settle
 a period between two parties instead of billing one sale, and carry an
-invoice-like layout. This does NOT extend to a RESUMO VENDA DE CARGA, which
-reports an agent's own sales and is always 'other': it arrives behind a
-CASS/IATA cover page whose settlement and billing-period wording describes the
-scheme, not the document. Where that title appears anywhere, classify as other.
+invoice-like layout.
+
+IATA CASS (Cargo Accounts Settlement System) documents come in two kinds. Tell
+them apart by the document's own title, printed top-centre in the header box:
+
+- "LIQUIDAÇÃO DE VENDAS DE CARGAS/AJUSTES" -> invoice. It settles ONE airline
+  (C.AÉREA, with its own VAT) against the agent, lists air waybills, and has
+  its own "DOCUMENTO NO" (e.g. PT-406-005711), which is its document_number.
+  Its later page carries a "RESUMO" totals block: that block is part of the
+  same invoice and does NOT make it a RESUMO VENDA DE CARGA.
+- "RESUMO VENDA DE CARGA - AGENTE" -> other. It summarises the agent's sales
+  across MANY airlines, one row each, and its "DOCUMENTO NO" column points to
+  each airline's own Liquidação. It usually follows an English cover page
+  ("CASS Output for billing period ...") whose billing wording describes the
+  scheme, not the document.
+
+Decide on the header title only. A bare "RESUMO" heading is not that title.
 
 A document demanding payment under its own collection reference rather than an
 invoice number (Documento Único de Cobrança and similar) is a billing_document.
@@ -78,7 +91,7 @@ DOCUMENT NUMBER
 
 Also read document_number: the document's OWN identifying number, as assigned by
 the supplier. Labels include Invoice No, Invoice Number, Fatura N.º, FT,
-Receipt No, Recibo N.º., NC, Credit Note.
+Receipt No, Recibo N.º., NC, Credit Note, Documento No.
 
 Read it on EVERY document, whatever its type or state — a proforma, a copy and a cancelled document all
 carry a number, and those are precisely the cases the match depends on.
@@ -143,7 +156,7 @@ a lower-confidence classification honestly than to guess.
 CLASSIFICATION_SYSTEM_MESSAGE = SystemMessage(content=CLASSIFICATION_SYSTEM_PROMPT)
 
 
-def build_classification_human_message(doc: InvoiceDocument, *, scanned: bool = False) -> HumanMessage:
+def build_classification_human_message(doc: LoadedDocument, *, scanned: bool = False) -> HumanMessage:
     """Build the classification HumanMessage for a single (already segmented) document.
 
     A scanned document is sent as page images rather than as the PDF — see

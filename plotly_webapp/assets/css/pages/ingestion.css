@@ -1,0 +1,11 @@
+.ingestion__container { display: flex; flex-direction: column; gap: var(--spacing-24); margin-bottom: var(--spacing-40); }
+.ingestion__top_section { width: 100%; display: flex; justify-content: space-between; align-items: flex-end; }
+.ingestion__filters { display: flex; justify-content: space-between; align-items: flex-end; gap: var(--spacing-24); }
+.ingestion__account-filter { width: 280px; }
+.ingestion__account-filter label { display: block; margin-bottom: var(--spacing-6); color: var(--text-icon-primary); font-size: var(--font-size-sm); }
+.ingestion__updated_section { color: var(--text-icon-secondary); font-weight: normal; margin: 0; }
+.ingestion__upload { display: flex; align-items: center; justify-content: center; min-height: 150px; padding: var(--spacing-24); border: 2px dashed var(--border-light); border-radius: var(--border-radius-md); background: var(--surface-lightest); color: var(--text-icon-secondary); text-align: center; cursor: pointer; }
+.ingestion__upload:hover { border-color: var(--primary-color-500); background: var(--surface-page-background); }
+.ingestion__table-section { margin-top: var(--spacing-24); }
+.ingestion__submit-wrapper { display: flex; justify-content: flex-end; margin-top: var(--spacing-16); }
+@media (max-width: 1024px) { .ingestion__filters { align-items: stretch; flex-direction: column; gap: var(--spacing-12); } .ingestion__account-filter { width: 100%; } }

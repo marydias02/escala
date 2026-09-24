@@ -58,6 +58,8 @@ Thumbs.db
 **/invoice_extraction/docs/*.pdf
 **/invoice_extraction/docs/*
 **/downloads/*
+**/payment_matching/docs/*.pdf
+**/payment_matching/docs/*
 
 # ...except the evaluation set: the labels and the documents they describe are
 # the eval dataset, and hand-labelling them is work that must survive a clone.

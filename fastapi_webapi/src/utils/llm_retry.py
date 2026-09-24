@@ -6,7 +6,7 @@ from langchain_core.runnables import Runnable
 from loguru import logger
 from pydantic import ValidationError
 
-from invoice_extraction.tracing import set_span_attributes
+from utils.tracing_helper import set_span_attributes
 
 # Parse failures we want to retry (prose instead of JSON), as opposed to
 # transport/HTTP errors which won't improve on a plain retry.
@@ -41,6 +41,9 @@ def invoke_with_retry[T](
         logger.info(f"LLM call → {stage}")
     try:
         result = structured_llm.invoke(messages)
+        # Gemini returns None on MAX_TOKENS/SAFETY stops instead of raising
+        if result is None:
+            raise OutputParserException("Empty structured output")
     except PARSE_ERRORS as exc:
         set_span_attributes(retried=True, retry_reason=f"{type(exc).__name__}: {exc}")
         if stage:

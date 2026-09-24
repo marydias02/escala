@@ -2,17 +2,9 @@ from typing import Annotated
 
 from fastapi import Depends
 
-from api.services.air_example import AirExampleService
 from api.services.extraction_service import ExtractionService
 from api.services.search_service import SearchService
 from api.services.validation_service import ValidationService
-
-
-async def get_air_service() -> AirExampleService:
-    return AirExampleService(app_id=123)
-
-
-AirExampleServiceDependency = Annotated[AirExampleService, Depends(get_air_service)]
 
 
 async def get_extraction_service() -> ExtractionService:

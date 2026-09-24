@@ -9,7 +9,7 @@ from typing import List, Tuple
 import fitz  # PyMuPDF
 from pypdf import PdfReader
 
-from invoice_extraction.invoice_utils.pdf_ocr import ocr_page
+from email_core.pdf.ocr import ocr_page
 
 PDF_LAYOUT_WIDTH_CHARS = 200     # increase if columns collide 
 PDF_LAYOUT_LINE_Y_TOL = 4     # points; increase if a single line splits 

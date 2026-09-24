@@ -7,6 +7,7 @@ requires-python = ">=3.12"
 dependencies = [
     # Base dependencies
     "python-dotenv>=1.2.1",
+    "pydantic-settings>=2.0",
     "loguru>=0.7.3",
     "fastapi>=0.115.0",
     "uvicorn>=0.38.0",
@@ -17,8 +18,6 @@ dependencies = [
     "asyncpg>=0.31.0",
     # Security dependencies
     "python-jose>=3.5.0",
-    # LTP Labs dependencies
-    "airpy>=3",
     # Uncategorized dependencies
     "langchain>=1.3.12",
     "langchain-openai>=1.3.4",
@@ -34,6 +33,8 @@ dependencies = [
     "azure-storage-blob>=12.30.0",
     "rapidfuzz>=3.14.1",
     "onnxruntime>=1.29.0",
+    "langchain-google-genai>=4",
+    "google-auth>=2.56.2",
 ]
 
 [dependency-groups]
@@ -47,17 +48,25 @@ dev = [
     "ruff>=0.14.3",
 ]
 
-[tool.uv.sources]
-airpy = { index = "ltpypi" }
-
-[[tool.uv.index]]
-name = "ltpypi"
-url = "https://git.ltplabs.net/api/v4/projects/344/packages/pypi/simple"
-explicit = true
-
 [build-system]
 requires = ["uv_build>=0.9.6,<0.10.0"]
 build-backend = "uv_build"
+
+# Ship every package under src/, not just the one matching the project name.
+[tool.uv.build-backend]
+module-root = "src"
+module-name = [
+    "api",
+    "config",
+    "email_core",
+    "invoice_extraction",
+    "lakehouse_etl",
+    "non_conformities_resolution",
+    "payment_matching",
+    "utils",
+]
+namespace = false
+
 [tool.pytest.ini_options]
 pythonpath = ["src"]
 

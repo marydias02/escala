@@ -1,0 +1,110 @@
+[
+  {
+    "account_id": "ACC-1001",
+    "scope": "Contas a Receber",
+    "trans_id": 1,
+    "trans_date": "24/09/2026",
+    "description": "SEPA AT/12394 - 50192283",
+    "credit_debit": 400,
+    "proc_date": "24/09/2026",
+    "val_date": "",
+    "decision": "Emitir Recibo",
+    "status": "Em Validação"
+  },
+  {
+    "account_id": "ACC-1001",
+    "scope": "Tesouraria",
+    "trans_id": 2,
+    "trans_date": "24/09/2026",
+    "description": "SEPA AT/12334",
+    "credit_debit": 40,
+    "proc_date": "24/09/2026",
+    "val_date": "24/09/2026",
+    "decision": "T",
+    "status": "Finalizado"
+  },
+  {
+    "account_id": "ACC-1001",
+    "scope": "Tesouraria",
+    "trans_id": 3,
+    "trans_date": "24/09/2026",
+    "description": "SEPA AT/1238 - ACERTO",
+    "credit_debit": -10,
+    "proc_date": "24/09/2026",
+    "val_date": "",
+    "decision": "Fora de Âmbito",
+    "status": "Em Validação"
+  },
+  {
+    "account_id": "ACC-1001",
+    "scope": "Contas a Receber",
+    "trans_id": 4,
+    "trans_date": "24/09/2026",
+    "description": "SEPA AT26262 - LOGISLINK",
+    "credit_debit": 1100,
+    "proc_date": "24/09/2026",
+    "val_date": "",
+    "decision": "Requer NP",
+    "status": "Em Validação"
+  },
+  {
+    "account_id": "ACC-1001",
+    "scope": "Contas a Receber",
+    "trans_id": 5,
+    "trans_date": "24/09/2026",
+    "description": "SEPA AT26e2 - LIQUIDAC",
+    "credit_debit": 10000,
+    "proc_date": "24/09/2026",
+    "val_date": "",
+    "decision": "Requer NP",
+    "status": "A aguardar NP"
+  },
+  {
+    "account_id": "ACC-1001",
+    "scope": "Contas a Receber",
+    "trans_id": 6,
+    "trans_date": "24/09/2026",
+    "description": "SEPA AT12746",
+    "credit_debit": 5000,
+    "proc_date": "24/09/2026",
+    "val_date": "",
+    "decision": "A definir",
+    "status": "Em Processamento"
+  },
+  {
+    "account_id": "ACC-2002",
+    "scope": "Contas a Receber",
+    "trans_id": 1,
+    "trans_date": "25/09/2026",
+    "description": "SEPA AT27301 - MARITIME",
+    "credit_debit": 2200,
+    "proc_date": "25/09/2026",
+    "val_date": "",
+    "decision": "Requer NP",
+    "status": "Em Validação"
+  },
+  {
+    "account_id": "ACC-2002",
+    "scope": "Contas a Receber",
+    "trans_id": 2,
+    "trans_date": "25/09/2026",
+    "description": "SEPA AT27412 - SERVICOS",
+    "credit_debit": 8500,
+    "proc_date": "25/09/2026",
+    "val_date": "",
+    "decision": "Requer NP",
+    "status": "A aguardar NP"
+  },
+  {
+    "account_id": "ACC-2002",
+    "scope": "Contas a Receber",
+    "trans_id": 3,
+    "trans_date": "25/09/2026",
+    "description": "SEPA AT27509",
+    "credit_debit": 3200,
+    "proc_date": "25/09/2026",
+    "val_date": "",
+    "decision": "A definir",
+    "status": "Em Processamento"
+  }
+]

@@ -2,17 +2,17 @@ from typing import cast
 
 from langchain_core.language_models import BaseChatModel
 
-from invoice_extraction.invoice_utils.documents import InvoiceDocument
-from invoice_extraction.invoice_utils.llm_retry import invoke_with_retry
+from email_core.documents import LoadedDocument
 from invoice_extraction.models import DocumentClassification
 from invoice_extraction.prompts import (
     CLASSIFICATION_SYSTEM_MESSAGE,
     build_classification_human_message,
 )
 from invoice_extraction.tracing import STAGE_CLASSIFICATION, classification_summary, span
+from utils.llm_retry import invoke_with_retry
 
 
-def classify_document(llm: BaseChatModel, doc: InvoiceDocument, *, scanned: bool = False) -> DocumentClassification:
+def classify_document(llm: BaseChatModel, doc: LoadedDocument, *, scanned: bool = False) -> DocumentClassification:
     """Classify a single document: accounting type + legal state.
 
     `scanned` routes the document to the vision path: the API extracts a PDF's

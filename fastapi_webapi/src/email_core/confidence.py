@@ -1,3 +1,10 @@
+"""Confidence/evidence wrappers shared by every extraction schema.
+
+Moved verbatim from `invoice_extraction.models.common`, which now re-exports
+them. Both use cases state extracted values the same way, so a reviewer reads
+one convention rather than two.
+"""
+
 from pydantic import BaseModel, Field
 
 
