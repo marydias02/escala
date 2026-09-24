@@ -1,6 +1,6 @@
 from pydantic import BaseModel, Field, model_validator
 
-from invoice_extraction.models.common import Confident, drop_empty_confident_fields
+from email_core.confidence import Confident, drop_empty_confident_fields
 
 
 class InvoiceData(BaseModel):

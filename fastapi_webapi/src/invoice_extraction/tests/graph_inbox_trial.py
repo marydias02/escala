@@ -21,25 +21,23 @@ import asyncio
 import httpx
 from loguru import logger
 
-from config.settings import settings
-from invoice_extraction.invoice_utils.outlook_loader import fetch_inbox_emails
-from utils.graph_auth import GRAPH_BASE, get_graph_token, graph_user_path
+from email_core.graph_client import GraphMailboxClient
+from invoice_extraction.mailbox import invoice_mailbox
 
 FETCH_LIMIT = 1
 
 
-async def _diagnose() -> None:
-    mailbox = settings.GRAPH_MAILBOX
-    path = graph_user_path()
-    logger.info(f"GRAPH_MAILBOX setting: {mailbox!r}")
+async def _diagnose(mailbox_client: GraphMailboxClient) -> None:
+    path = mailbox_client.mailbox.user_path
+    logger.info(f"Mailbox address: {mailbox_client.mailbox.address!r}")
     logger.info(f"Resolved Graph path: {path!r}")
+    logger.info(f"App-only auth: {mailbox_client.mailbox.app.is_app_only}")
 
-    token = await get_graph_token()
-    headers = {"Authorization": f"Bearer {token}", "Accept": "application/json"}
+    headers = await mailbox_client.auth_headers()
 
     async with httpx.AsyncClient(timeout=30) as client:
         # Inbox folder metadata - item counts independent of the messages query.
-        folder_resp = await client.get(f"{GRAPH_BASE}/{path}/mailFolders/inbox", headers=headers)
+        folder_resp = await client.get(f"{mailbox_client.base}/mailFolders/inbox", headers=headers)
         logger.info(f"GET /{path}/mailFolders/inbox -> {folder_resp.status_code}")
         if folder_resp.status_code == 200:
             folder_data = folder_resp.json()
@@ -52,7 +50,7 @@ async def _diagnose() -> None:
 
         # Raw, filter-free message listing.
         msg_resp = await client.get(
-            f"{GRAPH_BASE}/{path}/mailFolders/inbox/messages",
+            f"{mailbox_client.base}/mailFolders/inbox/messages",
             headers=headers,
             params={"$top": "5", "$select": "subject,receivedDateTime,from"},
         )
@@ -68,11 +66,12 @@ async def _diagnose() -> None:
 
 
 async def main() -> None:
-    await _diagnose()
+    mailbox_client = GraphMailboxClient(invoice_mailbox())
+    await _diagnose(mailbox_client)
 
     logger.info(f"Fetching up to {FETCH_LIMIT} message(s) from the inbox")
 
-    emails = await fetch_inbox_emails(limit=FETCH_LIMIT)
+    emails = await mailbox_client.fetch_recent(limit=FETCH_LIMIT)
 
     logger.info(f"Fetched {len(emails)} email(s)")
     for email in emails:

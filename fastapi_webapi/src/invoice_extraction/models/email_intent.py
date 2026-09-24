@@ -1,6 +1,6 @@
 from pydantic import BaseModel, Field
 
-from invoice_extraction.models.common import Confident
+from email_core.confidence import Confident
 
 
 class EmailIntent(BaseModel):

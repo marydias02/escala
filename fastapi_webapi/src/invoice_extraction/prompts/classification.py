@@ -1,7 +1,7 @@
 from langchain_core.messages import HumanMessage, SystemMessage
 
-from invoice_extraction.invoice_utils.documents import InvoiceDocument
-from invoice_extraction.invoice_utils.page_mode import document_content_parts
+from email_core.documents import LoadedDocument
+from email_core.pdf.page_mode import document_content_parts
 
 CLASSIFICATION_SYSTEM_PROMPT = """
 You are an expert document understanding system specialized in invoices and accounting documents.
@@ -143,7 +143,7 @@ a lower-confidence classification honestly than to guess.
 CLASSIFICATION_SYSTEM_MESSAGE = SystemMessage(content=CLASSIFICATION_SYSTEM_PROMPT)
 
 
-def build_classification_human_message(doc: InvoiceDocument, *, scanned: bool = False) -> HumanMessage:
+def build_classification_human_message(doc: LoadedDocument, *, scanned: bool = False) -> HumanMessage:
     """Build the classification HumanMessage for a single (already segmented) document.
 
     A scanned document is sent as page images rather than as the PDF — see

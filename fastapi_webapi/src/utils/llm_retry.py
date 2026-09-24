@@ -6,7 +6,7 @@ from langchain_core.runnables import Runnable
 from loguru import logger
 from pydantic import ValidationError
 
-from invoice_extraction.tracing import set_span_attributes
+from utils.tracing_helper import set_span_attributes
 
 # Parse failures we want to retry (prose instead of JSON), as opposed to
 # transport/HTTP errors which won't improve on a plain retry.

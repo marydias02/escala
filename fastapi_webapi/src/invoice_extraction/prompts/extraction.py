@@ -1,7 +1,7 @@
 from langchain_core.messages import HumanMessage, SystemMessage
 
-from invoice_extraction.invoice_utils.documents import InvoiceDocument
-from invoice_extraction.invoice_utils.page_mode import document_content_parts
+from email_core.documents import LoadedDocument
+from email_core.pdf.page_mode import document_content_parts
 from invoice_extraction.models import DocumentClassification
 
 EXTRACTION_SYSTEM_PROMPT = """
@@ -121,7 +121,7 @@ EXTRACTION_SYSTEM_MESSAGE = SystemMessage(content=EXTRACTION_SYSTEM_PROMPT)
 
 
 def build_extraction_human_message(
-    doc: InvoiceDocument,
+    doc: LoadedDocument,
     classification: DocumentClassification,
     *,
     scanned: bool = False,

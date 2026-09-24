@@ -1,6 +1,6 @@
 from pydantic import BaseModel, Field, model_validator
 
-from invoice_extraction.models.common import Checked, drop_empty_confident_fields
+from email_core.confidence import Checked, drop_empty_confident_fields
 
 
 class ValidationReport(BaseModel):

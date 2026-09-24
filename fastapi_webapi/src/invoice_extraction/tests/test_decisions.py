@@ -23,6 +23,7 @@ THREAD_ESCALATION_COUNT does not silently invalidate these tests.
 
 import pytest
 
+from email_core.confidence import Checked, Confident
 from invoice_extraction import decisions
 from invoice_extraction.config import (
     DOC_STATUS_BOOKED,
@@ -72,7 +73,6 @@ from invoice_extraction.models import (
     EmailIntent,
     ValidationReport,
 )
-from invoice_extraction.models.common import Checked, Confident
 from invoice_extraction.tools.po_confirmation import FINANCIAL, LOGISTICS
 
 # --------------------------------------------------------------------------- #
