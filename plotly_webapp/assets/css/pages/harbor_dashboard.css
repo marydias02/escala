@@ -1,0 +1,21 @@
+/* Harbor dashboard page styles based on pages/index.css. */
+.dashboard__container { display: flex; flex-direction: column; gap: var(--spacing-40); margin-bottom: var(--spacing-40); }
+.dashboard__content_section { display: flex; flex-direction: column; gap: var(--spacing-24); }
+.dashboard__top_section { width: 100%; display: flex; justify-content: space-between; align-items: flex-end; }
+.dashboard__filters { display: flex; justify-content: space-between; align-items: flex-end; gap: var(--spacing-24); }
+.dashboard__account-filter { width: 280px; }
+.dashboard__account-filter label { display: block; margin-bottom: var(--spacing-6); color: var(--text-icon-primary); font-size: var(--font-size-sm); }
+.dashboard__updated_section { color: var(--text-icon-secondary); font-weight: normal; margin: 0; }
+.dashboard__top_section .actions-wrapper { border-bottom: var(--border-normal) solid var(--border-light); display: flex; justify-content: space-between; gap: var(--spacing-10); }
+.dashboard__top_section .tabs-wrapper, .dashboard__top_section .button-wrapper { display: flex; justify-content: flex-start; }
+.dashboard__top_section .button-wrapper { gap: var(--spacing-6); align-items: center; flex-wrap: wrap; }
+.dashboard__indicator_section-wrapper { display: flex; flex-direction: row; flex-wrap: nowrap; gap: var(--spacing-16); padding: var(--spacing-12); background-color: var(--surface-lightest); border-radius: var(--border-radius-md); border: var(--border-normal) solid var(--border-lightest); }
+.dashboard__indicator_section-wrapper .indicator-card { flex: 1 1 0; width: auto; padding-left: var(--spacing-16); border-left: var(--border-normal) solid var(--border-light); }
+.dashboard__indicator_section-wrapper .indicator-card:first-child { flex: 1 1 0; width: auto; padding-left: var(--spacing-none); border-left: none; }
+@media (max-width: 1024px) {
+  .dashboard__filters { align-items: stretch; flex-direction: column; gap: var(--spacing-12); }
+  .dashboard__account-filter { width: 100%; }
+  .dashboard__indicator_section-wrapper { flex-direction: column; }
+  .dashboard__indicator_section-wrapper .indicator-card, .dashboard__indicator_section-wrapper .indicator-card:first-child { width: 100%; padding-left: var(--spacing-none); padding-top: var(--spacing-16); border-left: none; border-top: var(--border-normal) solid var(--border-light); }
+  .dashboard__indicator_section-wrapper .indicator-card:first-child { padding-top: var(--spacing-none); border-top: none; }
+}
