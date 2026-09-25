@@ -37,7 +37,9 @@ class DocumentClassification(BaseModel):
 
     Use 'other' whenever the document is not one of the above, even if it contains
     financial information (shipping documents, customs documents, bank statements,
-    insurance certificates, purchase orders, etc.).
+    insurance certificates, purchase orders, etc.). An annex ("Anexo à Fatura",
+    "Anexo Factura nº ...") only details an invoice issued separately: naming that
+    invoice, listing lines or showing a total does not make it one.
 
     Avisos de recibo (Receipt notices) are considered receipts.
 

@@ -1,3 +1,5 @@
+import json
+
 from langchain_core.messages import HumanMessage, SystemMessage
 
 from invoice_extraction.models import InvoiceData
@@ -18,7 +20,8 @@ For every field, decide whether the extracted value is correct:
 - Wrong          -> return the corrected value, but ONLY when the correction is
                     explicitly supported by the parsed text or by a tool result.
 - Unconfirmable  -> return the extracted value with LOW confidence, or null when
-                    you have reason to doubt it.
+                    you have reason to doubt it: the whole field null, never a
+                    value of null, "null" or "None".
 
 Do NOT assume the extracted values are correct. Do NOT invent corrections. If
 the parsed text does not mention a field at all, that is not evidence the value
@@ -203,7 +206,7 @@ Some values may have been read from images and may therefore be absent from the
 parsed text — absence alone is not proof a value is wrong.
 
 EXTRACTED DATA
-{extracted_data}
+{json.dumps(extracted_data, ensure_ascii=False)}
 {exception_block}
 PARSED TEXT
 {parsed_text if parsed_text else "No parsed text available for this document."}

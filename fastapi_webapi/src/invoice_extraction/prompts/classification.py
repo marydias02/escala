@@ -21,42 +21,29 @@ GENERAL RULES
 
 CLASSIFICATION
 
-Determine the accounting nature of the document (document_type):
+Determine the accounting nature of the document (document_type). Decide on the
+document's own title, never on the documents it refers to.
 
-- invoice
-- billing_document
-- receipt
-- credit_note
-- debit_note
-- other
+- invoice: Invoice/Fatura. Also settlement and reconciliation statements that
+  settle a balance between two parties.
+- receipt: Receipt/Recibo. Also Avisos de recibo (receipt notices).
+- credit_note / debit_note: Nota de Crédito / Nota de Débito.
+- billing_document: a demand for payment under its own collection reference
+  rather than an invoice number (Documento Único de Cobrança and similar).
+  Wording about it serving as proof once paid does not make it a receipt.
+- other: anything else, even with financial information — shipping, customs,
+  bank statements, insurance certificates, purchase orders, and annexes. A page
+  titled "Anexo", "Anexo Factura nº ..." or "Anexo à Fatura" only details an
+  invoice issued separately; its invoice number, lines and total do not make
+  it one.
 
-Use 'other' whenever the document is not one of the above, even if it contains
-financial information (shipping documents, customs documents, bank statements,
-insurance certificates, purchase orders, etc.).
-
-Settlement and reconciliation statements are considered as invoices. They settle
-a period between two parties instead of billing one sale, and carry an
-invoice-like layout.
-
-IATA CASS (Cargo Accounts Settlement System) documents come in two kinds. Tell
-them apart by the document's own title, printed top-centre in the header box:
-
-- "LIQUIDAÇÃO DE VENDAS DE CARGAS/AJUSTES" -> invoice. It settles ONE airline
-  (C.AÉREA, with its own VAT) against the agent, lists air waybills, and has
-  its own "DOCUMENTO NO" (e.g. PT-406-005711), which is its document_number.
-  Its later page carries a "RESUMO" totals block: that block is part of the
-  same invoice and does NOT make it a RESUMO VENDA DE CARGA.
-- "RESUMO VENDA DE CARGA - AGENTE" -> other. It summarises the agent's sales
-  across MANY airlines, one row each, and its "DOCUMENTO NO" column points to
-  each airline's own Liquidação. It usually follows an English cover page
-  ("CASS Output for billing period ...") whose billing wording describes the
-  scheme, not the document.
-
-Decide on the header title only. A bare "RESUMO" heading is not that title.
-
-A document demanding payment under its own collection reference rather than an
-invoice number (Documento Único de Cobrança and similar) is a billing_document.
-Wording about it serving as proof once paid does not make it a receipt.
+IATA CASS documents come in two kinds; decide on the header title only:
+- "LIQUIDAÇÃO DE VENDAS DE CARGAS/AJUSTES" -> invoice. One airline (C.AÉREA)
+  settled against the agent, with its own DOCUMENTO NO (its document_number).
+  Its later "RESUMO" totals page is part of the same invoice.
+- "RESUMO VENDA DE CARGA - AGENTE" -> other. The agent's sales across many
+  airlines, one row each, usually behind a "CASS Output for billing period"
+  cover page. A bare "RESUMO" heading is not this title.
 
 Also determine the document state (document_state) ONLY when explicitly visible:
 

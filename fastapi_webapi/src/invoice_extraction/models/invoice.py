@@ -41,9 +41,10 @@ class InvoiceData(BaseModel):
         description="""
         Tax identification number (VAT/NIF/NIPC/BRN/Legal person/Registration) of the supplier.
 
-        Usually appears close to the supplier name, but not every number printed
-        there is it: suppliers may also show licence or packer
-        registrations, sometimes prefixed. Prefer one explicitly labelled
+        It sits in the supplier's own legal block (registered office, share
+        capital, NIF/NIPC, "Legal Person / Registration"), in the header or the
+        footer. Not every number there is it: suppliers may also show licence or
+        packer registrations, sometimes prefixed. Prefer one explicitly labelled
         NIF/NIPC/VAT, even when it sits in the footer among the registered
         office details.
 
@@ -99,8 +100,9 @@ class InvoiceData(BaseModel):
         VAT number of the customer.
 
         Usually appears close to the customer name, but may instead sit in a
-        header table under a label such as "V/N.º Contrib.", "V/NIF" or
-        "Nº Contribuinte" — "V/" meaning yours, i.e. the customer's. In a
+        header data table, among per-document fields (due date, file no.,
+        references), under a label such as "V/N.º Contrib.", "V/NIF",
+        "Nº Contribuinte" or a bare "VAT Reg No" — "V/" meaning yours. In a
         column layout the value is on the line below its label, not beside it,
         and OCR may mangle the label itself.
 
@@ -145,6 +147,9 @@ class InvoiceData(BaseModel):
         Data
         Data de emissão
         Invoice Date
+        Dt. Movimento (on a Documento Único de Cobrança)
+
+        When several dates are shown, "Data de emissão" wins.
 
         Do NOT use:
 
@@ -154,6 +159,8 @@ class InvoiceData(BaseModel):
         Check-out
         Operation Date
         Service Period
+        Notice or print dates (Data do Aviso)
+        Dates the recipient stamped or wrote on the document (Data de Entrada, Recebido, Registo)
         """,
     )
 

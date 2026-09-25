@@ -284,7 +284,7 @@
       "should_extract": true,
       "document_type": "debit_note",
       "document_state": "original",
-      "document_number": "ND 1512026/83",
+      "document_number": ["ND 1512026/83", "1512026/83"],
       "supplier_vat": "PT512003041",
       "client_vat": "PT509225918",
       "issue_date": "19-05-2026",
@@ -355,7 +355,7 @@
       "should_extract": false,
       "document_type": "other",
       "document_state": "original",
-      "document_number": "7121/0016"
+      "document_number": ["7121/0016", null]
     }
   },
   {

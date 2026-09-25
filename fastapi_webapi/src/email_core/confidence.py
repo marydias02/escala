@@ -55,5 +55,5 @@ def drop_empty_confident_fields(data):
     than a load-bearing constraint.
     """
     if isinstance(data, dict):
-        return {k: (None if isinstance(v, dict) and v.get("value") in (None, "") else v) for k, v in data.items()}
+        return {k: (None if isinstance(v, dict) and v.get("value") in (None, "", "null", "None") else v) for k, v in data.items()}
     return data

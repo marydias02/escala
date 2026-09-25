@@ -81,6 +81,11 @@ Examples:
 
 Do not normalize evidence.
 
+ISSUE DATE
+
+issue_date is the date the supplier issued the document: "Data de Emissão" or
+"Issue Date" wins over any other date.
+
 KNOWN EDGE CASES
 
 On a condomínio receipt the supplier is the condomínio named under "CONDOMÍNIO:",
@@ -96,6 +101,10 @@ The second date, which appears after "DATA DE EMISSÃO:", relates to the goods a
 On freight/shipping invoices, the line-item table may have a column literally
 labelled "Base" that is a quantity or rate-calculation basis. Do not extract base_amount from that
 column. The real base_amount is near the totals (e.g. labelled "Basis VAT" or "Base Imponible").
+
+For TCL - Terminal de Contentores de Leixões (Yilport), the supplier NIF is the
+one after "Legal Person / Registration:" in its address block. The "Vat Reg No"
+in the table below it (with Payment Due On, File No, Vessel) is the client's VAT.
 
 For Seaco, the Purcher Order number is the number between brackets after Lease number. 
 Example:
