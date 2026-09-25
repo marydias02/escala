@@ -127,12 +127,16 @@ def load_email_detail(ref_number):
     return _build_email_detail(get_access_token(), ref_number)
 
 
+def _option_label(*parts):
+    # Plain text avoids Dash 4.1 ExternalWrapper lifecycle errors when dynamic
+    # options replace component labels while the dropdown is open.
+    return " \u00b7 ".join(str(part) for part in parts if part is not None and str(part) != "")
+
+
 def _party_options(rows, id_key):
     return [
         {
-            "label": html.Div(
-                [html.Strong(row.get("name") or ""), html.Small(f"{row.get(id_key) or ''} · {row.get('vat') or ''}")]
-            ),
+            "label": _option_label(row.get("name"), row.get(id_key), row.get("vat")),
             "value": row.get(id_key),
             "_row": row,
         }
@@ -151,15 +155,34 @@ def _party_options(rows, id_key):
     prevent_initial_call=True,
 )
 def update_bu_selector(search_value, selected, options):
+    triggered = callback_context.triggered_id
+    # A selected value remains populated while the user types a new query.
+    # Handle search events first, otherwise every keystroke is mistaken for
+    # re-selecting the old value.
+    if triggered == "bu_selector" and callback_context.triggered[0]["prop_id"].endswith(".search_value"):
+        if not search_value or len(search_value.strip()) < 2:
+            return options or [], no_update, no_update, {"no_options_found": "Escreva pelo menos 2 caracteres"}
+        rows = search_business_units(get_access_token(), search_value.strip())
+        new_options = _party_options(rows, "bu_id")
+        new_values = {str(option.get("value")) for option in new_options}
+        new_options.extend(option for option in (options or []) if str(option.get("value")) not in new_values)
+        return new_options, no_update, no_update, {"no_options_found": "Não encontrado"}
     if selected:
-        row = next((option.get("_row", {}) for option in (options or []) if option.get("value") == selected), {})
+        row = next(
+            (option.get("_row", {}) for option in (options or []) if str(option.get("value")) == str(selected)), {}
+        )
         if not row:
             matches = search_business_units(get_access_token(), str(selected), limit=10)
             row = next((match for match in matches if str(match.get("bu_id")) == str(selected)), {})
         selected_options = options or []
-        if not any(option.get("value") == selected for option in selected_options):
+        if not any(str(option.get("value")) == str(selected) for option in selected_options):
             selected_options = _party_options([row], "bu_id") if row else [{"label": str(selected), "value": selected}]
-        return selected_options, row.get("name"), {"id": row.get("bu_id", selected), "vat": row.get("vat")}, {"no_options_found": "A procurar..."}
+        return (
+            selected_options,
+            row.get("name"),
+            {"id": row.get("bu_id", selected), "name": row.get("name"), "vat": row.get("vat")},
+            {"no_options_found": "A procurar..."},
+        )
     if not search_value or len(search_value.strip()) < 2:
         # Keep the selected option when Dash clears search_value after a
         # selection; returning [] makes the dropdown discard its value.
@@ -168,11 +191,7 @@ def update_bu_selector(search_value, selected, options):
     new_options = _party_options(rows, "bu_id")
     # Dash does not render a value that is missing from the options list.
     new_values = {str(option.get("value")) for option in new_options}
-    new_options.extend(
-        option
-        for option in (options or [])
-        if str(option.get("value")) not in new_values
-    )
+    new_options.extend(option for option in (options or []) if str(option.get("value")) not in new_values)
     return new_options, no_update, no_update, {"no_options_found": "Não encontrado"}
 
 
@@ -187,18 +206,36 @@ def update_bu_selector(search_value, selected, options):
     prevent_initial_call=True,
 )
 def update_supplier_selector(search_value, selected, options):
+    triggered = callback_context.triggered_id
+    if triggered == "supplier_selector" and callback_context.triggered[0]["prop_id"].endswith(".search_value"):
+        if not search_value or len(search_value.strip()) < 2:
+            return options or [], no_update, no_update, {"no_options_found": "Escreva pelo menos 2 caracteres"}
+        rows = search_suppliers(get_access_token(), search_value.strip())
+        new_options = _party_options(rows, "supplier_id")
+        new_values = {str(option.get("value")) for option in new_options}
+        new_options.extend(option for option in (options or []) if str(option.get("value")) not in new_values)
+        return new_options, no_update, no_update, {"no_options_found": "Não encontrado"}
     if selected:
-        row = next((option.get("_row", {}) for option in (options or []) if option.get("value") == selected), {})
+        row = next(
+            (option.get("_row", {}) for option in (options or []) if str(option.get("value")) == str(selected)), {}
+        )
         if not row:
             matches = search_suppliers(get_access_token(), str(selected), limit=10)
             row = next((match for match in matches if str(match.get("supplier_id")) == str(selected)), {})
         selected_options = options or []
-        if not any(option.get("value") == selected for option in selected_options):
-            selected_options = _party_options([row], "supplier_id") if row else [{"label": str(selected), "value": selected}]
-        return selected_options, row.get("name"), {"id": row.get("supplier_id", selected), "vat": row.get("vat")}, {"no_options_found": "A procurar..."}
-    if not search_value or len(search_value.strip()) < 3:
+        if not any(str(option.get("value")) == str(selected) for option in selected_options):
+            selected_options = (
+                _party_options([row], "supplier_id") if row else [{"label": str(selected), "value": selected}]
+            )
+        return (
+            selected_options,
+            row.get("name"),
+            {"id": row.get("supplier_id", selected), "name": row.get("name"), "vat": row.get("vat")},
+            {"no_options_found": "A procurar..."},
+        )
+    if not search_value or len(search_value.strip()) < 2:
         return options or [], no_update, no_update, {"no_options_found": "A procurar..."}
-    rows = search_suppliers(get_access_token(), search_value)
+    rows = search_suppliers(get_access_token(), search_value.strip())
     new_options = _party_options(rows, "supplier_id")
     new_values = {str(option.get("value")) for option in new_options}
     new_options.extend(option for option in (options or []) if str(option.get("value")) not in new_values)
@@ -214,21 +251,23 @@ def update_supplier_selector(search_value, selected, options):
     prevent_initial_call=True,
 )
 def update_purchase_order_selector(search_value, selected, current_options):
-    if not search_value or len(search_value.strip()) < 3:
-        return no_update, {"no_options_found": "Não encontrado"}
-    rows = search_purchase_orders(get_access_token(), search_value)
+    selected = selected or []
+    current_options = current_options or []
+    query = (search_value or "").strip()
+    if len(query) < 3:
+        return current_options, {"no_options_found": "Escreva pelo menos 3 caracteres"}
+    try:
+        rows = search_purchase_orders(get_access_token(), query)
+    except RequestException:
+        return current_options, {"no_options_found": "Não foi possível pesquisar"}
     po_options = [
         {
-            "label": html.Div([
-                html.Strong(row.get("po_code") or ""),
-                html.Small(f"{row.get('supplier_name') or ''} · {row.get('bu_id') or ''}"),
-            ]),
+            "label": _option_label(row.get("po_code"), row.get("supplier_name"), row.get("bu_id")),
             "value": row.get("po_code"),
         }
         for row in rows
     ]
-    selected = selected or []
-    existing = {str(option.get("value")): option for option in (current_options or [])}
+    existing = {str(option.get("value")): option for option in current_options}
     merged = [
         existing.get(
             str(value),
@@ -356,8 +395,8 @@ def _build_email_detail(token, ref_number):
             dcc.Store(id="document_id_store", data=str(ref_number)),
             dcc.Store(id="document_fields_store", data=fields),
             dcc.Store(id="document_alerts_store", data=alerts),
-            dcc.Store(id="bu-selection", data={"id": bu_id, "vat": bu_vat}),
-            dcc.Store(id="supplier-selection", data={"id": supplier_id, "vat": supplier_vat}),
+            dcc.Store(id="bu-selection", data={"id": bu_id, "name": business_unit, "vat": bu_vat}),
+            dcc.Store(id="supplier-selection", data={"id": supplier_id, "name": supplier_name, "vat": supplier_vat}),
             html.Div(
                 className="email_detail__container",
                 children=[
@@ -484,13 +523,8 @@ def _build_email_detail(token, ref_number):
                                                                         options=(
                                                                             [
                                                                                 {
-                                                                                    "label": html.Div(
-                                                                                        [
-                                                                                            html.Strong(business_unit),
-                                                                                            html.Small(
-                                                                                                f"{bu_id} · {bu_vat or ''}"
-                                                                                            ),
-                                                                                        ]
+                                                                                    "label": _option_label(
+                                                                                        business_unit, bu_id, bu_vat
                                                                                     ),
                                                                                     "value": bu_id,
                                                                                     "_row": {
@@ -507,7 +541,6 @@ def _build_email_detail(token, ref_number):
                                                                         clearable=True,
                                                                         placeholder="Pesquisar por nome, ID ou NIF...",
                                                                         labels={"no_options_found": "A procurar..."},
-                                                                        debounce=True,
                                                                     ),
                                                                     dcc.Input(
                                                                         id="bu_name",
@@ -528,13 +561,10 @@ def _build_email_detail(token, ref_number):
                                                                         options=(
                                                                             [
                                                                                 {
-                                                                                    "label": html.Div(
-                                                                                        [
-                                                                                            html.Strong(supplier_name),
-                                                                                            html.Small(
-                                                                                                f"{supplier_id} · {supplier_vat or ''}"
-                                                                                            ),
-                                                                                        ]
+                                                                                    "label": _option_label(
+                                                                                        supplier_name,
+                                                                                        supplier_id,
+                                                                                        supplier_vat,
                                                                                     ),
                                                                                     "value": supplier_id,
                                                                                     "_row": {
@@ -551,7 +581,6 @@ def _build_email_detail(token, ref_number):
                                                                         clearable=True,
                                                                         placeholder="Pesquisar por nome, ID ou NIF...",
                                                                         labels={"no_options_found": "A procurar..."},
-                                                                        debounce=True,
                                                                     ),
                                                                     dcc.Input(
                                                                         id="supplier_name",
@@ -580,12 +609,20 @@ def _build_email_detail(token, ref_number):
                                                                     Label(label_text="Ordem de Compra"),
                                                                     dcc.Dropdown(
                                                                         id="po_selector",
-                                                                        options=[{"label": str(po), "value": str(po)} for po in po_values if po],
+                                                                        options=[
+                                                                            {"label": str(po), "value": str(po)}
+                                                                            for po in po_values
+                                                                            if po
+                                                                        ],
                                                                         value=[str(po) for po in po_values if po],
                                                                         multi=True,
                                                                         searchable=True,
                                                                         clearable=True,
-                                                                        labels={"no_options_found": "A procurar...", "select_all": "", "deselect_all": "Desmarcar todos"},
+                                                                        labels={
+                                                                            "no_options_found": "A procurar...",
+                                                                            "select_all": "",
+                                                                            "deselect_all": "Desmarcar todos",
+                                                                        },
                                                                         placeholder="Insira pelo menos 3 dígitos",
                                                                     ),
                                                                     dcc.Input(
@@ -638,13 +675,10 @@ def _build_email_detail(token, ref_number):
                                                                 className="email_detail__field",
                                                                 children=[
                                                                     Label(label_text="Moeda"),
-                                                                    dcc.Dropdown(
+                                                                    dcc.Input(
                                                                         id="currency",
-                                                                        options=["EUR", "USD", "CVE"],
                                                                         value=currency,
-                                                                        clearable=False,
-                                                                        className="email_detail__input email_detail__dropdown",
-                                                                        labels={"no_options_found": "..."},
+                                                                        className="email_detail__input",
                                                                     ),
                                                                 ],
                                                             ),
@@ -774,6 +808,8 @@ def load_email_drawer_content(_clicks, document_id):
     Output("email-detail-toast-host", "children", allow_duplicate=True),
     Output("email-detail-toast-timer", "disabled", allow_duplicate=True),
     Output("email-detail-toast-timer", "n_intervals", allow_duplicate=True),
+    Output("email-detail-save-status-timer", "disabled", allow_duplicate=True),
+    Output("email-detail-save-status-timer", "n_intervals", allow_duplicate=True),
     Input("save-button", "n_clicks"),
     Input("send-sap-button", "n_clicks"),
     State("document_id_store", "data"),
@@ -828,7 +864,7 @@ def update_document_details(
         raise dash.exceptions.PreventUpdate
 
     if not document_id:
-        return "Documento invalido", no_update, no_update, no_update, no_update, no_update
+        return "Documento invalido", no_update, no_update, no_update, no_update, no_update, True, no_update
 
     button_id = triggered[0]["prop_id"].split(".")[0]
     token = get_access_token()
@@ -837,10 +873,13 @@ def update_document_details(
     # separate callbacks and may still contain their previous values when the
     # user clicks Guardar immediately after changing a dropdown.
     bu_row = next(
-        (option.get("_row", {}) for option in (bu_options or [])
-         if str(option.get("value")) == str(bu_selector)),
+        (option.get("_row", {}) for option in (bu_options or []) if str(option.get("value")) == str(bu_selector)),
         {},
     )
+    # The selection store is updated in the same interaction as the dropdown;
+    # use it when the options callback has not yet returned its new list.
+    if not bu_row and isinstance(bu_id, dict):
+        bu_row = bu_id
     if bu_selector is not None:
         bu_id = bu_selector
         bu_name = bu_row.get("name") or bu_name
@@ -849,10 +888,15 @@ def update_document_details(
         bu_id, bu_vat = None, None
 
     supplier_row = next(
-        (option.get("_row", {}) for option in (supplier_options or [])
-         if str(option.get("value")) == str(supplier_selector)),
+        (
+            option.get("_row", {})
+            for option in (supplier_options or [])
+            if str(option.get("value")) == str(supplier_selector)
+        ),
         {},
     )
+    if not supplier_row and isinstance(supplier_id, dict):
+        supplier_row = supplier_id
     if supplier_selector is not None:
         supplier_id = supplier_selector
         supplier_name = supplier_row.get("name") or supplier_name
@@ -862,7 +906,6 @@ def update_document_details(
 
     if po_selector is not None:
         po_list = ", ".join(str(value) for value in po_selector)
-
 
     def update_field(name: str, value: object) -> None:
         existing = updated_fields.get(name)
@@ -898,8 +941,11 @@ def update_document_details(
 
     missing_field_alert_map = {
         "Unidade de Negócio": bu_name,
+        "Nome do cliente": bu_name,
+        "NIF do cliente": bu_vat,
         "Nome do Fornecedor": supplier_name,
         "NIF do Fornecedor": supplier_vat,
+        "Número do documento": document_number,
         "Data da Fatura": issue_date,
         "Valor Total": total_amount,
         "Valor do IVA": vat_amount,
@@ -962,7 +1008,7 @@ def update_document_details(
             last_modified_by="Mariana Dias",
         )
     except Exception as exc:
-        return f"Erro ao guardar: {exc}", no_update, no_update, no_update, no_update, no_update
+        return f"Erro ao guardar: {exc}", no_update, no_update, no_update, no_update, no_update, True, no_update
 
     if button_id == "send-sap-button":
         if next_document_id:
@@ -973,6 +1019,8 @@ def update_document_details(
                 _build_sap_success_toast(True),
                 False,
                 0,
+                True,
+                no_update,
             )
         return (
             "Documento enviado para SAP",
@@ -981,8 +1029,10 @@ def update_document_details(
             _build_sap_success_toast(False),
             False,
             0,
+            True,
+            no_update,
         )
-    return "Documento guardado", no_update, no_update, no_update, no_update, no_update
+    return "Documento guardado", no_update, no_update, no_update, no_update, no_update, False, 0
 
 
 @dash.callback(
@@ -1043,6 +1093,18 @@ def remove_alert_from_document(_clicks, document_id, alerts, fields):
     prevent_initial_call=True,
 )
 def clear_sap_success_toast(_n_intervals):
+    if not _n_intervals:
+        raise dash.exceptions.PreventUpdate
+    return None, True
+
+
+@dash.callback(
+    Output("email-detail-update-status", "children", allow_duplicate=True),
+    Output("email-detail-save-status-timer", "disabled", allow_duplicate=True),
+    Input("email-detail-save-status-timer", "n_intervals"),
+    prevent_initial_call=True,
+)
+def clear_save_status(_n_intervals):
     if not _n_intervals:
         raise dash.exceptions.PreventUpdate
     return None, True
