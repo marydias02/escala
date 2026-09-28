@@ -2,7 +2,8 @@
 
 Turns one message into a working folder holding `email_content.json`, the body
 rendered to PDF when it carries note-grade information, and one PDF per
-candidate payment note cut out of the attachments.
+candidate payment note: cut out of PDF attachments, or converted from image,
+Excel (one per sheet) and Word attachments.
 
 It decides nothing about payments beyond whether the body is worth keeping as a
 document; classifying a candidate as a payment note and reading it is
@@ -17,6 +18,7 @@ from typing import Literal
 from langchain_core.language_models import BaseChatModel
 
 from config.settings import settings
+from email_core.conversion import convert_to_pdfs
 from email_core.email_pdf import render_email_pdf
 from email_core.folders import email_folder_name, reserve_folder
 from email_core.models import EmailAttachment, EmailContent, LoadedEmail
@@ -43,8 +45,8 @@ class AttachmentResult:
     """Outcome of ingesting one attachment.
 
     status:
-        chunked     — split into one or more candidate payment notes
-        unsupported — not a PDF, recorded and skipped
+        chunked     — split or converted into one or more candidate payment notes
+        unsupported — not a supported format, recorded and skipped
         failed      — could not be read; `message` carries the error
     """
 
@@ -154,21 +156,60 @@ class PaymentIngestionPipeline:
     # -- attachments -------------------------------------------------------
 
     def ingest_attachment(self, attachment: EmailAttachment, folder: Path, index: int = 1) -> AttachmentResult:
-        """Split one PDF attachment into candidate payment notes.
+        """Turn one attachment into candidate payment note PDFs.
+
+        PDFs are segmented into their documents; images, sheets and Word files
+        are already one document each, so they are converted without segmenting.
 
         `index` is the attachment's position in the message, prefixed onto every
         name written, so two attachments called `nota.pdf` cannot overwrite each
         other's splits.
         """
         prefix = f"{index:02d}_"
+        if attachment.is_pdf:
+            return self._ingest_pdf(attachment, folder, prefix)
+        return self._ingest_converted(attachment, folder, prefix)
 
-        if not attachment.is_pdf:
+    def _ingest_converted(self, attachment: EmailAttachment, folder: Path, prefix: str) -> AttachmentResult:
+        """Convert an image, Excel or Word attachment to one PDF per unit."""
+        ext = Path(attachment.filename).suffix.lower() or "(none)"
+
+        with span(f"ingest:{attachment.filename}", "CHAIN") as attachment_span:
+            attachment_span.set_inputs({"filename": attachment.filename, "bytes": len(attachment.data)})
+
+            documents = convert_to_pdfs(attachment.filename, attachment.data)
+            if documents is None:
+                attachment_span.set_outputs({"status": "unsupported", "converted_from": ext})
+                return AttachmentResult(
+                    filename=attachment.filename,
+                    status="unsupported",
+                    message=f"unsupported format ({ext})",
+                )
+
+            split_filenames = [f"{prefix}{doc.filename}" for doc in documents]
+            for doc, filename in zip(documents, split_filenames):
+                (folder / filename).write_bytes(doc.pdf_bytes)
+            total_pages = sum(count_pages(doc.pdf_bytes) for doc in documents)
+
+            attachment_span.set_outputs(
+                {
+                    "converted_from": ext,
+                    "total_pages": total_pages,
+                    "split_filenames": split_filenames,
+                }
+            )
+            print(f"  🔄 {attachment.filename}: converted to {len(documents)} PDF(s)")
+
             return AttachmentResult(
                 filename=attachment.filename,
-                status="unsupported",
-                message="not a pdf",
+                status="chunked",
+                total_pages=total_pages,
+                split_filenames=split_filenames,
+                message=f"{len(documents)} candidate(s), converted from {ext}",
             )
 
+    def _ingest_pdf(self, attachment: EmailAttachment, folder: Path, prefix: str) -> AttachmentResult:
+        """Split one PDF attachment into candidate payment notes."""
         with span(f"ingest:{attachment.filename}", "CHAIN") as attachment_span:
             attachment_span.set_inputs({"filename": attachment.filename, "bytes": len(attachment.data)})
 
