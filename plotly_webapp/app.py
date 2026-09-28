@@ -2,7 +2,7 @@ import requests
 from dash import Dash, dcc, html, page_container
 from dash.dependencies import Input, Output, State
 from dash_iconify import DashIconify
-from flask import Response, session
+from flask import Response, redirect, session
 
 import config
 from auth.msal_client import get_access_token
@@ -38,6 +38,22 @@ app = Dash(
 # `server` is what gunicorn is pointed at, and what the auth layer attaches to.
 server = app.server
 register_auth(server)
+
+
+@server.before_request
+def redirect_incomplete_email_detail_url():
+    """Redirect the detail base path to the app home page.
+
+    ``/detalhe`` is only valid when it includes a document reference.  This
+    server-side guard handles direct browser requests without assuming a
+    particular host or port.
+    """
+    from flask import request
+
+    if request.path.rstrip("/") == "/detalhe":
+        return redirect("/")
+
+    return None
 
 
 def serve_layout():
@@ -180,6 +196,21 @@ def serve_layout():
 
 
 app.layout = serve_layout
+
+
+app.clientside_callback(
+    """
+    function (pathname) {
+        if (pathname && pathname.replace(/\\/$/, '') === '/detalhe') {
+            return '/';
+        }
+        return window.dash_clientside.no_update;
+    }
+    """,
+    Output("url", "href", allow_duplicate=True),
+    Input("url", "pathname"),
+    prevent_initial_call=True,
+)
 
 
 """ CALLBACKS """
