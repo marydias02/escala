@@ -26,15 +26,14 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import mlflow
+from download_blob_files import DEFAULT_OUT_DIR, download
 from loguru import logger
 from mlflow.tracing.utils.copy import copy_trace_to_experiment
-
-from download_blob_files import DEFAULT_OUT_DIR, download
 
 # Default trace ids, used when none are passed on the command line.
 TRACE_IDS = ["tr-f38a34e1035454f5e428be10c423a813"]
 
-DEFAULT_TRACKING_URI ="http://127.0.0.1:5000"
+DEFAULT_TRACKING_URI = "http://127.0.0.1:5000"
 DEFAULT_EXPERIMENT = "imported_traces"
 
 
@@ -81,7 +80,9 @@ def main() -> int:
             failures += 1
             continue
         new_id = import_trace(path, original_id, experiment_id)
-        logger.info(f"{original_id} -> {args.tracking_uri}/#/experiments/{experiment_id}/traces?selectedEvaluationId={new_id}")
+        logger.info(
+            f"{original_id} -> {args.tracking_uri}/#/experiments/{experiment_id}/traces?selectedEvaluationId={new_id}"
+        )
 
     logger.info(f"Imported {len(sources) - failures}/{len(sources)} trace(s) into '{args.experiment}'")
     return 1 if failures else 0
