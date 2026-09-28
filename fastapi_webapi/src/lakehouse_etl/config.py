@@ -11,10 +11,13 @@ PURCHASE_ORDERS_TABLE = "fct_purchase_orders"
 # EKKO and LFA1 are 100% client 100.
 SAP_CLIENT = "100"
 
-# T001 rows are kept unless SAP flags them as a template. This leaves 137 rows:
-# 133 real companies plus 0001, EG01, PT00 and PT03, which XTEMPLT does not flag
-# and which we deliberately keep. F_OBSOLETE rows stay too — POs reference them.
+# T001 rows are kept unless SAP flags them as a template (XTEMPLT) or obsolete
+# (F_OBSOLETE). This leaves 128 rows, none sharing a VAT. Obsolete rows are
+# deleted from dim_business_units; no PO since PO_DATE_FLOOR references them.
 TEMPLATE_FLAG = "X"
+
+# LFA1 rows with a posting (SPERR) or purchasing (SPERM) block are deleted from
+# dim_suppliers: SAP cannot post to them, and they duplicate active suppliers' VATs.
 
 # EKKO floor, applied on every run so an old PO touched today does not appear.
 PO_DATE_FLOOR = "20260101"

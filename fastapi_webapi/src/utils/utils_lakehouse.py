@@ -18,6 +18,7 @@ from typing import Any, Optional
 import polars as pl
 
 from config.settings import settings
+from lakehouse_etl.config import SAP_CLIENT
 
 AVAILABLE_TABLES = ("ACDOCA", "BSAD", "BSEG", "BUT000", "CEPCT", "EKKO", "LFA1", "SKAT", "T001")
 
@@ -79,6 +80,21 @@ def strip_country_prefix(value: pl.Expr) -> pl.Expr:
 def strip_country_prefix_str(value: str) -> str:
     """`strip_country_prefix` for an already-normalized lookup value."""
     return value[2:] if len(value) > 2 and value[:2].isalpha() else value
+
+
+def is_blank(column: str) -> pl.Expr:
+    """True where a SAP flag column is null or empty."""
+    return pl.col(column).cast(pl.String).str.strip_chars().fill_null("") == ""
+
+
+def active_supplier() -> pl.Expr:
+    """LFA1 rows in the productive client with no posting (SPERR) or purchasing (SPERM) block."""
+    return (pl.col("MANDT") == SAP_CLIENT) & is_blank("SPERR") & is_blank("SPERM")
+
+
+def active_business_unit() -> pl.Expr:
+    """T001 rows in the productive client not flagged obsolete (F_OBSOLETE)."""
+    return (pl.col("MANDT") == SAP_CLIENT) & is_blank("F_OBSOLETE")
 
 
 class LakehouseRepository:

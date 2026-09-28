@@ -31,6 +31,7 @@ def no_db(monkeypatch):
 
 def _lfa1(**overrides) -> pl.DataFrame:
     row = {
+        "MANDT": "100",
         "LIFNR": "0100000001",
         "NAME1": "Acme",
         "NAME2": "",
@@ -39,6 +40,8 @@ def _lfa1(**overrides) -> pl.DataFrame:
         "STCEG": "PT123456789",
         "STCD1": "",
         "LAND1": "PT",
+        "SPERR": "",
+        "SPERM": "",
     }
     row.update(overrides)
     return pl.DataFrame([row])
@@ -66,30 +69,45 @@ def test_full_name(names, expected):
 
 def test_build_suppliers_columns_exclude_generated():
     """The four GENERATED ALWAYS columns must never reach the upsert."""
-    rows = transforms.build_suppliers(_lfa1(), _but000())
+    rows, _ = transforms.build_suppliers(_lfa1(), _but000())
     assert tuple(rows.columns) == transforms.SUPPLIER_COLUMNS
     assert not {"id_norm", "vat_norm", "vat_core", "name_norm"} & set(rows.columns)
 
 
 def test_build_suppliers_keeps_supplier_without_partner_row():
-    rows = transforms.build_suppliers(_lfa1(), _but000(partner="9999999999"))
+    rows, _ = transforms.build_suppliers(_lfa1(), _but000(partner="9999999999"))
     assert rows.height == 1
     assert rows["preferred_language"].item() is None
 
 
 def test_build_suppliers_blank_language_becomes_null():
-    rows = transforms.build_suppliers(_lfa1(), _but000(langu=""))
+    rows, _ = transforms.build_suppliers(_lfa1(), _but000(langu=""))
     assert rows["preferred_language"].item() is None
 
 
 def test_build_suppliers_vat_falls_back_to_stcd1():
-    rows = transforms.build_suppliers(_lfa1(STCEG=None, STCD1="509225918"), _but000())
+    rows, _ = transforms.build_suppliers(_lfa1(STCEG=None, STCD1="509225918"), _but000())
     assert rows["vat"].item() == "509225918"
 
 
 def test_build_suppliers_collapses_duplicate_lifnr():
     df = pl.concat([_lfa1(), _lfa1(NAME1="Acme II")])
-    assert transforms.build_suppliers(df, _but000()).height == 1
+    rows, _ = transforms.build_suppliers(df, _but000())
+    assert rows.height == 1
+
+
+@pytest.mark.parametrize("flags", [{"SPERR": "X"}, {"SPERM": "X"}, {"SPERR": "X", "SPERM": "X"}])
+def test_build_suppliers_deletes_blocked(flags):
+    df = pl.concat([_lfa1(), _lfa1(LIFNR="0000001270", **flags)])
+    rows, deletes = transforms.build_suppliers(df, _but000())
+    assert rows["supplier_id"].to_list() == ["0100000001"]
+    assert deletes == ["0000001270"]
+
+
+def test_build_suppliers_null_flags_are_active():
+    rows, deletes = transforms.build_suppliers(_lfa1(SPERR=None, SPERM=None), _but000())
+    assert rows.height == 1
+    assert deletes == []
 
 
 def test_classify_is_financial():
@@ -106,14 +124,27 @@ def test_unmatched_financial_names_reports_drift():
 
 
 def _t001(bu_id: str = "1000", **overrides) -> dict:
-    row = {"BUKRS": bu_id, "BUTXT": "GS Lines", "STCEG": "PT511011911", "LAND1": "PT"}
+    row = {"MANDT": "100", "BUKRS": bu_id, "BUTXT": "GS Lines", "STCEG": "PT511011911", "LAND1": "PT", "F_OBSOLETE": ""}
     row.update(overrides)
     return row
 
 
 def test_build_business_units_columns():
-    rows = transforms.build_business_units(pl.DataFrame([_t001()]))
+    rows, _ = transforms.build_business_units(pl.DataFrame([_t001()]))
     assert tuple(rows.columns) == transforms.BUSINESS_UNIT_COLUMNS
+
+
+def test_build_business_units_deletes_obsolete():
+    """PT511030746 is OPM (1060) and Bitrans (1100, obsolete): only OPM stays."""
+    df = pl.DataFrame(
+        [
+            _t001("1060", BUTXT="OPM", STCEG="PT511030746"),
+            _t001("1100", BUTXT="Bitrans", STCEG="PT511030746", F_OBSOLETE="X"),
+        ]
+    )
+    rows, deletes = transforms.build_business_units(df)
+    assert rows["bu_id"].to_list() == ["1060"]
+    assert deletes == ["1100"]
 
 
 def test_build_business_units_raises_on_duplicate_bu_id():
@@ -259,6 +290,30 @@ def test_delete_rows_empty_writes_nothing(fake_pool):
 
 def test_delete_rows_parses_command_tag(fake_pool):
     assert run(utils_db.delete_rows("t", "po_code", ["a", "b"])) == 2
+
+
+def test_sync_dimension_deletes_inactive_and_excludes_them_from_absent(monkeypatch):
+    deleted: list = []
+
+    async def _existing(table, id_column):
+        return {"1060", "1100", "9999"}
+
+    async def _upsert(table, rows, **kwargs):
+        return len(rows)
+
+    async def _delete(table, key_column, keys, **kwargs):
+        deleted.extend(keys)
+        return len(keys)
+
+    monkeypatch.setattr(load, "existing_ids", _existing)
+    monkeypatch.setattr(load, "upsert_rows", _upsert)
+    monkeypatch.setattr(load, "delete_rows", _delete)
+
+    rows = pl.DataFrame([{"bu_id": "1060", "name": "OPM", "vat": "PT511030746", "country": "PT"}])
+    counts = run(load.sync_business_units(rows, ["1100"]))
+
+    assert deleted == ["1100"]
+    assert (counts.upserted, counts.deleted, counts.absent_from_source) == (1, 1, 1)
 
 
 # --- orchestration -----------------------------------------------------------

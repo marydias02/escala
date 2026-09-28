@@ -5,6 +5,7 @@ from __future__ import annotations
 import polars as pl
 
 from lakehouse_etl.config import BOTH_SUPPLIERS, FINANCIAL_SUPPLIERS, PO_HELD_FLAG
+from utils.utils_lakehouse import active_business_unit, active_supplier
 
 # Columns written to each table. The generated columns (id_norm, vat_norm,
 # vat_core, name_norm) are deliberately absent — Postgres rejects writes to them.
@@ -48,9 +49,18 @@ def unmatched_financial_names(suppliers: pl.DataFrame) -> list[str]:
     return sorted(name for name in [*FINANCIAL_SUPPLIERS, *BOTH_SUPPLIERS] if name not in known)
 
 
-def build_suppliers(lfa1: pl.DataFrame, but000: pl.DataFrame) -> pl.DataFrame:
-    """LFA1 (+ BUT000 for the language) -> dim_suppliers rows."""
-    return (
+def _split_active(df: pl.DataFrame, active: pl.Expr, id_column: str) -> tuple[pl.DataFrame, list[str]]:
+    """(active rows, ids of the inactive rows to delete)."""
+    rows = df.filter(active)
+    kept = rows.get_column(id_column).unique().to_list()
+    gone = df.filter(~active & ~pl.col(id_column).is_in(kept)).get_column(id_column)
+    return rows, gone.unique().sort().to_list()
+
+
+def build_suppliers(lfa1: pl.DataFrame, but000: pl.DataFrame) -> tuple[pl.DataFrame, list[str]]:
+    """LFA1 (+ BUT000 for the language) -> (dim_suppliers rows, blocked supplier_ids to delete)."""
+    lfa1, delete_ids = _split_active(lfa1, active_supplier(), "LIFNR")
+    rows = (
         lfa1.select(
             pl.col("LIFNR").alias("supplier_id"),
             full_name(),
@@ -70,15 +80,17 @@ def build_suppliers(lfa1: pl.DataFrame, but000: pl.DataFrame) -> pl.DataFrame:
         .unique(subset="supplier_id", keep="first")
         .select(SUPPLIER_COLUMNS)
     )
+    return rows, delete_ids
 
 
-def build_business_units(t001: pl.DataFrame) -> pl.DataFrame:
-    """T001 -> dim_business_units rows.
+def build_business_units(t001: pl.DataFrame) -> tuple[pl.DataFrame, list[str]]:
+    """T001 -> (dim_business_units rows, obsolete bu_ids to delete).
 
     The extract is already one client, so a duplicate bu_id means that filter
     stopped working — raise rather than silently collapse it the way the seed
     script's .unique() did.
     """
+    t001, delete_ids = _split_active(t001, active_business_unit(), "BUKRS")
     rows = t001.select(
         pl.col("BUKRS").alias("bu_id"),
         pl.col("BUTXT").alias("name"),
@@ -90,7 +102,7 @@ def build_business_units(t001: pl.DataFrame) -> pl.DataFrame:
     if duplicates.height:
         ids = ", ".join(sorted(duplicates.get_column("bu_id").to_list()))
         raise ValueError(f"Duplicate bu_id in T001 extract: {ids}")
-    return rows
+    return rows, delete_ids
 
 
 def build_purchase_orders(ekko: pl.DataFrame) -> tuple[pl.DataFrame, list[str]]:

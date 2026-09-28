@@ -9,6 +9,10 @@ table.
 `supplier_id` rather than a VAT, and is not a `@tool` — the model is never asked
 what language to reply in.
 
+Suppliers and business units are read through `active_supplier` /
+`active_business_unit`, so blocked suppliers and obsolete or template company
+codes never match.
+
 A lookup that cannot be answered returns False rather than raising: these run on
 the routing critical path, and an unreachable lakehouse must not stop an email
 from being processed.
@@ -19,7 +23,13 @@ from langchain_core.tools import tool
 from loguru import logger
 
 from utils.utils_db import normalize_key
-from utils.utils_lakehouse import LakehouseRepository, normalize_expr, strip_country_prefix_str
+from utils.utils_lakehouse import (
+    LakehouseRepository,
+    active_business_unit,
+    active_supplier,
+    normalize_expr,
+    strip_country_prefix_str,
+)
 
 # SAP's one-character language keys, as the ISO 639-1 codes the reply rule uses.
 # Anything outside this map is left unanswered, and the document's own language
@@ -75,6 +85,10 @@ class SupplierRepository(PartyRepository):
     __table_name__ = "LFA1"
 
     id_column = "LIFNR"
+
+    def scan(self) -> pl.LazyFrame:
+        return super().scan().filter(active_supplier())
+
     # In precedence order: the EU VAT registration, then the domestic tax id
     # carried by suppliers that have no EU one.
     vat_columns = ("STCEG", "STCD1")
@@ -104,6 +118,9 @@ class BusinessUnitRepository(PartyRepository):
     id_column = "BUKRS"
     name_column = "BUTXT"
     vat_columns = ("STCEG",)
+
+    def scan(self) -> pl.LazyFrame:
+        return super().scan().filter(active_business_unit())
 
 
 class BusinessPartnerRepository(LakehouseRepository):

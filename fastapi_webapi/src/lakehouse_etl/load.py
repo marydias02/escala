@@ -43,14 +43,21 @@ async def existing_ids(table: str, id_column: str) -> set[str]:
 
 
 async def _sync_dimension(
-    table: str, id_column: str, rows: pl.DataFrame, columns: tuple[str, ...], dry_run: bool
+    table: str,
+    id_column: str,
+    rows: pl.DataFrame,
+    delete_ids: list[str],
+    columns: tuple[str, ...],
+    dry_run: bool,
 ) -> SyncCounts:
-    """Upsert a full extract. Never deletes: the sources carry no deletion flag,
-    so absence could be a partial read rather than a removal — it is reported.
+    """Upsert a full extract, then delete the ids SAP flags inactive.
+
+    Absence alone never deletes: it could be a partial read rather than a
+    removal — it is reported.
     """
-    counts = SyncCounts(table=table, extracted=rows.height)
+    counts = SyncCounts(table=table, extracted=rows.height + len(delete_ids))
     known = await existing_ids(table, id_column)
-    counts.absent_from_source = len(known - set(rows.get_column(id_column).to_list()))
+    counts.absent_from_source = len(known - set(rows.get_column(id_column).to_list()) - set(delete_ids))
 
     if not dry_run:
         counts.upserted = await upsert_rows(
@@ -60,15 +67,16 @@ async def _sync_dimension(
             update_columns=[c for c in columns if c != id_column],
             chunk_size=UPSERT_CHUNK_SIZE,
         )
+        counts.deleted = await delete_rows(table, id_column, delete_ids, chunk_size=UPSERT_CHUNK_SIZE)
     return counts
 
 
-async def sync_suppliers(rows: pl.DataFrame, dry_run: bool = False) -> SyncCounts:
-    return await _sync_dimension(SUPPLIERS_TABLE, "supplier_id", rows, SUPPLIER_COLUMNS, dry_run)
+async def sync_suppliers(rows: pl.DataFrame, delete_ids: list[str], dry_run: bool = False) -> SyncCounts:
+    return await _sync_dimension(SUPPLIERS_TABLE, "supplier_id", rows, delete_ids, SUPPLIER_COLUMNS, dry_run)
 
 
-async def sync_business_units(rows: pl.DataFrame, dry_run: bool = False) -> SyncCounts:
-    return await _sync_dimension(BUSINESS_UNITS_TABLE, "bu_id", rows, BUSINESS_UNIT_COLUMNS, dry_run)
+async def sync_business_units(rows: pl.DataFrame, delete_ids: list[str], dry_run: bool = False) -> SyncCounts:
+    return await _sync_dimension(BUSINESS_UNITS_TABLE, "bu_id", rows, delete_ids, BUSINESS_UNIT_COLUMNS, dry_run)
 
 
 async def sync_purchase_orders(rows: pl.DataFrame, delete_codes: list[str], dry_run: bool = False) -> SyncCounts:

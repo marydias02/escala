@@ -12,16 +12,16 @@ from utils.utils_lakehouse import scan_table
 
 
 def read_suppliers() -> pl.DataFrame:
-    """LFA1, ~8473 rows.
+    """LFA1, ~8485 rows, blocked ones included.
 
-    No deletion filter: LOEVM and NODEL are empty on every row, so the table
-    carries no deletion signal. SPERR (87 rows) is a posting block and CONFS
-    (597) a confirmation state — neither means the supplier is gone.
+    MANDT and SPERR/SPERM come along so `transforms.build_suppliers` can split
+    active rows from the blocked ones to delete. LOEVM and NODEL are empty on
+    every row, so they carry no signal.
     """
     return (
         scan_table("LFA1")
         .filter(pl.col("MANDT") == SAP_CLIENT)
-        .select("LIFNR", "NAME1", "NAME2", "NAME3", "NAME4", "STCEG", "STCD1", "LAND1")
+        .select("MANDT", "LIFNR", "NAME1", "NAME2", "NAME3", "NAME4", "STCEG", "STCD1", "LAND1", "SPERR", "SPERM")
         .collect()
     )
 
@@ -35,11 +35,15 @@ def read_partners() -> pl.DataFrame:
 
 
 def read_business_units() -> pl.DataFrame:
-    """T001, 137 rows: everything SAP does not flag as a template."""
+    """T001, 137 rows: everything SAP does not flag as a template, obsolete included.
+
+    F_OBSOLETE comes along so `transforms.build_business_units` can split active
+    rows from the obsolete ones to delete.
+    """
     return (
         scan_table("T001")
         .filter((pl.col("MANDT") == SAP_CLIENT) & (pl.col("XTEMPLT") != TEMPLATE_FLAG))
-        .select("BUKRS", "BUTXT", "STCEG", "LAND1")
+        .select("MANDT", "BUKRS", "BUTXT", "STCEG", "LAND1", "F_OBSOLETE")
         .collect()
     )
 
