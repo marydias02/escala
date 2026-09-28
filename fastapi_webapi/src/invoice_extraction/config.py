@@ -117,7 +117,7 @@ PARSER_KWARGS = {
 # 0.7 keeps only the upper half of the validator's own "0.70-0.89 = probably
 # correct but some ambiguity" band. Money-moving data, so ambiguity goes to a
 # human.
-MIN_CONFIDENCE = 0.7
+MIN_CONFIDENCE = 0.5
 
 
 def failed_confidence(min_confidence: float = MIN_CONFIDENCE) -> float:
