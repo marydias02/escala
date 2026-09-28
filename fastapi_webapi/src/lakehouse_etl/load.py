@@ -10,11 +10,13 @@ import polars as pl
 
 from lakehouse_etl.config import (
     BUSINESS_UNITS_TABLE,
+    CLIENTS_TABLE,
+    INVOICES_TABLE,
     PURCHASE_ORDERS_TABLE,
     SUPPLIERS_TABLE,
     UPSERT_CHUNK_SIZE,
 )
-from lakehouse_etl.transforms import BUSINESS_UNIT_COLUMNS, SUPPLIER_COLUMNS
+from lakehouse_etl.transforms import BUSINESS_UNIT_COLUMNS, CLIENT_COLUMNS, SUPPLIER_COLUMNS
 from utils.utils_db import delete_rows, select, upsert_rows
 
 
@@ -69,6 +71,37 @@ async def sync_suppliers(rows: pl.DataFrame, dry_run: bool = False) -> SyncCount
 
 async def sync_business_units(rows: pl.DataFrame, dry_run: bool = False) -> SyncCounts:
     return await _sync_dimension(BUSINESS_UNITS_TABLE, "bu_id", rows, BUSINESS_UNIT_COLUMNS, dry_run)
+
+
+async def sync_clients(rows: pl.DataFrame, dry_run: bool = False) -> SyncCounts:
+    return await _sync_dimension(CLIENTS_TABLE, "client_id", rows, CLIENT_COLUMNS, dry_run)
+
+
+async def sync_open_invoices(rows: pl.DataFrame, dry_run: bool = False) -> SyncCounts:
+    """Mirror the open set: upsert what is open, delete what no longer is.
+
+    The table holds open invoices only, so an invoice missing from the extract
+    has been cleared. An empty extract over a non-empty table is far more likely
+    a failed read than every invoice being paid overnight — refuse it.
+    """
+    counts = SyncCounts(table=INVOICES_TABLE, extracted=rows.height)
+    known = await existing_ids(INVOICES_TABLE, "invoice_id")
+    if rows.is_empty() and known:
+        raise ValueError(f"Empty open-item extract; refusing to delete all {len(known)} rows of {INVOICES_TABLE}")
+
+    cleared = sorted(known - set(rows.get_column("invoice_id").to_list()))
+    if dry_run:
+        print(f"  would delete {len(cleared)} cleared invoice(s)")
+        return counts
+
+    counts.upserted = await upsert_rows(
+        INVOICES_TABLE,
+        rows.to_dicts(),
+        conflict_columns=["invoice_id"],
+        chunk_size=UPSERT_CHUNK_SIZE,
+    )
+    counts.deleted = await delete_rows(INVOICES_TABLE, "invoice_id", cleared, chunk_size=UPSERT_CHUNK_SIZE)
+    return counts
 
 
 async def sync_purchase_orders(rows: pl.DataFrame, delete_codes: list[str], dry_run: bool = False) -> SyncCounts:

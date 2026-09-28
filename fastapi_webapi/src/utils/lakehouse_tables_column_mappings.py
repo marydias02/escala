@@ -272,7 +272,8 @@ BUT000_TABLE_DESCRIPTION: str = (
     "partner, holding the partner category (person / organization / group), name, "
     "grouping, search terms, communication language and central block/deletion flags. "
     "It is the hub of the SAP Business Partner model; customer- and vendor-specific "
-    "attributes hang off it via KNA1/LFA1 and the CVI mapping tables."
+    "attributes hang off it via KNA1/LFA1 and the CVI mapping tables. For customers "
+    "BUT000 is the source of the full name; KNA1 cuts it at 35 characters a line."
 )
 
 BUT000_COLUMN_DESCRIPTIONS: dict[str, str] = {
@@ -470,6 +471,84 @@ EKPO_COLUMN_DESCRIPTIONS: dict[str, str] = {
     "MATNR_EXTERNAL": "Long material number (external format)",
 }
 
+KNA1_TABLE_DESCRIPTION: str = (
+    "Customer master (general section). One row per customer account, keyed by the "
+    "customer number (KUNNR), holding the name, address, communication data, tax and VAT "
+    "registration numbers, account group, and central posting/order/delivery/billing block "
+    "and deletion flags. Company-code data is in KNB1 and sales-area data in KNVV; join to "
+    "BSEG/BSAD on KUNNR or VBRK on KUNRG to label a customer. Under the Business Partner "
+    "model KUNNR equals the BUT000 PARTNER, whose name columns hold the full name — NAME1 "
+    "to NAME4 here are cut at 35 characters. The EU VAT id is in STCEG and the domestic "
+    "tax id in STCD1."
+)
+
+KNA1_COLUMN_DESCRIPTIONS: dict[str, str] = {
+    # Keys
+    "MANDT": "Client",
+    "KUNNR": "Customer number",
+    "ADRNR": "Address number (link to the central address management)",
+    # Names
+    "NAME1": "Customer name, line 1",
+    "NAME2": "Customer name, line 2",
+    "NAME3": "Customer name, line 3",
+    "NAME4": "Customer name, line 4",
+    "ANRED": "Title / form of address",
+    "SORTL": "Sort field (search term)",
+    "MCOD1": "Search term for matchcode use (uppercase name 1)",
+    "MCOD2": "Search term for matchcode use (uppercase name 2)",
+    "MCOD3": "Search term for matchcode use (uppercase city)",
+    # Address
+    "STRAS": "Street and house number",
+    "ORT01": "City",
+    "ORT02": "District",
+    "PSTLZ": "Postal code",
+    "LAND1": "Country key",
+    "REGIO": "Region (state, province, county)",
+    "PFACH": "PO box",
+    "PSTL2": "PO box postal code",
+    "PFORT": "PO box city",
+    "LZONE": "Transportation zone to or from which goods are delivered",
+    "TXJCD": "Tax jurisdiction code",
+    "SPRAS": "Language key",
+    # Communication
+    "TELF1": "First telephone number",
+    "TELF2": "Second telephone number",
+    "TELFX": "Fax number",
+    # Tax / VAT
+    "STCEG": "VAT registration number (EU VAT id)",
+    "STCD1": "Tax number 1 (domestic/national tax id, used when the customer has no EU VAT id)",
+    "STCD2": "Tax number 2",
+    "STCD3": "Tax number 3",
+    "STCD4": "Tax number 4",
+    "STCDT": "Tax number type",
+    "STKZU": "Indicator: customer is liable for VAT",
+    "STKZN": "Indicator: natural person (vs. legal entity)",
+    "FISKN": "Account number of the master record with the fiscal address",
+    "FITYP": "Tax type",
+    # Classification
+    "KTOKD": "Customer account group",
+    "BRSCH": "Industry key",
+    "KUKLA": "Customer classification",
+    "KONZS": "Group key (links customers belonging to the same corporate group)",
+    "BEGRU": "Authorization group",
+    "XCPDK": "Indicator: one-time account (customer data is entered per document)",
+    "VBUND": "Company ID of trading partner (for intercompany elimination)",
+    "LIFNR": "Vendor account number (when the customer is also a vendor)",
+    # Blocks / status
+    "SPERR": "Central posting block",
+    "AUFSD": "Central order block",
+    "LIFSD": "Central delivery block",
+    "FAKSD": "Central billing block",
+    "CASSD": "Central sales block",
+    "LOEVM": "Central deletion flag for the master record",
+    "NODEL": "Central deletion block for the master record",
+    # Audit
+    "ERDAT": "Date the customer record was created",
+    "ERNAM": "User who created the customer record",
+    "AEDAT": "Date of the last change",
+    "USNAM": "User who made the last change",
+}
+
 LFA1_TABLE_DESCRIPTION: str = (
     "Vendor master (general section). One row per vendor/supplier account, keyed by the "
     "vendor number (LIFNR), holding the name, address, communication data, tax and VAT "
@@ -610,6 +689,7 @@ TABLE_DESCRIPTIONS: dict[str, str] = {
     "CEPCT": CEPCT_TABLE_DESCRIPTION,
     "EKKO": EKKO_TABLE_DESCRIPTION,
     "EKPO": EKPO_TABLE_DESCRIPTION,
+    "KNA1": KNA1_TABLE_DESCRIPTION,
     "LFA1": LFA1_TABLE_DESCRIPTION,
     "SKAT": SKAT_TABLE_DESCRIPTION,
     "T001": T001_TABLE_DESCRIPTION,
@@ -623,6 +703,7 @@ COLUMN_DESCRIPTIONS: dict[str, dict[str, str]] = {
     "CEPCT": CEPCT_COLUMN_DESCRIPTIONS,
     "EKKO": EKKO_COLUMN_DESCRIPTIONS,
     "EKPO": EKPO_COLUMN_DESCRIPTIONS,
+    "KNA1": KNA1_COLUMN_DESCRIPTIONS,
     "LFA1": LFA1_COLUMN_DESCRIPTIONS,
     "SKAT": SKAT_COLUMN_DESCRIPTIONS,
     "T001": T001_COLUMN_DESCRIPTIONS,

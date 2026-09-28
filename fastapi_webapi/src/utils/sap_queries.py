@@ -11,11 +11,14 @@ and keeps the Delta read lazy so column/row pushdown still applies. Columns that
 the replicated table does not carry are ignored rather than raising, so a
 partial replication still returns what it has.
 
+`query_customers` does the same for KNA1, the customer master: one row per
+customer, with its VAT, address and block/deletion flags.
+
 `query_open_accounts_receivable` does the same for BSEG (accounting document
 line items), selecting the customer lines that have not been cleared yet.
 
-`get_customer` combines the two for one customer: its business-partner record
-and its open receivables.
+`get_customer` combines them for one customer: its customer master record, its
+business-partner record (which holds the full name) and its open receivables.
 
 Result columns are named after their meaning in the lakehouse tables mapping
 (`SAPTableMetadata.readable_column_names`), e.g. `customer_number`.
@@ -38,6 +41,9 @@ _METADATA = SAPTableMetadata(table_name=_TABLE)
 _BSEG_TABLE = "BSEG"
 _BSEG_METADATA = SAPTableMetadata(table_name=_BSEG_TABLE)
 
+_KNA1_TABLE = "KNA1"
+_KNA1_METADATA = SAPTableMetadata(table_name=_KNA1_TABLE)
+
 #: Free-text name search spans every name-bearing column: organizations, persons
 #: and groups each populate a different set depending on BUT000.TYPE.
 BUSINESS_PARTNER_NAME_COLUMNS: tuple[str, ...] = (
@@ -55,6 +61,10 @@ BUSINESS_PARTNER_NAME_COLUMNS: tuple[str, ...] = (
     "BU_SORT2",
 )
 
+#: KNA1 name lines, plus the search term. Each line is cut at 35 characters;
+#: BUT000 holds the full name.
+CUSTOMER_NAME_COLUMNS: tuple[str, ...] = ("NAME1", "NAME2", "NAME3", "NAME4", "SORTL")
+
 #: BUT000.TYPE codes.
 PARTNER_CATEGORY_PERSON = "1"
 PARTNER_CATEGORY_ORGANIZATION = "2"
@@ -63,6 +73,10 @@ PARTNER_CATEGORY_GROUP = "3"
 #: BSEG.KOART account type of a customer (accounts receivable) line.
 ACCOUNT_TYPE_CUSTOMER = "D"
 
+#: The productive SAP client. The lakehouse also replicates client 000 (SAP's
+#: reference client) for some tables, whose keys collide with 100's.
+SAP_CLIENT = "100"
+
 
 def _as_str_list(value: str | Iterable[str] | None) -> list[str]:
     """Normalize a scalar / iterable / None argument to a list of trimmed strings."""
@@ -70,6 +84,20 @@ def _as_str_list(value: str | Iterable[str] | None) -> list[str]:
         return []
     values = [value] if isinstance(value, str) else list(value)
     return [str(v).strip() for v in values if v is not None and str(v).strip()]
+
+
+def _name_contains(lf: pl.LazyFrame, table: str, name_columns: Sequence[str], name: str) -> pl.LazyFrame:
+    """Keep rows where any of `name_columns` contains `name`, case-insensitively."""
+    needle = name.strip().lower()
+    available = set(lf.collect_schema().names())
+    columns = [c for c in name_columns if c in available]
+    if not columns:
+        logger.warning(f"{table} carries none of the expected name columns; ignoring name filter")
+        return lf
+    matches = pl.any_horizontal(
+        pl.col(c).cast(pl.Utf8).str.to_lowercase().str.contains(needle, literal=True).fill_null(False) for c in columns
+    )
+    return lf.filter(matches)
 
 
 def _flag_is_set(column: str) -> pl.Expr:
@@ -122,6 +150,7 @@ def query_business_partners(
     columns: Sequence[str] | None = None,
     exclude_blocked: bool = False,
     exclude_deleted: bool = True,
+    client: Optional[str] = SAP_CLIENT,
     limit: Optional[int] = 100,
 ) -> pl.DataFrame:
     """Business partner rows from BUT000 matching the given filters.
@@ -144,6 +173,8 @@ def query_business_partners(
             are dropped.
         exclude_blocked: Drop partners with the central block flag (`XBLCK`).
         exclude_deleted: Drop partners flagged for central deletion (`XDELE`).
+        client: SAP client on `CLIENT` (BUT000's name for `MANDT`). `None`
+            reads every client.
         limit: Row cap, applied last. `None` means no cap.
 
     Returns:
@@ -156,6 +187,9 @@ def query_business_partners(
     lf = scan_table(_TABLE)
     available = set(lf.collect_schema().names())
 
+    if client is not None:
+        lf = lf.filter(pl.col("CLIENT") == client)
+
     partners = _as_str_list(partner)
     if partners:
         lf = lf.filter(pl.col("PARTNER").cast(pl.Utf8).is_in(partners))
@@ -165,16 +199,7 @@ def query_business_partners(
         lf = lf.filter(pl.col("TYPE").cast(pl.Utf8).is_in(categories))
 
     if name and name.strip():
-        needle = name.strip().lower()
-        name_cols = [c for c in BUSINESS_PARTNER_NAME_COLUMNS if c in available]
-        if not name_cols:
-            logger.warning(f"{_TABLE} carries none of the expected name columns; ignoring name filter")
-        else:
-            matches = pl.any_horizontal(
-                pl.col(c).cast(pl.Utf8).str.to_lowercase().str.contains(needle, literal=True).fill_null(False)
-                for c in name_cols
-            )
-            lf = lf.filter(matches)
+        lf = _name_contains(lf, _TABLE, BUSINESS_PARTNER_NAME_COLUMNS, name)
 
     if exclude_blocked and "XBLCK" in available:
         lf = lf.filter(~_flag_is_set("XBLCK"))
@@ -206,12 +231,88 @@ def get_business_partner(
     return df.row(0, named=True) if df.height > 0 else None
 
 
+def query_customers(
+    *,
+    customer: str | Sequence[str] | None = None,
+    name: str | None = None,
+    columns: Sequence[str] | None = None,
+    exclude_blocked: bool = False,
+    exclude_deleted: bool = True,
+    client: Optional[str] = SAP_CLIENT,
+    limit: Optional[int] = 100,
+) -> pl.DataFrame:
+    """Customer master rows from KNA1 matching the given filters.
+
+    Every customer SAP holds, whether or not anything was ever posted to it.
+    Every filter is optional and they combine with AND; `limit=None` returns
+    the whole table.
+
+    Args:
+        customer: One customer number or a list of them; exact match on `KUNNR`.
+            Values are trimmed but not zero-padded, so pass them in the format
+            SAP stores (10 chars, left zero-padded, e.g. "0100008647").
+        name: Case-insensitive substring matched against `CUSTOMER_NAME_COLUMNS`.
+            KNA1 cuts each name line at 35 characters; to search the full name,
+            use `query_business_partners` (KUNNR is the BUT000 PARTNER).
+        columns: Projection, by SAP name ("KUNNR") or readable name
+            ("customer_number"). Defaults to the documented KNA1 columns; pass an
+            explicit list to widen or narrow it. Unknown names are dropped.
+        exclude_blocked: Drop customers with the central posting block (`SPERR`).
+        exclude_deleted: Drop customers flagged for central deletion (`LOEVM`).
+        client: SAP client on `MANDT`. `None` reads every client.
+        limit: Row cap, applied last. `None` means no cap.
+
+    Returns:
+        A polars DataFrame, empty if nothing matched. Columns are named after
+        their meaning in the KNA1 mapping, in snake_case (`KUNNR` ->
+        `customer_number`, `STCEG` -> `vat_registration_number`; see
+        `SAPTableMetadata.readable_column_names`). Columns the mapping does not
+        document keep their SAP name, lower-cased.
+    """
+    lf = scan_table(_KNA1_TABLE)
+    available = set(lf.collect_schema().names())
+
+    if client is not None:
+        lf = lf.filter(pl.col("MANDT") == client)
+
+    customers = _as_str_list(customer)
+    if customers:
+        lf = lf.filter(pl.col("KUNNR").cast(pl.Utf8).is_in(customers))
+
+    if name and name.strip():
+        lf = _name_contains(lf, _KNA1_TABLE, CUSTOMER_NAME_COLUMNS, name)
+
+    if exclude_blocked and "SPERR" in available:
+        lf = lf.filter(~_flag_is_set("SPERR"))
+    if exclude_deleted and "LOEVM" in available:
+        lf = lf.filter(~_flag_is_set("LOEVM"))
+
+    return _select_readable(lf, _KNA1_METADATA, columns, limit)
+
+
+def get_customer_master(
+    customer: str,
+    *,
+    columns: Sequence[str] | None = None,
+) -> Optional[dict[str, Any]]:
+    """A single KNA1 customer by exact `KUNNR`, or None if there is no match.
+
+    Like `get_business_partner`, a customer flagged for deletion is still
+    returned. The dict is keyed by the same readable column names.
+    """
+    if not customer or not customer.strip():
+        return None
+    df = query_customers(customer=customer.strip(), columns=columns, exclude_deleted=False, limit=1)
+    return df.row(0, named=True) if df.height > 0 else None
+
+
 def query_open_accounts_receivable(
     *,
     customer: str | Sequence[str] | None = None,
     company_code: str | Sequence[str] | None = None,
     fiscal_year: str | Sequence[str] | None = None,
     columns: Sequence[str] | None = None,
+    client: Optional[str] = SAP_CLIENT,
     limit: Optional[int] = 100,
 ) -> pl.DataFrame:
     """Open customer line items (accounts receivable) from BSEG.
@@ -231,6 +332,7 @@ def query_open_accounts_receivable(
         columns: Projection, by SAP name ("KUNNR") or readable name
             ("customer_number"). Defaults to the documented BSEG columns; pass an
             explicit list to widen or narrow it. Unknown names are dropped.
+        client: SAP client on `MANDT`. `None` reads every client.
         limit: Row cap, applied last. `None` means no cap.
 
     Returns:
@@ -245,18 +347,24 @@ def query_open_accounts_receivable(
           (`WRBTR`) are unsigned. `debit_credit_indicator` (`SHKZG`) gives the
           direction: 'S' (debit) is money the customer owes, 'H' (credit) is a
           credit memo or payment on account. Apply the sign before summing.
-        - Special G/L items (`UMSKZ`) are included. As replicated today, every
-          customer line in BSEG (open and cleared) is special G/L 'E' with
-          posting key 09/19; ordinary customer invoices (`UMSKZ` blank, posting
-          key 01) are not in the table.
+        - Every kind of customer line is included; `posting_key` (`BSCHL`)
+          tells them apart: 01 invoice, 11 credit memo, 15 incoming payment,
+          09/19 special G/L debit/credit (`UMSKZ` 'E' re-posted receivables,
+          'A' down payments). As replicated since 2026-09-25, ordinary lines
+          (`UMSKZ` blank) are present only while open; only the special G/L 'E'
+          lines carry cleared history.
         - BSEG repeats a few header fields on every line: `document_type`
           (`H_BLART`), `document_date` (`H_BLDAT`), `posting_date` (`H_BUDAT`)
           and `currency_key_of_the_document` (`H_WAERS`, the currency of
-          `amount_in_document_currency`). Anything else on the header (entry
-          date, reference number) lives in BKPF, which is not replicated.
+          `amount_in_document_currency`). The header reference (`XBLNR`) lives
+          in BKPF, which is not replicated; for SD invoices (`H_BLART` 'RV')
+          `billing_document` (`VBELN`) is the number the customer sees.
           Payment terms are `ZTERM`, `ZFBDT`, `ZBD*`.
     """
     lf = scan_table(_BSEG_TABLE).filter((pl.col("KOART") == ACCOUNT_TYPE_CUSTOMER) & _is_blank("AUGBL"))
+
+    if client is not None:
+        lf = lf.filter(pl.col("MANDT") == client)
 
     customers = _as_str_list(customer)
     if customers:
@@ -277,41 +385,49 @@ def query_open_accounts_receivable(
 class CustomerData:
     """One customer's master data and, when requested, its open receivables.
 
-    `business_partner` is the BUT000 row keyed by readable column names (as
-    `get_business_partner` returns it), or None if BUT000 has no partner with
-    that number. `open_receivables` is `query_open_accounts_receivable`'s frame
-    for the customer — empty if nothing is open, None if it was not requested.
+    `customer_master` is the KNA1 row keyed by readable column names (as
+    `get_customer_master` returns it) — VAT, address, blocks. `business_partner`
+    is the BUT000 row (as `get_business_partner` returns it), the source of the
+    full name, which KNA1 cuts at 35 characters a line. Either is None if its
+    table has no row for the number. `open_receivables` is
+    `query_open_accounts_receivable`'s frame for the customer — empty if nothing
+    is open, None if it was not requested.
     """
 
     customer_number: str
+    customer_master: Optional[dict[str, Any]]
     business_partner: Optional[dict[str, Any]]
     open_receivables: Optional[pl.DataFrame] = None
 
 
 def get_customer(customer: str, *, include_open_receivables: bool = True) -> Optional[CustomerData]:
-    """A customer's business-partner record and open receivables, or None if
-    SAP knows nothing about the number.
+    """A customer's master data and open receivables, or None if SAP knows
+    nothing about the number.
 
-    The lakehouse has no customer master (KNA1); a customer number is its
-    business partner number (every `KUNNR` in BSEG is a BUT000 `PARTNER`), so the
-    master data is the BUT000 row. Like `get_business_partner`, a centrally
-    deleted or blocked partner is still returned — check `central_deletion_flag`
-    and `central_block_indicator` on the record. Pass the number in the format
-    SAP stores (10 chars, left zero-padded, e.g. "0100008647").
+    The customer master is the KNA1 row; the BUT000 row alongside it carries
+    the full name (a customer number is its business partner number). Like
+    `get_customer_master` and `get_business_partner`, a customer flagged for
+    deletion or blocked is still returned — check
+    `central_deletion_flag_for_the_master_record` and `central_posting_block` on
+    the master record. Pass the number in the format SAP stores (10 chars, left
+    zero-padded, e.g. "0100008647").
 
     Open receivables are every uncleared customer line in BSEG, with all the
-    caveats of `query_open_accounts_receivable` (unsigned amounts, special G/L
-    items only). Pass `include_open_receivables=False` for the master data alone.
+    caveats of `query_open_accounts_receivable` (unsigned amounts). Pass
+    `include_open_receivables=False` for the master data alone.
     """
     if not customer or not customer.strip():
         return None
     number = customer.strip()
 
+    master = get_customer_master(number)
     partner = get_business_partner(number)
     receivables = query_open_accounts_receivable(customer=number, limit=None) if include_open_receivables else None
-    if partner is None and (receivables is None or receivables.is_empty()):
+    if master is None and partner is None and (receivables is None or receivables.is_empty()):
         return None
-    return CustomerData(customer_number=number, business_partner=partner, open_receivables=receivables)
+    return CustomerData(
+        customer_number=number, customer_master=master, business_partner=partner, open_receivables=receivables
+    )
 
 
 if __name__ == "__main__":
