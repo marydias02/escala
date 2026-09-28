@@ -4,6 +4,21 @@
 SUPPLIERS_TABLE = "dim_suppliers"
 BUSINESS_UNITS_TABLE = "dim_business_units"
 PURCHASE_ORDERS_TABLE = "fct_purchase_orders"
+CLIENTS_TABLE = "dim_clients"
+INVOICES_TABLE = "fct_invoices"
+
+# Which open customer lines are invoices in fct_invoices (BSEG.BSCHL/UMSKZ):
+# ordinary invoices, plus the special G/L 'E' debits — receivables SAPF103
+# re-posted, still owed. Down payments ('A'), outgoing payments (05) and the
+# other debit keys are not invoices.
+INVOICE_POSTING_KEY = "01"
+REPOSTED_RECEIVABLE_INDICATOR = "E"
+REPOSTED_RECEIVABLE_POSTING_KEY = "09"
+
+# Credit lines that reduce the invoice they reference (BSEG.REBZG/REBZJ/REBZZ):
+# a credit memo (11) or an invoice reversal (12). Partial payments reduce it too,
+# but are told apart by their follow-on type (REBZT 'Z'), not their key.
+CREDIT_MEMO_POSTING_KEYS = ("11", "12")
 
 # The lakehouse replicates two SAP clients: 100 (productive) and 000 (SAP's
 # reference client). Dropping this filter makes T001 return a duplicate bu_id —

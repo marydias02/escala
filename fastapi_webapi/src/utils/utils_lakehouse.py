@@ -20,7 +20,7 @@ import polars as pl
 from config.settings import settings
 from lakehouse_etl.config import SAP_CLIENT
 
-AVAILABLE_TABLES = ("ACDOCA", "BSAD", "BSEG", "BUT000", "CEPCT", "EKKO", "LFA1", "SKAT", "T001")
+AVAILABLE_TABLES = ("ACDOCA", "BSAD", "BSEG", "BUT000", "CEPCT", "EKKO", "KNA1", "LFA1", "SKAT", "T001", "VBRK")
 
 _storage_options: dict[str, str] | None = None
 
