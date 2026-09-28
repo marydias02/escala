@@ -284,7 +284,10 @@
       "should_extract": true,
       "document_type": "debit_note",
       "document_state": "original",
-      "document_number": ["ND 1512026/83", "1512026/83"],
+      "document_number": [
+        "ND 1512026/83",
+        "1512026/83"
+      ],
       "supplier_vat": "PT512003041",
       "client_vat": "PT509225918",
       "issue_date": "19-05-2026",
@@ -355,7 +358,10 @@
       "should_extract": false,
       "document_type": "other",
       "document_state": "original",
-      "document_number": ["7121/0016", null]
+      "document_number": [
+        "7121/0016",
+        null
+      ]
     }
   },
   {
@@ -464,6 +470,44 @@
       "document_type": "other",
       "document_state": "original",
       "document_number": "208/2026"
+    }
+  },
+  {
+    "pdf": "example_pdfs/01_inv5140079632_GSS_ECOFACTURA_NXO_001.pdf",
+    "tags": {
+      "lang": "pt",
+      "case": "fatura_interna",
+      "scanned": "no"
+    },
+    "expect": {
+      "should_extract": true,
+      "document_type": "invoice",
+      "document_state": "original",
+      "document_number": "7860/2026",
+      "supplier_vat": "PT511080042",
+      "client_vat": "PT511102836",
+      "issue_date": "26-09-2026",
+      "base_amount": 299.62,
+      "vat_amount": 11.98,
+      "total_amount": 311.60,
+      "currency": "EUR",
+      "purchase_order": [
+        "6700347795"
+      ]
+    }
+  },
+  {
+    "pdf": "example_pdfs/01_ELG_PT511049498_6_001.pdf",
+    "tags": {
+      "lang": "pt",
+      "case": "conjunto_faturas_conta",
+      "scanned": "no"
+    },
+    "expect": {
+      "should_extract": false,
+      "document_type": "other",
+      "document_state": "original",
+      "document_number": null
     }
   }
 ]

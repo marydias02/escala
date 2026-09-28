@@ -39,16 +39,21 @@ class InvoiceData(BaseModel):
     supplier_vat: Confident[str] | None = Field(
         default=None,
         description="""
-        Tax identification number (VAT/NIF/NIPC/BRN/Legal person/Registration) of the supplier.
+        Tax identification number (VAT/NIF/NIPC/Ncr./BRN/Legal person/Registration) of the supplier.
 
         It sits in the supplier's own legal block (registered office, share
         capital, NIF/NIPC, "Legal Person / Registration"), in the header or the
         footer. Not every number there is it: suppliers may also show licence or
         packer registrations, sometimes prefixed. Prefer one explicitly labelled
-        NIF/NIPC/VAT, even when it sits in the footer among the registered
+        NIF/NIPC/Ncr./VAT, even when it sits in the footer among the registered
         office details.
 
-        Value = digits/prefix only. Strip label words like "NIF", "CIF",
+        The company named in the legal footer (share capital, commercial
+        registry, Ncr.) is the issuer. When the only block at the top is a
+        name and address with a NIF, and the legal footer names a different
+        company, that top block is the addressee: its NIF is the client VAT.
+
+        Value = digits/prefix only. Strip label words like "NIF", "CIF", "Ncr.",
         "VAT No." and separators (e.g. "NIF·A-48084909" -> "A48084909").
 
         Examples:
@@ -91,6 +96,9 @@ class InvoiceData(BaseModel):
         - Customer
 
         Do not confuse with supplier.
+
+        A person labelled as a guest or passenger (Hósp., Hóspede, Guest,
+        Passageiro) is not the client. The client is the company billed.
         """,
     )
 
@@ -127,6 +135,7 @@ class InvoiceData(BaseModel):
         description="""
         All purchase order numbers or references found in the invoice.
         Usually appear in the header or customer block.
+        May be labelled PO, Purchase Order, Encomenda or Voucher.
         Return an empty list if none are present.
         Purchase orders have 10 digits
         """,

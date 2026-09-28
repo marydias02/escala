@@ -25,7 +25,9 @@ Determine the accounting nature of the document (document_type). Decide on the
 document's own title, never on the documents it refers to.
 
 - invoice: Invoice/Fatura. Also settlement and reconciliation statements that
-  settle a balance between two parties.
+  settle a balance between two parties. A statement of account or overdue
+  reminder that only lists invoices already issued and what is pending on each
+  settles nothing: it is other.
 - receipt: Receipt/Recibo. Also Avisos de recibo (receipt notices).
 - credit_note / debit_note: Nota de Crédito / Nota de Débito.
 - billing_document: a demand for payment under its own collection reference

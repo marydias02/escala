@@ -49,6 +49,10 @@ class DocumentClassification(BaseModel):
     are to be considered as invoice, when they actually settle a balance
     between two parties.
 
+    A statement of account or overdue reminder that only lists invoices already
+    issued and what is still pending on each is other: it settles nothing, it
+    chases invoices that exist on their own.
+
     IATA CASS documents — decide on the header title only:
     - "LIQUIDAÇÃO DE VENDAS DE CARGAS/AJUSTES" is invoice: one airline settled
       against the agent, with its own DOCUMENTO NO. Its "RESUMO" totals page

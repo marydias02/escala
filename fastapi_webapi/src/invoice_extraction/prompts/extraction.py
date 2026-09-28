@@ -86,6 +86,16 @@ ISSUE DATE
 issue_date is the date the supplier issued the document: "Data de Emissão" or
 "Issue Date" wins over any other date.
 
+SUPPLIER VS CLIENT
+
+The supplier is the issuer: the company named in the legal footer (share
+capital, commercial registry, NIF/NIPC/Ncr.). When the only block at the top is
+a name and address with a NIF, and the legal footer names a different company,
+that top block is the addressee — its name and NIF belong to the client.
+
+A person labelled as a guest or passenger (Hósp., Hóspede, Guest, Passageiro)
+is not the client. The client is the company billed.
+
 KNOWN EDGE CASES
 
 On a condomínio receipt the supplier is the condomínio named under "CONDOMÍNIO:",
@@ -110,6 +120,8 @@ For Seaco, the Purcher Order number is the number between brackets after Lease n
 Example:
 Summary Charges - Lease Number : 182991 (5000284123)
 Other suppliers may also use similar formats, such as 1234567-5000284123, where the purchase order is the second number after the dash.
+
+A 10-digit number labelled "Voucher" (Voucher Nr., Voucher No.) is a purchase order.
 
 The purchase order can be handwritten for some Cabo Verde invoices, usually at
 the very top of the page, as a "PC" prefix followed by the 10-digit number

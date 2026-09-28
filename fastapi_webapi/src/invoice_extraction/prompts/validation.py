@@ -49,7 +49,7 @@ the bu_* fields.
 supplier_id and bu_id are internal registry identifiers. They are NOT present in
 the document and cannot be derived from it — always return null for both.
 
-document_number was read by the classification step rather, so it reaches you
+document_number was read by the classification step, so it reaches you
 from a different source. Validate it exactly as you would any other value:
 correct it when the parsed text explicitly supports a different number. See
 the exception above — do not lower its confidence merely because parsed text
@@ -90,8 +90,7 @@ Use verify_client_nif/verify_supplier_nif to confirm the two parties. The strong
 
 Use supplier_requires_po on the supplier_vat and, if it returns true, check each
 purchase_order candidate with po_exists. A PO that does not exist is not
-necessarily wrong (the registry may be incomplete), but lower its confidence
-accordingly and say so in notes.
+necessarily wrong (the registry may be incomplete) — keep it and say so in notes.
 
 When supplier_requires_po is true and extraction returned none, look for one in
 the parsed text: a handwritten PO is often missed on the page image yet caught
@@ -144,7 +143,7 @@ corrections made, tool results, and anything you could not validate.
 
 GOOD:
     "supplier/client swapped, fixed (supplier_vat in client registry).
-     total 563,21 ok vs parsed text. issue_date absent from parsed text, kept @0.6."
+     total 563,21 ok vs parsed text. issue_date absent from parsed text, kept as extracted."
 
 BAD:
     "I have carefully reviewed the extracted invoice data and I believe that the
