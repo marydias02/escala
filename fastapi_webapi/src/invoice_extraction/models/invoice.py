@@ -39,15 +39,21 @@ class InvoiceData(BaseModel):
     supplier_vat: Confident[str] | None = Field(
         default=None,
         description="""
-        Tax identification number (VAT/NIF/NIPC/BRN/Legal person/Registration) of the supplier.
+        Tax identification number (VAT/NIF/NIPC/Ncr./BRN/Legal person/Registration) of the supplier.
 
-        Usually appears close to the supplier name, but not every number printed
-        there is it: suppliers may also show licence or packer
-        registrations, sometimes prefixed. Prefer one explicitly labelled
-        NIF/NIPC/VAT, even when it sits in the footer among the registered
+        It sits in the supplier's own legal block (registered office, share
+        capital, NIF/NIPC, "Legal Person / Registration"), in the header or the
+        footer. Not every number there is it: suppliers may also show licence or
+        packer registrations, sometimes prefixed. Prefer one explicitly labelled
+        NIF/NIPC/Ncr./VAT, even when it sits in the footer among the registered
         office details.
 
-        Value = digits/prefix only. Strip label words like "NIF", "CIF",
+        The company named in the legal footer (share capital, commercial
+        registry, Ncr.) is the issuer. When the only block at the top is a
+        name and address with a NIF, and the legal footer names a different
+        company, that top block is the addressee: its NIF is the client VAT.
+
+        Value = digits/prefix only. Strip label words like "NIF", "CIF", "Ncr.",
         "VAT No." and separators (e.g. "NIF·A-48084909" -> "A48084909").
 
         Examples:
@@ -90,6 +96,9 @@ class InvoiceData(BaseModel):
         - Customer
 
         Do not confuse with supplier.
+
+        A person labelled as a guest or passenger (Hósp., Hóspede, Guest,
+        Passageiro) is not the client. The client is the company billed.
         """,
     )
 
@@ -99,8 +108,9 @@ class InvoiceData(BaseModel):
         VAT number of the customer.
 
         Usually appears close to the customer name, but may instead sit in a
-        header table under a label such as "V/N.º Contrib.", "V/NIF" or
-        "Nº Contribuinte" — "V/" meaning yours, i.e. the customer's. In a
+        header data table, among per-document fields (due date, file no.,
+        references), under a label such as "V/N.º Contrib.", "V/NIF",
+        "Nº Contribuinte" or a bare "VAT Reg No" — "V/" meaning yours. In a
         column layout the value is on the line below its label, not beside it,
         and OCR may mangle the label itself.
 
@@ -125,6 +135,7 @@ class InvoiceData(BaseModel):
         description="""
         All purchase order numbers or references found in the invoice.
         Usually appear in the header or customer block.
+        May be labelled PO, Purchase Order, Encomenda or Voucher.
         Return an empty list if none are present.
         Purchase orders have 10 digits
         """,
@@ -145,6 +156,9 @@ class InvoiceData(BaseModel):
         Data
         Data de emissão
         Invoice Date
+        Dt. Movimento (on a Documento Único de Cobrança)
+
+        When several dates are shown, "Data de emissão" wins.
 
         Do NOT use:
 
@@ -154,6 +168,8 @@ class InvoiceData(BaseModel):
         Check-out
         Operation Date
         Service Period
+        Notice or print dates (Data do Aviso)
+        Dates the recipient stamped or wrote on the document (Data de Entrada, Recebido, Registo)
         """,
     )
 

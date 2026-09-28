@@ -37,7 +37,9 @@ class DocumentClassification(BaseModel):
 
     Use 'other' whenever the document is not one of the above, even if it contains
     financial information (shipping documents, customs documents, bank statements,
-    insurance certificates, purchase orders, etc.).
+    insurance certificates, purchase orders, etc.). An annex ("Anexo à Fatura",
+    "Anexo Factura nº ...") only details an invoice issued separately: naming that
+    invoice, listing lines or showing a total does not make it one.
 
     Avisos de recibo (Receipt notices) are considered receipts.
 
@@ -46,6 +48,10 @@ class DocumentClassification(BaseModel):
     Settlement/reconciliation statements (statement of account and similar)
     are to be considered as invoice, when they actually settle a balance
     between two parties.
+
+    A statement of account or overdue reminder that only lists invoices already
+    issued and what is still pending on each is other: it settles nothing, it
+    chases invoices that exist on their own.
 
     IATA CASS documents — decide on the header title only:
     - "LIQUIDAÇÃO DE VENDAS DE CARGAS/AJUSTES" is invoice: one airline settled

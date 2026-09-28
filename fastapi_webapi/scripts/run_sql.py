@@ -3,6 +3,7 @@
     python scripts/run_sql.py "SELECT * FROM webapp.sessions LIMIT 10"
     python scripts/run_sql.py -f query.sql
     python scripts/run_sql.py "SELECT ..." --csv out.csv       # also write all rows to a CSV
+    python scripts/run_sql.py "SELECT ..." --width 0           # don't truncate cells
     python scripts/run_sql.py                                  # interactive prompt, end statements with ';'
 
 Every query first runs inside a READ ONLY transaction. If Postgres rejects it for
@@ -80,16 +81,16 @@ async def run_query(conn: asyncpg.Connection, sql: str) -> _Result | None:
         return await _fetch(conn, sql)
 
 
-def _fmt(value: Any) -> str:
+def _fmt(value: Any, width: int) -> str:
     if value is None:
         return "NULL"
     text = str(value).replace("\r", "").replace("\n", "\\n")
-    return text if len(text) <= MAX_CELL_WIDTH else text[: MAX_CELL_WIDTH - 3] + "..."
+    return text if width <= 0 or len(text) <= width else text[: width - 3] + "..."
 
 
-def print_result(result: _Result, limit: int) -> None:
+def print_result(result: _Result, limit: int, width: int) -> None:
     if result.columns:
-        shown = [[_fmt(v) for v in row] for row in result.rows[:limit]]
+        shown = [[_fmt(v, width) for v in row] for row in result.rows[:limit]]
         widths = [max([len(c)] + [len(r[i]) for r in shown]) for i, c in enumerate(result.columns)]
         print(" | ".join(c.ljust(w) for c, w in zip(result.columns, widths)))
         print("-+-".join("-" * w for w in widths))
@@ -116,7 +117,7 @@ async def _execute_and_print(conn: asyncpg.Connection, sql: str, args: argparse.
         return
     if result is None:
         return
-    print_result(result, args.limit)
+    print_result(result, args.limit, args.width)
     if args.csv and result.columns:
         write_csv(result, args.csv)
 
@@ -158,6 +159,7 @@ def main() -> None:
     source.add_argument("-f", "--file", type=Path, help="read SQL from a file")
     parser.add_argument("--csv", type=Path, help="also write the result rows to this CSV file")
     parser.add_argument("--limit", type=int, default=DEFAULT_ROW_LIMIT, help="max rows printed to the console")
+    parser.add_argument("--width", type=int, default=MAX_CELL_WIDTH, help="max cell width; 0 disables truncation")
     asyncio.run(main_async(parser.parse_args()))
 
 

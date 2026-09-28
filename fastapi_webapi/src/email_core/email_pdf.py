@@ -34,6 +34,32 @@ def _header_html(sender: str, subject: str, received: str, message_id: str) -> s
     return f"<h1>{html.escape(subject or '(no subject)')}</h1>{lines}<hr/>"
 
 
+def render_html_pdf(
+    document: str,
+    paper: fitz.Rect = A4,
+    margin: int = MARGIN,
+    archive: fitz.Archive | None = None,
+) -> bytes:
+    """An HTML document as PDF bytes, paginated to `paper`.
+
+    `archive` resolves resources the HTML references, such as `<img src>`.
+    """
+    story = fitz.Story(html=document, archive=archive)
+    buffer = io.BytesIO()
+    writer = fitz.DocumentWriter(buffer)
+    frame = paper + (margin, margin, -margin, -margin)
+
+    more = 1
+    while more:
+        device = writer.begin_page(paper)
+        more, _ = story.place(frame)
+        story.draw(device)
+        writer.end_page()
+    writer.close()
+
+    return buffer.getvalue()
+
+
 def render_email_pdf(
     *,
     sender: str,
@@ -49,18 +75,4 @@ def render_email_pdf(
         + f"<pre>{html.escape(body or '')}</pre>"
         + "</body></html>"
     )
-
-    story = fitz.Story(html=document)
-    buffer = io.BytesIO()
-    writer = fitz.DocumentWriter(buffer)
-    frame = A4 + (MARGIN, MARGIN, -MARGIN, -MARGIN)
-
-    more = 1
-    while more:
-        device = writer.begin_page(A4)
-        more, _ = story.place(frame)
-        story.draw(device)
-        writer.end_page()
-    writer.close()
-
-    return buffer.getvalue()
+    return render_html_pdf(document)

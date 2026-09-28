@@ -19,6 +19,7 @@ _pipeline = create_pipeline()
 # Ground-truth key -> ValidationReport attribute. The report calls the client
 # fields `bu_*`, so the labels are mapped rather than read straight off.
 _VALIDATED_FIELDS = {
+    "document_number": "document_number",
     "supplier_vat": "supplier_vat",
     "client_vat": "bu_vat",
     "issue_date": "issue_date",

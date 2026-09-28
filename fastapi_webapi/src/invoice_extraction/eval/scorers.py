@@ -31,9 +31,12 @@ def _text_match(got: Any, want: Any) -> bool:
 
 
 def _score_text(outputs: dict, expectations: dict, field: str) -> Optional[str]:
+    """A list expectation accepts any of its values, null included."""
     if field not in expectations:
         return None
-    return _verdict(_text_match(outputs.get(field), expectations[field]))
+    want = expectations[field]
+    accepted = want if isinstance(want, list) else [want]
+    return _verdict(any(_text_match(outputs.get(field), option) for option in accepted))
 
 
 def _score_amount(outputs: dict, expectations: dict, field: str) -> Optional[str]:

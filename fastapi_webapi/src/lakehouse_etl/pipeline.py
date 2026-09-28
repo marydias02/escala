@@ -24,14 +24,15 @@ TABLE_KEYS = ("business_units", "suppliers", "purchase_orders")
 
 async def _sync_business_units(dry_run: bool) -> load.SyncCounts:
     t001 = await asyncio.to_thread(extract.read_business_units)
-    return await load.sync_business_units(transforms.build_business_units(t001), dry_run)
+    rows, delete_ids = transforms.build_business_units(t001)
+    return await load.sync_business_units(rows, delete_ids, dry_run)
 
 
 async def _sync_suppliers(dry_run: bool) -> tuple[load.SyncCounts, list[str]]:
     lfa1 = await asyncio.to_thread(extract.read_suppliers)
     but000 = await asyncio.to_thread(extract.read_partners)
-    rows = transforms.build_suppliers(lfa1, but000)
-    return await load.sync_suppliers(rows, dry_run), transforms.unmatched_financial_names(rows)
+    rows, delete_ids = transforms.build_suppliers(lfa1, but000)
+    return await load.sync_suppliers(rows, delete_ids, dry_run), transforms.unmatched_financial_names(rows)
 
 
 async def _sync_purchase_orders(full: bool, dry_run: bool) -> load.SyncCounts:

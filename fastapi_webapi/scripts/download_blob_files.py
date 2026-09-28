@@ -24,7 +24,7 @@ from loguru import logger
 from utils.blob_storage import download_document_bytes, get_container_client
 
 # Default keys, used when none are passed on the command line.
-KEYS = ["processed_emails/2026/09/20260923-171842_GuestCentric_ Documentos em Aberto/01_0290_Aviso_202609_001.PDF"]
+KEYS = ["processed_emails/2026/09/20260926-011659_Documento Eletrónico/01_inv5140079555_GSS_ECOFACTURA_NXO_001.pdf"]
 
 DEFAULT_OUT_DIR = Path(__file__).resolve().parent.parent / "downloads"
 

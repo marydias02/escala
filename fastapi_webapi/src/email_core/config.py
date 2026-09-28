@@ -33,3 +33,8 @@ RENDER_DPI = 110
 
 # Caps the number of pages sent as images (usually info is at start)
 RENDER_MAX_PAGES = 5
+
+# -- Attachment conversion to PDF ------------------------------------------
+
+# Caps the rows rendered per spreadsheet sheet.
+MAX_SHEET_ROWS = 1000

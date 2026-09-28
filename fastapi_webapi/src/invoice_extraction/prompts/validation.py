@@ -1,3 +1,5 @@
+import json
+
 from langchain_core.messages import HumanMessage, SystemMessage
 
 from invoice_extraction.models import InvoiceData
@@ -18,7 +20,8 @@ For every field, decide whether the extracted value is correct:
 - Wrong          -> return the corrected value, but ONLY when the correction is
                     explicitly supported by the parsed text or by a tool result.
 - Unconfirmable  -> return the extracted value with LOW confidence, or null when
-                    you have reason to doubt it.
+                    you have reason to doubt it: the whole field null, never a
+                    value of null, "null" or "None".
 
 Do NOT assume the extracted values are correct. Do NOT invent corrections. If
 the parsed text does not mention a field at all, that is not evidence the value
@@ -46,7 +49,7 @@ the bu_* fields.
 supplier_id and bu_id are internal registry identifiers. They are NOT present in
 the document and cannot be derived from it — always return null for both.
 
-document_number was read by the classification step rather, so it reaches you
+document_number was read by the classification step, so it reaches you
 from a different source. Validate it exactly as you would any other value:
 correct it when the parsed text explicitly supports a different number. See
 the exception above — do not lower its confidence merely because parsed text
@@ -87,8 +90,7 @@ Use verify_client_nif/verify_supplier_nif to confirm the two parties. The strong
 
 Use supplier_requires_po on the supplier_vat and, if it returns true, check each
 purchase_order candidate with po_exists. A PO that does not exist is not
-necessarily wrong (the registry may be incomplete), but lower its confidence
-accordingly and say so in notes.
+necessarily wrong (the registry may be incomplete) — keep it and say so in notes.
 
 When supplier_requires_po is true and extraction returned none, look for one in
 the parsed text: a handwritten PO is often missed on the page image yet caught
@@ -141,7 +143,7 @@ corrections made, tool results, and anything you could not validate.
 
 GOOD:
     "supplier/client swapped, fixed (supplier_vat in client registry).
-     total 563,21 ok vs parsed text. issue_date absent from parsed text, kept @0.6."
+     total 563,21 ok vs parsed text. issue_date absent from parsed text, kept as extracted."
 
 BAD:
     "I have carefully reviewed the extracted invoice data and I believe that the
@@ -203,7 +205,7 @@ Some values may have been read from images and may therefore be absent from the
 parsed text — absence alone is not proof a value is wrong.
 
 EXTRACTED DATA
-{extracted_data}
+{json.dumps(extracted_data, ensure_ascii=False)}
 {exception_block}
 PARSED TEXT
 {parsed_text if parsed_text else "No parsed text available for this document."}

@@ -60,7 +60,7 @@ DEFAULT_FETCH_LIMIT = 1
 # How much LLM work one run does: at most N emails are processed per run (None =
 # every claimable row). Arrivals above it build a backlog in `email_messages`
 # that drains on quieter runs; it is a throughput cap, not a fetch limit.
-INGEST_LIMIT: int | None = 1
+INGEST_LIMIT: int | None = 100
 
 # Persist results to Postgres. Off lets the pipeline be exercised (and traced)
 # with no database running, and keeps test runs out of fct_processes.
@@ -97,10 +97,10 @@ RUN_LOCK_KEY = 3_141_592
 # -- Extraction (Phase 2) --------------------------------------------------
 
 # How many documents within one email are extracted concurrently.
-EXTRACTION_MAX_WORKERS = 3
+EXTRACTION_MAX_WORKERS = 2
 
 # How many email threads run concurrently; multiplies with EXTRACTION_MAX_WORKERS.
-EMAIL_MAX_WORKERS = 4
+EMAIL_MAX_WORKERS = 6
 
 # Deterministic parser settings, matching the notebook.
 PARSER_KWARGS = {
@@ -117,7 +117,7 @@ PARSER_KWARGS = {
 # 0.7 keeps only the upper half of the validator's own "0.70-0.89 = probably
 # correct but some ambiguity" band. Money-moving data, so ambiguity goes to a
 # human.
-MIN_CONFIDENCE = 0.7
+MIN_CONFIDENCE = 0.5
 
 
 def failed_confidence(min_confidence: float = MIN_CONFIDENCE) -> float:
