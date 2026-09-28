@@ -359,7 +359,8 @@ def query_open_accounts_receivable(
           `amount_in_document_currency`). The header reference (`XBLNR`) lives
           in BKPF, which is not replicated; for SD invoices (`H_BLART` 'RV')
           `billing_document` (`VBELN`) is the number the customer sees.
-          Payment terms are `ZTERM`, `ZFBDT`, `ZBD*`.
+          Payment terms are `ZTERM`, `ZFBDT`, `ZBD*`; SAP's resulting net due
+          date is `due_date_for_net_payment` (`NETDT`).
     """
     lf = scan_table(_BSEG_TABLE).filter((pl.col("KOART") == ACCOUNT_TYPE_CUSTOMER) & _is_blank("AUGBL"))
 

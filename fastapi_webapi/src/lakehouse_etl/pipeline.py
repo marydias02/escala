@@ -44,7 +44,14 @@ async def _sync_clients(dry_run: bool) -> load.SyncCounts:
 
 async def _sync_invoices(dry_run: bool) -> load.SyncCounts:
     open_items = await asyncio.to_thread(extract.read_open_items)
-    return await load.sync_open_invoices(transforms.build_open_invoices(open_items), dry_run)
+    invoices = transforms.build_open_invoices(open_items)
+    orphans = transforms.orphan_invoice_references(open_items, invoices)
+    if orphans:
+        # Netted against nothing: their invoice is cleared or not an invoice line.
+        print(f"  ⚠️  {len(orphans)} open payment/credit memo line(s) point at no open invoice, e.g.:")
+        for reference_id in orphans[:5]:
+            print(f"       {reference_id}")
+    return await load.sync_open_invoices(invoices, dry_run)
 
 
 async def _sync_purchase_orders(full: bool, dry_run: bool) -> load.SyncCounts:

@@ -6,6 +6,7 @@ import polars as pl
 
 from lakehouse_etl.config import (
     BOTH_SUPPLIERS,
+    CREDIT_MEMO_POSTING_KEYS,
     FINANCIAL_SUPPLIERS,
     INVOICE_POSTING_KEY,
     PO_HELD_FLAG,
@@ -34,6 +35,7 @@ INVOICE_COLUMNS = (
     "due_date",
     "total_amount",
     "amount_paid",
+    "amount_credited",
     "open_amount",
     "currency",
 )
@@ -226,22 +228,47 @@ def _sap_date(column: str) -> pl.Expr:
     return pl.col(column).str.strptime(pl.Date, "%Y%m%d", strict=False)
 
 
-def net_due_date() -> pl.Expr:
-    """Baseline date plus the net payment period.
+_INVOICE_KEY = ("bu_id", "fiscal_year", "document_nr", "line")
 
-    SAP's net term is the last period the terms define: ZBD3T when set, else
-    ZBD2T, else ZBD1T (zero days when none is).
+
+def _invoice_references(open_items: pl.DataFrame) -> pl.DataFrame:
+    """Open credit lines that reduce one invoice, keyed by the invoice they
+    point at (REBZG/REBZJ/REBZZ).
+
+    `kind` is "amount_paid" for a partial payment (follow-on type 'Z', whatever
+    its posting key) and "amount_credited" for a credit memo or invoice reversal
+    (`CREDIT_MEMO_POSTING_KEYS`). A payment on account carries 'V' in REBZG,
+    not an invoice, so it is not here. `reference_id` names the credit line
+    itself, in invoice_id form.
     """
-    days = (
-        pl.when(pl.col(_BSEG["ZBD3T"]) > 0)
-        .then(pl.col(_BSEG["ZBD3T"]))
-        .when(pl.col(_BSEG["ZBD2T"]) > 0)
-        .then(pl.col(_BSEG["ZBD2T"]))
-        .otherwise(pl.col(_BSEG["ZBD1T"]))
-        .fill_null(0)
-        .cast(pl.Int64)
+    col = {sap: pl.col(readable) for sap, readable in _BSEG.items()}
+    is_payment = col["REBZT"] == "Z"
+    is_credit_memo = col["BSCHL"].is_in(CREDIT_MEMO_POSTING_KEYS) & ~is_payment
+    return open_items.filter((col["SHKZG"] == "H") & (is_payment | is_credit_memo)).select(
+        col["BUKRS"].alias("bu_id"),
+        col["REBZJ"].alias("fiscal_year"),
+        col["REBZG"].alias("document_nr"),
+        col["REBZZ"].alias("line"),
+        pl.when(is_payment).then(pl.lit("amount_paid")).otherwise(pl.lit("amount_credited")).alias("kind"),
+        col["WRBTR"].cast(_AMOUNT).alias("amount"),
+        pl.concat_str([col["BUKRS"], col["GJAHR"], col["BELNR"], col["BUZEI"]], separator="/").alias("reference_id"),
     )
-    return (_sap_date(_BSEG["ZFBDT"]) + pl.duration(days=days)).alias("due_date")
+
+
+def orphan_invoice_references(open_items: pl.DataFrame, invoices: pl.DataFrame) -> list[str]:
+    """Partial payments and credit memos pointing at no invoice in `invoices`.
+
+    Their invoice has been cleared or is not an invoice line, so
+    `build_open_invoices` nets them against nothing; this names them rather than
+    drop them silently.
+    """
+    return (
+        _invoice_references(open_items)
+        .join(invoices.select(_INVOICE_KEY), on=_INVOICE_KEY, how="anti")
+        .get_column("reference_id")
+        .sort()
+        .to_list()
+    )
 
 
 def build_open_invoices(open_items: pl.DataFrame) -> pl.DataFrame:
@@ -249,32 +276,28 @@ def build_open_invoices(open_items: pl.DataFrame) -> pl.DataFrame:
 
     An invoice is an open line with posting key 01, or a special G/L 'E' debit
     (key 09) — a receivable SAPF103 re-posted. Other debits (down payments,
-    outgoing payments) are not invoices. What has been paid against an invoice
-    is the sum of the open partial payments (credit lines with follow-on type
-    'Z') that point back at it through REBZG/REBZJ/REBZZ; every other open
-    credit line — a credit memo or a payment on account — is not tied to one
+    outgoing payments) are not invoices. What reduces an invoice are the open
+    credit lines that point back at it (see `_invoice_references`): partial
+    payments sum into `amount_paid`, credit memos into `amount_credited`, and
+    `open_amount` is what is left. A payment on account is not tied to one
     invoice and is left out.
 
     `billing_document` is the SD billing number (VBELN) of an SD invoice — the
-    number the customer sees on it, standing in for BKPF.XBLNR, which is not
-    replicated. `original_document_nr`: SAPF103 re-postings carry the original
-    document in the assignment number as document (10 digits), line (3) and
-    fiscal year (4). Any other format is left null rather than guessed at.
-    `issue_date` is the document date, which a re-posting copies from the
-    original.
+    number the customer sees on it (VBRK.XBLNR repeats it), standing in for
+    BKPF.XBLNR, which is not replicated. `original_document_nr`: SAPF103
+    re-postings carry the original document in the assignment number as
+    document (10 digits), line (3) and fiscal year (4). Any other format is left
+    null rather than guessed at. `issue_date` is the document date, which a
+    re-posting copies from the original. `due_date` is SAP's own net due date.
     """
-    key = ("bu_id", "fiscal_year", "document_nr", "line")
+    key = _INVOICE_KEY
     col = {sap: pl.col(readable) for sap, readable in _BSEG.items()}
+    zero = pl.lit(0).cast(_AMOUNT)
 
-    paid = (
-        open_items.filter((col["SHKZG"] == "H") & (col["REBZT"] == "Z"))
-        .group_by(
-            col["BUKRS"].alias("bu_id"),
-            col["REBZJ"].alias("fiscal_year"),
-            col["REBZG"].alias("document_nr"),
-            col["REBZZ"].alias("line"),
-        )
-        .agg(col["WRBTR"].sum().cast(_AMOUNT).alias("amount_paid"))
+    references = _invoice_references(open_items)
+    reductions = references.group_by(key).agg(
+        pl.col("amount").filter(pl.col("kind") == kind).sum().cast(_AMOUNT).alias(kind)
+        for kind in ("amount_paid", "amount_credited")
     )
 
     is_invoice = (col["BSCHL"] == INVOICE_POSTING_KEY) | (
@@ -292,14 +315,16 @@ def build_open_invoices(open_items: pl.DataFrame) -> pl.DataFrame:
             _blank_to_null(col["VBELN"]).alias("billing_document"),
             col["ZUONR"].str.extract(r"^(\d{10})\d{7}$").alias("original_document_nr"),
             _sap_date(_BSEG["H_BLDAT"]).alias("issue_date"),
-            net_due_date(),
+            _sap_date(_BSEG["NETDT"]).alias("due_date"),
             col["WRBTR"].cast(_AMOUNT).alias("total_amount"),
             col["H_WAERS"].alias("currency"),
         )
-        .join(paid, on=key, how="left")
-        .with_columns(pl.col("amount_paid").fill_null(pl.lit(0).cast(_AMOUNT)))
+        .join(reductions, on=key, how="left")
+        .with_columns(pl.col("amount_paid", "amount_credited").fill_null(zero))
         .with_columns(
-            (pl.col("total_amount") - pl.col("amount_paid")).cast(_AMOUNT).alias("open_amount"),
+            (pl.col("total_amount") - pl.col("amount_paid") - pl.col("amount_credited"))
+            .cast(_AMOUNT)
+            .alias("open_amount"),
             pl.concat_str([pl.col(c) for c in key], separator="/").alias("invoice_id"),
         )
     )

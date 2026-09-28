@@ -237,6 +237,7 @@ BSEG_COLUMN_DESCRIPTIONS: dict[str, str] = {
     "ZBD3T": "Net payment terms period (days)",
     "ZBD1P": "Cash discount percentage 1",
     "ZBD2P": "Cash discount percentage 2",
+    "NETDT": "Due date for net payment (SAP-computed from the baseline date and payment terms)",
     "ZLSCH": "Payment method",
     "ZLSPR": "Payment block key",
     "HBKID": "Short key for the house bank",

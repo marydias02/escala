@@ -15,6 +15,11 @@ INVOICE_POSTING_KEY = "01"
 REPOSTED_RECEIVABLE_INDICATOR = "E"
 REPOSTED_RECEIVABLE_POSTING_KEY = "09"
 
+# Credit lines that reduce the invoice they reference (BSEG.REBZG/REBZJ/REBZZ):
+# a credit memo (11) or an invoice reversal (12). Partial payments reduce it too,
+# but are told apart by their follow-on type (REBZT 'Z'), not their key.
+CREDIT_MEMO_POSTING_KEYS = ("11", "12")
+
 # The lakehouse replicates two SAP clients: 100 (productive) and 000 (SAP's
 # reference client). Dropping this filter makes T001 return a duplicate bu_id —
 # 0001 is "SAP SE" in 000 and "SAP A.G." in 100 — which collides on the PK.

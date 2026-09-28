@@ -293,10 +293,7 @@ def _item(**overrides) -> dict:
         "H_BLART": "RV",
         "ZUONR": "",
         "VBELN": "6071717686",
-        "ZFBDT": "20260115",
-        "ZBD1T": Decimal("30"),
-        "ZBD2T": Decimal("0"),
-        "ZBD3T": Decimal("0"),
+        "NETDT": "20260214",
         "REBZG": "",
         "REBZJ": "",
         "REBZZ": "",
@@ -310,18 +307,24 @@ def _invoices(*items: dict) -> pl.DataFrame:
     return transforms.build_open_invoices(pl.DataFrame(list(items)))
 
 
-def _payment(amount: str, belnr: str = "1500000001") -> dict:
-    return _item(
-        BELNR=belnr,
-        BSCHL="15",
-        SHKZG="H",
-        WRBTR=Decimal(amount),
-        VBELN="",
-        REBZT="Z",
-        REBZG="1400000001",
-        REBZJ="2026",
-        REBZZ="001",
-    )
+def _payment(amount: str, belnr: str = "1500000001", **overrides) -> dict:
+    fields = {
+        "BELNR": belnr,
+        "BSCHL": "15",
+        "SHKZG": "H",
+        "WRBTR": Decimal(amount),
+        "VBELN": "",
+        "REBZT": "Z",
+        "REBZG": "1400000001",
+        "REBZJ": "2026",
+        "REBZZ": "001",
+    }
+    fields.update(overrides)
+    return _item(**fields)
+
+
+def _credit_memo(amount: str, belnr: str = "1600000001", **overrides) -> dict:
+    return _payment(amount, belnr, **{"BSCHL": "11", "REBZT": "", **overrides})
 
 
 def test_build_open_invoices_columns_and_types():
@@ -334,6 +337,7 @@ def test_build_open_invoices_columns_and_types():
     # Exact Decimal, never a float round-trip.
     assert row["total_amount"] == Decimal("100.00")
     assert row["amount_paid"] == Decimal("0.00")
+    assert row["amount_credited"] == Decimal("0.00")
     assert row["open_amount"] == Decimal("100.00")
 
 
@@ -344,15 +348,49 @@ def test_build_open_invoices_sums_partial_payments():
     assert rows["open_amount"].item() == Decimal("49.50")
 
 
+def test_build_open_invoices_nets_credit_memos_apart_from_payments():
+    rows = _invoices(
+        _item(),
+        _payment("30.00"),
+        _credit_memo("25.00"),
+        # An invoice reversal reduces the invoice like a credit memo.
+        _credit_memo("5.00", belnr="1600000002", BSCHL="12"),
+    )
+    row = rows.row(0, named=True)
+    assert row["amount_paid"] == Decimal("30.00")
+    assert row["amount_credited"] == Decimal("30.00")
+    assert row["open_amount"] == Decimal("40.00")
+
+
 def test_build_open_invoices_ignores_unlinked_credits():
-    """A credit memo or payment on account is not an invoice, nor paid against one."""
+    """A credit memo without an invoice reference, or a payment on account
+    ('V' in REBZG), is not an invoice, nor reduces one."""
     rows = _invoices(
         _item(),
         _item(BELNR="1600000001", BSCHL="11", SHKZG="H"),
-        _item(BELNR="1600000002", BSCHL="15", SHKZG="H"),
+        _item(BELNR="1600000002", BSCHL="15", SHKZG="H", REBZG="V", REBZJ="0000", REBZZ="000"),
     )
     assert rows["invoice_id"].to_list() == ["1000/2026/1400000001/001"]
     assert rows["amount_paid"].item() == Decimal("0.00")
+    assert rows["amount_credited"].item() == Decimal("0.00")
+
+
+def test_orphan_invoice_references_names_lines_without_an_open_invoice():
+    open_items = pl.DataFrame(
+        [
+            _item(),
+            _payment("30.00"),
+            _payment("10.00", belnr="1500000002", REBZG="1400000009"),
+            _credit_memo("25.00", REBZZ="000"),
+            # Not a reference to an invoice at all.
+            _item(BELNR="1500000003", BSCHL="15", SHKZG="H", REBZG="V", REBZJ="0000", REBZZ="000"),
+        ]
+    )
+    invoices = transforms.build_open_invoices(open_items)
+    assert transforms.orphan_invoice_references(open_items, invoices) == [
+        "1000/2026/1500000002/001",
+        "1000/2026/1600000001/001",
+    ]
 
 
 @pytest.mark.parametrize(
@@ -385,17 +423,10 @@ def test_build_open_invoices_original_document(zuonr, expected):
     assert _invoices(_item(ZUONR=zuonr))["original_document_nr"].item() == expected
 
 
-@pytest.mark.parametrize(
-    "terms,expected",
-    [
-        ({"ZBD1T": Decimal("30")}, "2026-02-14"),
-        ({"ZBD1T": Decimal("10"), "ZBD2T": Decimal("60")}, "2026-03-16"),
-        ({"ZBD1T": Decimal("10"), "ZBD2T": Decimal("20"), "ZBD3T": Decimal("90")}, "2026-04-15"),
-        ({"ZBD1T": Decimal("0")}, "2026-01-15"),
-    ],
-)
-def test_build_open_invoices_net_due_date(terms, expected):
-    assert _invoices(_item(**terms))["due_date"].item().isoformat() == expected
+@pytest.mark.parametrize("netdt,expected", [("20260214", "2026-02-14"), ("00000000", None), ("", None)])
+def test_build_open_invoices_due_date_is_sap_net_due_date(netdt, expected):
+    due = _invoices(_item(NETDT=netdt))["due_date"].item()
+    assert (due.isoformat() if due else None) == expected
 
 
 def test_build_open_invoices_raises_on_duplicate_invoice_id():
