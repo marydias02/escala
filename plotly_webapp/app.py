@@ -117,6 +117,8 @@ def serve_layout():
                         children=[
                             Menu(title="Extração", href="/", icon="lucide:scan-text"),
                             Menu(title="Validação", href="/validation", icon="lucide:badge-check"),
+                            Menu(title="Dashboard", href="/harbor", icon="lucide:layout-dashboard"),
+                            Menu(title="Ingestão de Extratos", href="/ingestion", icon="lucide:file-up"),
                             # Menu(title="Template", href="/home", icon="lucide:file-text"),
                             # Menu(title="Grid", href="/grid"),
                             # Menu(title="Segmented Control", href="/components/segmented-control"),

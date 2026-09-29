@@ -3,6 +3,7 @@ from pathlib import Path
 
 import dash
 from dash import Input, Output, callback, dcc, html
+from dash.exceptions import PreventUpdate
 
 from components.button.button import Button
 from components.cards.indicator_card.indicator_card import IndicatorCard
@@ -12,7 +13,7 @@ from components.table.V1.table import Table as TableV1
 
 DATA_PATH = Path(__file__).parents[1] / "data" / "harbor_transactions.json"
 
-dash.register_page(__name__, path="/", title="Dashboard")
+dash.register_page(__name__, path="/harbor", title="Dashboard")
 
 
 def load_transactions():
@@ -161,6 +162,17 @@ def build_layout():
 )
 def filter_transactions(account_id):
     return [row for row in load_transactions() if row["account_id"] == account_id]
+
+
+@callback(
+    Output("url", "pathname"),
+    Input("harbor-transactions-table", "cellClicked"),
+    prevent_initial_call=True,
+)
+def open_reconciliation(cell_clicked):
+    if not cell_clicked or cell_clicked.get("colId") == "scope":
+        raise PreventUpdate
+    return "/reconciliation"
 
 
 layout = build_layout()
