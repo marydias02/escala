@@ -60,6 +60,17 @@ def serve_layout():
     """Built per page load rather than once at import, so the sidebar can carry
     the signed-in user's own name instead of a constant."""
     user = session.get("user") or {}
+    sidebar_menu = [
+        Menu(title="Extração", href="/", icon="lucide:scan-text"),
+        Menu(title="Validação", href="/validation", icon="lucide:badge-check"),
+    ]
+    if config.DISPLAY_HARBOR:
+        sidebar_menu.extend(
+            [
+                Menu(title="Dashboard", href="/harbor", icon="lucide:layout-dashboard"),
+                Menu(title="Ingestão de Extratos", href="/ingestion", icon="lucide:file-up"),
+            ]
+        )
 
     return html.Div(
         [
@@ -114,11 +125,7 @@ def serve_layout():
                     ),
                     html.Div(
                         className="sidebar__menu",
-                        children=[
-                            Menu(title="Extração", href="/", icon="lucide:scan-text"),
-                            Menu(title="Validação", href="/validation", icon="lucide:badge-check"),
-                            Menu(title="Dashboard", href="/harbor", icon="lucide:layout-dashboard"),
-                            Menu(title="Ingestão de Extratos", href="/ingestion", icon="lucide:file-up"),
+                        children=sidebar_menu + [
                             # Menu(title="Template", href="/home", icon="lucide:file-text"),
                             # Menu(title="Grid", href="/grid"),
                             # Menu(title="Segmented Control", href="/components/segmented-control"),

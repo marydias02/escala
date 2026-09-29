@@ -165,7 +165,7 @@ def filter_transactions(account_id):
 
 
 @callback(
-    Output("url", "pathname"),
+    Output("url", "pathname", allow_duplicate=True),
     Input("harbor-transactions-table", "cellClicked"),
     prevent_initial_call=True,
 )

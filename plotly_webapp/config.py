@@ -17,6 +17,9 @@ if dotenv_path := find_dotenv():
 
 BACKEND_BASE_URL = os.getenv("BACKEND_BASE_URL", "http://localhost:8000").rstrip("/")
 
+# Optional feature flags. Only an explicit "true" enables Harbor navigation.
+DISPLAY_HARBOR = os.getenv("display_harbor", "").strip().lower() == "true"
+
 # OIDC
 
 OIDC_AUTHORITY = os.getenv("OIDC_AUTHORITY", "").rstrip("/")
