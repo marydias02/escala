@@ -82,7 +82,7 @@ async def sync_business_units(rows: pl.DataFrame, delete_ids: list[str], dry_run
 
 
 async def sync_clients(rows: pl.DataFrame, dry_run: bool = False) -> SyncCounts:
-    return await _sync_dimension(CLIENTS_TABLE, "client_id", rows, CLIENT_COLUMNS, dry_run)
+    return await _sync_dimension(CLIENTS_TABLE, "client_id", rows, [], CLIENT_COLUMNS, dry_run)
 
 
 async def sync_open_invoices(rows: pl.DataFrame, dry_run: bool = False) -> SyncCounts:

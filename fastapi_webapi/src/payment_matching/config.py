@@ -104,3 +104,4 @@ NOTE_BLOCKED = "Blocked"
 
 ENABLE_TRACING = True
 MLFLOW_EXPERIMENT = "payment_matching"
+MLFLOW_EXPERIMENT_EMAIL_PIPELINE = "aux_payment_email_pipeline"
