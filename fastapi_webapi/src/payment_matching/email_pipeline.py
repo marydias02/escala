@@ -41,7 +41,7 @@ from payment_matching.config import (
     INITIAL_SYNC_LOOKBACK,
     MAX_ATTEMPTS,
     MESSAGES_TABLE,
-    MLFLOW_EXPERIMENT,
+    MLFLOW_EXPERIMENT_EMAIL_PIPELINE,
     MSG_FAILED,
     MSG_PROCESSED,
     PAYMENT_RUN_LOCK_KEY,
@@ -350,7 +350,7 @@ async def main() -> None:
         sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
     if ENABLE_TRACING:
-        setup_tracing(experiment_name=MLFLOW_EXPERIMENT)
+        setup_tracing(experiment_name=MLFLOW_EXPERIMENT_EMAIL_PIPELINE)
     else:
         print("ℹ️  ENABLE_TRACING is off — tracing disabled")
 
