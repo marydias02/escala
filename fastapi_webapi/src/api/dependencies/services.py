@@ -3,6 +3,7 @@ from typing import Annotated
 from fastapi import Depends
 
 from api.services.extraction_service import ExtractionService
+from api.services.harbor_service import HarborService
 from api.services.search_service import SearchService
 from api.services.validation_service import ValidationService
 
@@ -27,6 +28,12 @@ async def get_search_service() -> SearchService:
 
 SearchServiceDep = Annotated[SearchService, Depends(get_search_service)]
 
+
+async def get_harbor_service() -> HarborService:
+    return HarborService()
+
+
+HarborServiceDep = Annotated[HarborService, Depends(get_harbor_service)]
 
 # These dependencies might seem redundant now, but it's here to allow easy extension in the future
 # e.g., caching, configuring parameters, or switching implementations dynamically.
